@@ -7,6 +7,7 @@ interface RequestOptions extends RequestInit {
 }
 
 class ApiClient {
+  private inMemoryAccessToken: string | null = null;
   private isRefreshing = false;
   private refreshSubscribers: Array<(token: string) => void> = [];
 
@@ -19,18 +20,16 @@ class ApiClient {
     this.refreshSubscribers.push(cb);
   }
 
+  /**
+   * Access token is held in-memory ONLY — never written to localStorage.
+   * Refresh token is stored in an HttpOnly, SameSite=Lax cookie and rotated on each refresh.
+   */
   get token(): string | null {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem('tp_token');
+    return this.inMemoryAccessToken;
   }
 
   set token(token: string | null) {
-    if (typeof window === 'undefined') return;
-    if (token) {
-      localStorage.setItem('tp_token', token);
-    } else {
-      localStorage.removeItem('tp_token');
-    }
+    this.inMemoryAccessToken = token;
   }
 
   get workspaceId(): string | null {
@@ -44,6 +43,43 @@ class ApiClient {
       localStorage.setItem('tp_active_workspace_id', id);
     } else {
       localStorage.removeItem('tp_active_workspace_id');
+    }
+  }
+
+  /**
+   * Explicitly rehydrate the in-memory access token using the HttpOnly cookie.
+   * Queues concurrent callers so only a single /auth/refresh HTTP request is sent.
+   */
+  async refreshToken(): Promise<string | null> {
+    if (this.isRefreshing) {
+      return new Promise((resolve) => {
+        this.addRefreshSubscriber((newToken) => resolve(newToken));
+      });
+    }
+
+    this.isRefreshing = true;
+    try {
+      const refreshRes = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (refreshRes.ok) {
+        const data = await refreshRes.json();
+        this.token = data.accessToken;
+        this.onRefreshed(data.accessToken);
+        this.isRefreshing = false;
+        return data.accessToken;
+      } else {
+        this.token = null;
+        this.isRefreshing = false;
+        return null;
+      }
+    } catch {
+      this.isRefreshing = false;
+      this.token = null;
+      return null;
     }
   }
 
@@ -72,44 +108,33 @@ class ApiClient {
 
     const response = await fetch(url, config);
 
-    // 401 Unauthorized handling with refresh token retry
-    if (response.status === 401 && !options.skipAuth && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/refresh')) {
+    // 401 Unauthorized handling with silent refresh token retry
+    if (
+      response.status === 401 &&
+      !options.skipAuth &&
+      !endpoint.includes('/auth/login') &&
+      !endpoint.includes('/auth/refresh')
+    ) {
       if (!this.isRefreshing) {
-        this.isRefreshing = true;
-        try {
-          const refreshRes = await fetch(`${API_BASE_URL}/auth/refresh`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-          });
-
-          if (refreshRes.ok) {
-            const data = await refreshRes.json();
-            this.token = data.accessToken;
-            this.onRefreshed(data.accessToken);
-            this.isRefreshing = false;
-
-            // Retry original request
-            headers.set('Authorization', `Bearer ${data.accessToken}`);
-            const retryRes = await fetch(url, { ...config, headers });
-            return this.handleResponse<T>(retryRes);
-          } else {
-            this.token = null;
-            this.isRefreshing = false;
-            if (typeof window !== 'undefined') {
-              window.location.href = '/login';
-            }
-            throw new Error('Session expired. Please log in again.');
+        const newToken = await this.refreshToken();
+        if (newToken) {
+          headers.set('Authorization', `Bearer ${newToken}`);
+          const retryRes = await fetch(url, { ...config, headers });
+          return this.handleResponse<T>(retryRes);
+        } else {
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login';
           }
-        } catch (err) {
-          this.isRefreshing = false;
-          this.token = null;
-          throw err;
+          throw new Error('Session expired. Please log in again.');
         }
       } else {
-        // Wait for refresh to complete
+        // Queue until concurrent refresh completes
         return new Promise((resolve, reject) => {
           this.addRefreshSubscriber(async (newToken) => {
+            if (!newToken) {
+              reject(new Error('Session expired. Please log in again.'));
+              return;
+            }
             headers.set('Authorization', `Bearer ${newToken}`);
             try {
               const retryRes = await fetch(url, { ...config, headers });
@@ -124,6 +149,7 @@ class ApiClient {
 
     return this.handleResponse<T>(response);
   }
+
 
   private async handleResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {

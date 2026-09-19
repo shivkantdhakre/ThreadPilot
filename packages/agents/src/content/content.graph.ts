@@ -372,6 +372,50 @@ export function createContentGraph(deps: ContentGraphDependencies) {
     }
   }
 
+  async function finalDeterministicValidator(state: ContentGraphState): Promise<Partial<ContentGraphState>> {
+    const candidate = state.finalDraft ?? state.draft;
+    if (state.error || !candidate) {
+      return { status: 'failure', error: 'No valid draft available for final validation' };
+    }
+
+    const errors: string[] = [];
+    const charCount = candidate.body.length;
+
+    if (charCount === 0 || !candidate.body.trim()) {
+      errors.push('Draft body is empty');
+    }
+
+    if (charCount > 500) {
+      logger.warn(
+        { charCount, hook: candidate.hook },
+        'Post-editing draft exceeded 500 characters. Reverting to pre-edit draft.',
+      );
+      // If the editor expanded past 500 chars, revert to pre-editor state.draft if valid
+      if (state.draft && state.draft.body.length <= 500 && state.draft.body.trim().length > 0) {
+        return {
+          finalDraft: state.draft,
+          validation: { valid: true, errors: [] },
+        };
+      }
+      errors.push(`Draft body exceeded 500 character limit (${charCount} chars)`);
+    }
+
+    if (errors.length > 0) {
+      logger.warn({ errors }, 'Final post-validation rejected draft');
+      return {
+        status: 'failure',
+        error: `Final validation failed: ${errors.join('; ')}`,
+        validation: { valid: false, errors },
+      };
+    }
+
+    return {
+      finalDraft: candidate,
+      validation: { valid: true, errors: [] },
+    };
+  }
+
+
   async function persistDraft(state: ContentGraphState): Promise<Partial<ContentGraphState>> {
     const finalContent = state.finalDraft ?? state.draft;
     if (state.error || !finalContent) {
@@ -429,6 +473,11 @@ export function createContentGraph(deps: ContentGraphDependencies) {
     return 'evaluate';
   }
 
+  function routeAfterFinalValidation(state: ContentGraphState) {
+    if (state.error || state.status === 'failure' || state.validation?.valid === false) return 'end';
+    return 'persist';
+  }
+
   const workflow = new StateGraph(ContentGraphAnnotation)
     .addNode('loadContext', loadContext)
     .addNode('retrieveMemories', retrieveMemories)
@@ -441,6 +490,7 @@ export function createContentGraph(deps: ContentGraphDependencies) {
     .addNode('evaluateQuality', evaluateQuality)
     .addNode('evaluateRisk', evaluateRisk)
     .addNode('conditionalFinalEditor', conditionalFinalEditor)
+    .addNode('finalDeterministicValidator', finalDeterministicValidator)
     .addNode('persistDraft', persistDraft)
     .addEdge(START, 'loadContext')
     .addEdge('loadContext', 'retrieveMemories')
@@ -459,8 +509,13 @@ export function createContentGraph(deps: ContentGraphDependencies) {
     .addEdge('evaluateStyle', 'evaluateQuality')
     .addEdge('evaluateQuality', 'evaluateRisk')
     .addEdge('evaluateRisk', 'conditionalFinalEditor')
-    .addEdge('conditionalFinalEditor', 'persistDraft')
+    .addEdge('conditionalFinalEditor', 'finalDeterministicValidator')
+    .addConditionalEdges('finalDeterministicValidator', routeAfterFinalValidation, {
+      persist: 'persistDraft',
+      end: END,
+    })
     .addEdge('persistDraft', END);
 
   return workflow.compile();
+
 }

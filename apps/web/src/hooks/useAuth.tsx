@@ -38,12 +38,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     if (!apiClient.token) {
-      setUser(null);
-      setWorkspace(null);
-      setWorkspaces([]);
-      setLoading(false);
-      return;
+      const refreshedToken = await apiClient.refreshToken();
+      if (!refreshedToken) {
+        setUser(null);
+        setWorkspace(null);
+        setWorkspaces([]);
+        setLoading(false);
+        return;
+      }
     }
+
 
     try {
       const data = await apiClient.get<any>('/auth/me');

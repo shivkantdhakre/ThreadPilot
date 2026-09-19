@@ -15,14 +15,17 @@
 
 ## 📖 Overview
 
-**ThreadPilot** is an enterprise-grade, privacy-first personal social AI platform designed specifically for Meta's Threads network. Unlike generic content generators, ThreadPilot ingests your authentic publishing history, analyzes your unique stylometric traits (sentence structure, punctuation patterns, vocabulary density, vocabulary richness, hook styles), stores high-performing exemplar posts in a high-dimensional vector space (`pgvector`), and dynamically injects this context into every generation cycle.
+**ThreadPilot** is a production-oriented, privacy-first personal social AI platform designed specifically for Meta's Threads network. Unlike generic content generators, ThreadPilot ingests your authentic publishing history, analyzes your unique stylometric traits (sentence structure, punctuation patterns, vocabulary density, vocabulary richness, hook styles), stores high-performing exemplar posts in a high-dimensional vector space (`pgvector`), and dynamically injects this context into every generation cycle.
 
 ### ✨ Highlights
+
 - **🧬 Personal Voice & Stylometric Fingerprinting**: Real-time extraction of 8 distinct stylistic metrics (post length, sentence cadence, question ratio, emoji frequency, first-person voice, technical depth, contrary hooks, and list patterns).
 - **🧠 Vector Memory & Exemplar Retrieval**: Semantic similarity matching over past successful posts using Google GenAI embeddings (`gemini-embedding-2` / `gemini-embedding-001`) with cosine distance ranking in PostgreSQL.
-- **🛡️ Enterprise Multi-Model Resiliency**: Built-in automatic fallback engine across Google Gemini models (`gemini-3.5-flash-lite`, `gemini-flash-lite-latest`, `gemini-3.1-flash-lite`, `gemini-3.7-flash`) with exponential backoff to ensure 100% job completion during rate limits or demand spikes.
-- **🔒 Bank-Grade Security & OAuth 2.0**: PKCE-protected authorization flow, AES-256-GCM token encryption at rest, secure HTTP-only cookie refresh tokens, and strict workspace-level multi-tenant isolation.
-- **⚡ Asynchronous Queue Architecture**: Powered by Redis and BullMQ with live Server-Sent Events (SSE) streaming real-time job progress (0% → 100%) to the frontend.
+- **🛡️ Google GenAI Interactions API**: Native `@google/genai` Interactions API (`client.interactions.create`) with `store: false` to ensure Google does not persist creator content, with built-in resilient fallback and failure classification.
+- **🔒 In-Memory Token Security & OAuth 2.0 PKCE**: Access tokens are held exclusively in-memory (never persisted in `localStorage` to eliminate XSS risks), paired with HttpOnly, SameSite=Lax rotating refresh tokens and strict multi-tenant workspace isolation.
+- **⚡ Asynchronous Queue Architecture**: Powered by Redis and BullMQ with live Server-Sent Events (SSE) streaming real-time job lifecycle stages (`QUEUED` → `LOADING_MEMORY` → `GENERATING` → `EVALUATING` → `PERSISTING` → `COMPLETE`).
+- **🛡️ Deterministic Final Validation Gate**: Post-editing validation node ensures AI polishing never expands content past 500 characters or produces empty drafts.
+
 
 ---
 
@@ -109,6 +112,7 @@ threadpilot/
 ## 🚀 Quick Start Guide
 
 ### Prerequisites
+
 - **Node.js**: v20.x or v22.x+
 - **Package Manager**: `pnpm` (`corepack enable` or `npm install -g pnpm`)
 - **Database**: PostgreSQL with `pgvector` enabled (e.g. [Neon](https://neon.tech), Supabase, or local Docker)
@@ -187,7 +191,8 @@ pnpm db:generate
 pnpm db:migrate
 ```
 
-*(Optional) Inspect your database with Prisma Studio:*
+_(Optional) Inspect your database with Prisma Studio:_
+
 ```bash
 pnpm db:studio
 ```
@@ -213,6 +218,7 @@ pnpm dev
 ```
 
 Or run individual services in separate terminals:
+
 ```bash
 # Terminal 1: Backend API (Port 3001)
 pnpm --filter @threadpilot/api start:dev
@@ -228,27 +234,36 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## 🧪 Comprehensive Audit & Verification Suite
+## 🧪 Automated Testing & Verification
 
-ThreadPilot includes an automated 29-step end-to-end integration and security test suite covering:
-- API & Worker Health checks
-- Authentication (Register, Login, Me, Token Expiration)
-- Workspace Multi-Tenant Isolation
-- Threads OAuth 2.0 PKCE State Generation & Redis TTL
-- Social Account Status & Sync
-- Style Profile Ingestion & Versioning
-- Content Draft Generation, Patching & History Tracking
-- BullMQ Job Lifecycles & Idempotency
-- Server-Sent Events (SSE) Real-Time Progress
-- End-to-End AI Generation Graph Execution
+ThreadPilot is thoroughly verified across unit, integration, and security layers:
 
-Run the audit suite:
+### 1. Package & App Unit Test Suites
+
+Run all automated unit and negative-path test suites across the monorepo:
+
+```bash
+pnpm test
+```
+
+| Test Suite | Package / App | Coverage / Behaviors Verified |
+|---|---|---|
+| **Gemini Interactions API** | `@threadpilot/ai` | `ai.interactions.create()`, `store: false`, Zod output validation, fast-fail on 4xx/schema errors, exponential backoff on 429/5xx |
+| **Duplicate Calibration** | `@threadpilot/agents` | Cosine similarity benchmark across true duplicates, related-but-distinct, and unrelated posts |
+| **OAuth Security & Negative Paths** | `@threadpilot/threads-client` | PKCE handshake, invalid state, TTL expired state, atomic one-time state consumption (`getdel`), server-side workspace identity enforcement |
+| **Worker Crash Recovery** | `@threadpilot/worker` | Idempotent skip on completed jobs, result caching recovery across process crashes, clean retry from scratch |
+| **Ingestion Interruption** | `@threadpilot/worker` | Multi-page pagination termination (no cursor), mid-stream interruption retry without duplicate post creation (`socialAccountId_externalId`) |
+| **Cross-Tenant Isolation** | `@threadpilot/api` | `WorkspaceScopeGuard` 403 authorization, database query scoping (`where: { workspaceId, id }`) returning 404 for drafts, style examples, memories, jobs, and notifications |
+
+### 2. Live End-to-End Integration Audit
+
+Verify live running services against the 29-step audit suite:
 
 ```bash
 node scripts/comprehensive-audit-test.js
 ```
 
-```
+```text
 ══════════════════════════════════════════════════════
    AUDIT RESULTS SUMMARY
 ══════════════════════════════════════════════════════
@@ -269,25 +284,30 @@ node scripts/comprehensive-audit-test.js
 ══════════════════════════════════════════════════════
 ```
 
+
 ---
 
 ## 🔑 Key Features Deep Dive
 
 ### 1. Dynamic Stylometric Profiler
+
 ThreadPilot extracts key markers from your authentic Threads posts:
-| Metric | Description |
-| :--- | :--- |
-| **Avg Post Length** | Character count distribution across historical posts |
-| **Sentence Length** | Word cadence and rhythm |
-| **Question Frequency** | Frequency of rhetorical and engagement queries |
-| **Emoji Density** | Placement and density of emojis per post |
-| **First-Person Voice** | Proportion of active personal narrative (`I`, `we`, `my`) |
-| **Technical Vocab** | Density of specialized industry and domain terminology |
-| **Contrary Hooks** | Frequency of contrarian and counter-intuitive opening lines |
-| **List / Bullet Usage** | Formatting tendencies toward multi-line structured lists |
+
+| Metric                  | Description                                                 |
+| :---------------------- | :---------------------------------------------------------- |
+| **Avg Post Length**     | Character count distribution across historical posts        |
+| **Sentence Length**     | Word cadence and rhythm                                     |
+| **Question Frequency**  | Frequency of rhetorical and engagement queries              |
+| **Emoji Density**       | Placement and density of emojis per post                    |
+| **First-Person Voice**  | Proportion of active personal narrative (`I`, `we`, `my`)   |
+| **Technical Vocab**     | Density of specialized industry and domain terminology      |
+| **Contrary Hooks**      | Frequency of contrarian and counter-intuitive opening lines |
+| **List / Bullet Usage** | Formatting tendencies toward multi-line structured lists    |
 
 ### 2. Resilient AI Fallback Engine
+
 To prevent workflow disruptions caused by API rate-limits (`429 RESOURCE_EXHAUSTED`) or server spikes (`503 UNAVAILABLE`), `@threadpilot/ai` includes an intelligent failover loop that automatically promotes compatible sibling models in real-time:
+
 ```
 gemini-3.5-flash-lite ──(429/503)──> gemini-flash-lite-latest ──(429/503)──> gemini-3.1-flash-lite ──(429/503)──> gemini-3.7-flash
 ```

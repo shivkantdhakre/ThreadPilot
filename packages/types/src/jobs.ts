@@ -14,11 +14,33 @@ export type JobStatus = 'PENDING' | 'RUNNING' | 'COMPLETE' | 'FAILED';
 
 export type JobType = 'INGESTION' | 'STYLE' | 'CONTENT' | 'IMPROVE' | 'TOKEN_REFRESH';
 
+export interface ExecutionContext {
+  requestId: string;
+  workspaceId: string;
+  actorId: string;
+  jobId?: string;
+  agentRunId?: string;
+  workflowId?: string;
+  workflowVersion?: string;
+}
+
+export type JobLifecycleStage =
+  | 'QUEUED'
+  | 'LOADING_MEMORY'
+  | 'GENERATING'
+  | 'EVALUATING'
+  | 'PERSISTING'
+  | 'COMPLETE'
+  | 'FAILED';
+
 // ─── Base — all payloads include requestId for idempotency ────────────────────
 export interface BaseJobPayload {
   requestId: string;    // caller-generated UUID used as JobRecord.requestId
   workspaceId: string;
+  actorId?: string;
+  context?: ExecutionContext;
 }
+
 
 // ─── Job-specific payloads ────────────────────────────────────────────────────
 
@@ -60,6 +82,7 @@ export interface JobRecordDto {
   requestId: string;
   type: JobType;
   status: JobStatus;
+  stage?: JobLifecycleStage;
   progress: number;                // 0–100
   progressMessage: string | null;
   resultEntityType: string | null;

@@ -6,8 +6,10 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "test": "node --experimental-strip-types --test test/oauth-negative-paths.spec.ts",
     "lint": "tsc --noEmit"
   },
+
   "dependencies": {
     "@threadpilot/database": "workspace:*",
     "@threadpilot/observability": "workspace:*",

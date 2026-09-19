@@ -6,8 +6,10 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "test": "node --experimental-strip-types --test test/duplicate-calibration.spec.ts",
     "lint": "tsc --noEmit"
   },
+
   "dependencies": {
     "@langchain/langgraph": "^0.2.0",
     "@threadpilot/ai": "workspace:*",

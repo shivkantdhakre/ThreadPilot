@@ -19,15 +19,22 @@ export class MemoryRepository {
     memoryItemId: string,
     embedding: number[],
     embeddingModel: string,
+    embeddingDimensions = embedding.length,
   ): Promise<void> {
     const vectorLiteral = `[${embedding.join(',')}]`;
+    const metadataUpdate = JSON.stringify({
+      embeddingModel,
+      embeddingDimensions,
+    });
     await this.db.$executeRaw`
       UPDATE memory_items
       SET embedding = ${vectorLiteral}::vector,
-          embedding_model = ${embeddingModel}
+          embedding_model = ${embeddingModel},
+          metadata = metadata || ${metadataUpdate}::jsonb
       WHERE id = ${memoryItemId}::uuid
     `;
   }
+
 
   /**
    * Find semantically similar MemoryItems using cosine similarity.

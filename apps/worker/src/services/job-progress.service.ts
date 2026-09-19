@@ -1,11 +1,12 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import Redis from 'ioredis';
 import { prisma } from '@threadpilot/database';
-import { JobStatus } from '@threadpilot/types';
+import { JobStatus, JobLifecycleStage } from '@threadpilot/types';
 import { REDIS_CLIENT } from '../redis/redis.module';
 
 export interface ProgressUpdate {
   status: JobStatus;
+  stage?: JobLifecycleStage;
   progress: number;
   progressMessage: string;
   resultEntityType?: string | null | undefined;
@@ -44,6 +45,7 @@ export class JobProgressService {
       const payload = JSON.stringify({
         requestId,
         status: update.status,
+        stage: update.stage ?? null,
         progress: update.progress,
         progressMessage: update.progressMessage,
         resultEntityType: update.resultEntityType ?? null,
@@ -58,3 +60,4 @@ export class JobProgressService {
     }
   }
 }
+

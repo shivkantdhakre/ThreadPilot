@@ -31,7 +31,19 @@ export class ContentProcessor {
   @Process('CONTENT')
   async handleGeneration(job: Job<ContentGenerationJobPayload>): Promise<void> {
     const { requestId, workspaceId, topic, format, tone, additionalContext } = job.data;
-    this.logger.log(`Starting content generation job ${requestId} for workspace ${workspaceId}`);
+    const actorId = job.data.actorId ?? job.data.requestedBy ?? 'system';
+    const executionContext = job.data.context ?? {
+      requestId,
+      workspaceId,
+      actorId,
+      jobId: String(job.id),
+      workflowId: 'content-generation',
+      workflowVersion: '1.0.0',
+    };
+
+    this.logger.log(
+      `Starting content generation [requestId=${executionContext.requestId}, workspace=${executionContext.workspaceId}, actor=${executionContext.actorId}]`,
+    );
 
     // Idempotency check: if job is already complete, return early
     const existingJob = await prisma.jobRecord.findUnique({ where: { requestId } });
@@ -45,8 +57,36 @@ export class ContentProcessor {
       .update(`${workspaceId}:${topic ?? ''}:${format ?? ''}:${tone ?? ''}`)
       .digest('hex');
 
+    // Crash-after-provider-call recovery: Check if a draft was already generated for this inputHash & job
+    if (existingJob?.id) {
+      const existingRun = await prisma.agentRun.findFirst({
+        where: {
+          workspaceId,
+          jobRecordId: existingJob.id,
+          status: 'SUCCESS',
+        },
+      });
+      if (existingRun) {
+        this.logger.log(`Recovered existing generated run for request ${requestId}. Reusing cached result.`);
+        const latestDraft = await prisma.contentDraft.findFirst({
+          where: { workspaceId },
+          orderBy: { createdAt: 'desc' },
+        });
+        await this.progressService.update(requestId, {
+          status: 'COMPLETE',
+          stage: 'COMPLETE',
+          progress: 100,
+          progressMessage: 'Draft recovered successfully!',
+          resultEntityType: 'content_draft',
+          resultEntityId: latestDraft?.id ?? null,
+        });
+        return;
+      }
+    }
+
     await this.progressService.update(requestId, {
       status: 'RUNNING',
+      stage: 'LOADING_MEMORY',
       progress: 15,
       progressMessage: 'Retrieving style voice profile and semantic memories...',
     });
@@ -60,6 +100,7 @@ export class ContentProcessor {
 
       await this.progressService.update(requestId, {
         status: 'RUNNING',
+        stage: 'GENERATING',
         progress: 35,
         progressMessage: 'Generating draft tailored to your personal style...',
       });
@@ -96,6 +137,7 @@ export class ContentProcessor {
 
       await this.progressService.update(requestId, {
         status: 'RUNNING',
+        stage: 'PERSISTING',
         progress: 80,
         progressMessage: 'Evaluations passed. Saving generated draft...',
       });
@@ -112,8 +154,8 @@ export class ContentProcessor {
         data: {
           workspaceId,
           jobRecordId: existingJob?.id ?? null,
-          workflowId: 'content-generation',
-          workflowVersion: '1.0.0',
+          workflowId: executionContext.workflowId ?? 'content-generation',
+          workflowVersion: executionContext.workflowVersion ?? '1.0.0',
           status: 'SUCCESS',
           promptVersion: PROMPT_VERSION_GENERATE,
           profileVersion: finalState.profileVersion ?? 1,
@@ -129,6 +171,7 @@ export class ContentProcessor {
 
       await this.progressService.update(requestId, {
         status: 'COMPLETE',
+        stage: 'COMPLETE',
         progress: 100,
         progressMessage: 'Draft generated successfully!',
         resultEntityType: 'content_draft',
@@ -142,8 +185,8 @@ export class ContentProcessor {
         data: {
           workspaceId,
           jobRecordId: existingJob?.id ?? null,
-          workflowId: 'content-generation',
-          workflowVersion: '1.0.0',
+          workflowId: executionContext.workflowId ?? 'content-generation',
+          workflowVersion: executionContext.workflowVersion ?? '1.0.0',
           status: 'FAILED',
           promptVersion: PROMPT_VERSION_GENERATE,
           inputHash,
@@ -156,6 +199,7 @@ export class ContentProcessor {
 
       await this.progressService.update(requestId, {
         status: 'FAILED',
+        stage: 'FAILED',
         progress: 0,
         progressMessage: 'Content generation failed',
         error: msg,
@@ -164,6 +208,7 @@ export class ContentProcessor {
       throw err;
     }
   }
+
 
   @Process('IMPROVE')
   async handleImprovement(job: Job<ContentImprovementJobPayload>): Promise<void> {

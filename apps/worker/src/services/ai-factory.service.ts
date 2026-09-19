@@ -22,6 +22,13 @@ import {
 class CompositeAIProvider implements AIProvider {
   readonly providerName = 'gemini-composite';
   readonly modelName: string;
+  readonly capabilities = {
+    structuredOutput: true,
+    streaming: true,
+    embeddings: true,
+    tools: false,
+    vision: false,
+  };
 
   constructor(
     private readonly contentProvider: GeminiProvider,
@@ -29,6 +36,7 @@ class CompositeAIProvider implements AIProvider {
   ) {
     this.modelName = contentProvider.modelName;
   }
+
 
   complete<T = string>(request: CompletionRequest): Promise<CompletionResponse<T>> {
     return this.contentProvider.complete<T>(request);

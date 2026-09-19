@@ -20,6 +20,11 @@ export interface CompletionRequest {
    * Throws ZodError if AI output doesn't conform — caller handles retry.
    */
   outputSchema?: ZodType;
+  /**
+   * Whether Google should store the interaction.
+   * Default is false: PostgreSQL is the authoritative memory store.
+   */
+  store?: boolean;
 }
 
 export interface CompletionResponse<T = string> {
@@ -41,6 +46,30 @@ export interface EmbeddingResponse {
   inputTokens: number;
 }
 
+export interface AIProviderCapabilities {
+  structuredOutput: boolean;
+  streaming: boolean;
+  embeddings: boolean;
+  tools: boolean;
+  vision: boolean;
+}
+
+export type AIFailureCategory =
+  | 'TRANSIENT'
+  | 'RATE_LIMIT'
+  | 'INVALID_REQUEST'
+  | 'SCHEMA_ERROR'
+  | 'AUTH_ERROR'
+  | 'MODEL_NOT_FOUND'
+  | 'UNKNOWN';
+
+export interface AIErrorClassification {
+  isRetryable: boolean;
+  category: AIFailureCategory;
+  statusCode?: number;
+  message: string;
+}
+
 export interface AIProvider {
   complete<T = string>(request: CompletionRequest): Promise<CompletionResponse<T>>;
   /**
@@ -51,4 +80,6 @@ export interface AIProvider {
   embed(request: EmbeddingRequest): Promise<EmbeddingResponse>;
   readonly providerName: string;
   readonly modelName: string;
+  readonly capabilities: AIProviderCapabilities;
 }
+
