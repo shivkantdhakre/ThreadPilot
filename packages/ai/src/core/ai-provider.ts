@@ -21,6 +21,11 @@ export interface CompletionRequest {
    */
   outputSchema?: ZodType;
   /**
+   * Optional JSON Schema object for the Interactions API response_format.
+   * If omitted but outputSchema is provided, GeminiProvider derives this automatically.
+   */
+  jsonSchema?: Record<string, unknown>;
+  /**
    * Whether Google should store the interaction.
    * Default is false: PostgreSQL is the authoritative memory store.
    */
@@ -60,7 +65,7 @@ export type AIFailureCategory =
   | 'INVALID_REQUEST'
   | 'SCHEMA_ERROR'
   | 'AUTH_ERROR'
-  | 'MODEL_NOT_FOUND'
+  | 'MODEL_UNAVAILABLE'
   | 'UNKNOWN';
 
 export interface AIErrorClassification {

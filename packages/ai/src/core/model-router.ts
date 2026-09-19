@@ -19,10 +19,13 @@ export type TaskType =
 
 export interface AIConfig {
   apiKey: string;
-  modelContent: string;         // GEMINI_MODEL_CONTENT
-  modelClassification: string;  // GEMINI_MODEL_CLASSIFICATION
-  modelEmbedding: string;       // GEMINI_MODEL_EMBEDDING
-  embeddingDimensions: number;  // GEMINI_EMBEDDING_DIMENSIONS
+  modelContent: string;                 // GEMINI_MODEL_CONTENT
+  modelContentFallbacks?: string[];     // GEMINI_MODEL_CONTENT_FALLBACKS
+  modelClassification: string;          // GEMINI_MODEL_CLASSIFICATION
+  modelClassificationFallbacks?: string[];
+  modelEmbedding: string;               // GEMINI_MODEL_EMBEDDING
+  modelEmbeddingFallbacks?: string[];   // GEMINI_MODEL_EMBEDDING_FALLBACKS
+  embeddingDimensions: number;          // GEMINI_EMBEDDING_DIMENSIONS
   maxRetries: number;
   timeoutMs: number;
 }
@@ -47,6 +50,8 @@ export class ModelRouter {
           this.config.modelContent,
           this.config.maxRetries,
           this.config.timeoutMs,
+          undefined,
+          this.config.modelContentFallbacks,
         );
 
       case 'classification':
@@ -56,6 +61,8 @@ export class ModelRouter {
           this.config.modelClassification,
           this.config.maxRetries,
           this.config.timeoutMs,
+          undefined,
+          this.config.modelClassificationFallbacks,
         );
 
       case 'embedding':
@@ -65,6 +72,7 @@ export class ModelRouter {
           this.config.maxRetries,
           this.config.timeoutMs,
           this.config.embeddingDimensions,
+          this.config.modelEmbeddingFallbacks,
         );
     }
   }

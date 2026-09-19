@@ -68,11 +68,25 @@ export class AIFactoryService {
   private readonly router: ModelRouter;
 
   constructor(private readonly config: ConfigService) {
+    const contentFallbacks = this.config
+      .get<string>('GEMINI_MODEL_CONTENT_FALLBACKS', 'gemini-3.1-flash-lite,gemini-3.7-flash')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const embeddingFallbacks = this.config
+      .get<string>('GEMINI_MODEL_EMBEDDING_FALLBACKS', 'gemini-embedding-001')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
     const aiConfig: AIConfig = {
       apiKey: this.config.get<string>('GEMINI_API_KEY', ''),
-      modelContent: this.config.get<string>('GEMINI_MODEL_CONTENT', 'gemini-2.0-flash'),
-      modelClassification: this.config.get<string>('GEMINI_MODEL_CLASSIFICATION', 'gemini-2.0-flash-lite'),
-      modelEmbedding: this.config.get<string>('GEMINI_MODEL_EMBEDDING', 'gemini-embedding-exp-03-07'),
+      modelContent: this.config.get<string>('GEMINI_MODEL_CONTENT', 'gemini-3.5-flash-lite'),
+      modelContentFallbacks: contentFallbacks,
+      modelClassification: this.config.get<string>('GEMINI_MODEL_CLASSIFICATION', 'gemini-3.5-flash-lite'),
+      modelEmbedding: this.config.get<string>('GEMINI_MODEL_EMBEDDING', 'gemini-embedding-2'),
+      modelEmbeddingFallbacks: embeddingFallbacks,
       embeddingDimensions: this.config.get<number>('GEMINI_EMBEDDING_DIMENSIONS', 768),
       maxRetries: this.config.get<number>('GEMINI_MAX_RETRIES', 3),
       timeoutMs: this.config.get<number>('GEMINI_REQUEST_TIMEOUT_MS', 30000),
@@ -80,12 +94,14 @@ export class AIFactoryService {
 
     this.router = new ModelRouter(aiConfig);
 
-    // Build separate providers for content and embedding
+    // Build separate providers for content and embedding with configuration-driven fallbacks
     const contentProvider = new GeminiProvider(
       aiConfig.apiKey,
       aiConfig.modelContent,
       aiConfig.maxRetries,
       aiConfig.timeoutMs,
+      undefined,
+      aiConfig.modelContentFallbacks,
     );
 
     const embeddingProvider = new GeminiProvider(
@@ -94,6 +110,7 @@ export class AIFactoryService {
       aiConfig.maxRetries,
       aiConfig.timeoutMs,
       aiConfig.embeddingDimensions,
+      aiConfig.modelEmbeddingFallbacks,
     );
 
     this.compositeProvider = new CompositeAIProvider(contentProvider, embeddingProvider);

@@ -150,9 +150,11 @@ APP_PUBLIC_URL=http://localhost:3000
 API_PUBLIC_URL=http://localhost:3001
 WORKER_PORT=3002
 
-# PostgreSQL with pgvector (Neon recommended)
-DATABASE_URL="postgresql://user:pass@host/neondb?sslmode=require"
-DATABASE_URL_LOCAL="postgresql://user:pass@host/neondb?sslmode=require"
+# PostgreSQL 16 with pgvector
+# Recommended for local development: Docker Compose (docker-compose up -d)
+# Optional: Neon / Supabase / other PostgreSQL provider
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/threadpilot"
+DATABASE_URL_LOCAL="postgresql://postgres:postgres@localhost:5432/threadpilot"
 
 # Redis
 REDIS_URL="redis://localhost:6379"
@@ -172,11 +174,13 @@ THREADS_APP_SECRET="your-threads-app-secret"
 THREADS_REDIRECT_URI="https://your-domain-or-tunnel.com/api/v1/threads-auth/callback"
 THREADS_API_BASE_URL="https://graph.threads.net"
 
-# Google Gemini AI
+# Google Gemini AI (Configuration-driven models & fallbacks)
 GEMINI_API_KEY="your-gemini-api-key"
 GEMINI_MODEL_CONTENT="gemini-3.5-flash-lite"
+GEMINI_MODEL_CONTENT_FALLBACKS="gemini-3.1-flash-lite,gemini-3.7-flash"
 GEMINI_MODEL_CLASSIFICATION="gemini-3.5-flash-lite"
 GEMINI_MODEL_EMBEDDING="gemini-embedding-2"
+GEMINI_MODEL_EMBEDDING_FALLBACKS="gemini-embedding-001"
 GEMINI_EMBEDDING_DIMENSIONS=768
 ```
 
@@ -236,11 +240,11 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## 🧪 Automated Testing & Verification
 
-ThreadPilot is thoroughly verified across unit, integration, and security layers:
+ThreadPilot is thoroughly verified across unit, integration, live provider, and security layers:
 
 ### 1. Package & App Unit Test Suites
 
-Run all automated unit and negative-path test suites across the monorepo:
+Run all automated unit, crash recovery, and negative-path test suites across the monorepo:
 
 ```bash
 pnpm test
@@ -248,16 +252,32 @@ pnpm test
 
 | Test Suite | Package / App | Coverage / Behaviors Verified |
 |---|---|---|
-| **Gemini Interactions API** | `@threadpilot/ai` | `ai.interactions.create()`, `store: false`, Zod output validation, fast-fail on 4xx/schema errors, exponential backoff on 429/5xx |
-| **Duplicate Calibration** | `@threadpilot/agents` | Cosine similarity benchmark across true duplicates, related-but-distinct, and unrelated posts |
+| **Gemini Interactions API** | `@threadpilot/ai` | `ai.interactions.create()`, `store: false`, Zod output validation, fast-fail on 4xx/schema errors, exponential backoff on 429/5xx, streaming |
+| **Duplicate Calibration** | `@threadpilot/agents` | Cosine similarity benchmark across true duplicates, related-but-distinct, and unrelated posts (0.80–0.95 threshold) |
 | **OAuth Security & Negative Paths** | `@threadpilot/threads-client` | PKCE handshake, invalid state, TTL expired state, atomic one-time state consumption (`getdel`), server-side workspace identity enforcement |
-| **Worker Crash Recovery** | `@threadpilot/worker` | Idempotent skip on completed jobs, result caching recovery across process crashes, clean retry from scratch |
+| **Threads Live Contract** | `@threadpilot/threads-client` | Response shapes for `/me`, `/me/threads`, `/me/threads_publishing_limit`, rate-limit and auth error propagation |
+| **Worker Crash Recovery** | `@threadpilot/worker` | Idempotent skip on completed jobs, result caching recovery across process crashes (at-most-once DB effect; external AI call retry-safe via hash recovery) |
 | **Ingestion Interruption** | `@threadpilot/worker` | Multi-page pagination termination (no cursor), mid-stream interruption retry without duplicate post creation (`socialAccountId_externalId`) |
 | **Cross-Tenant Isolation** | `@threadpilot/api` | `WorkspaceScopeGuard` 403 authorization, database query scoping (`where: { workspaceId, id }`) returning 404 for drafts, style examples, memories, jobs, and notifications |
 
-### 2. Live End-to-End Integration Audit
+### 2. Live Gemini Interactions Smoke Test
 
-Verify live running services against the 29-step audit suite:
+Perform a genuine live test against Google's Gemini Interactions API using your server-side API key:
+
+```bash
+pnpm test:gemini-live
+```
+
+Validates:
+- Live authentication with Google Gemini servers
+- Interactions API payload execution with `input: string`
+- Strict privacy verification (`store: false`)
+- Structured JSON output with Zod schema validation
+- Token usage extraction (`inputTokens`, `outputTokens`)
+
+### 3. 29-Step Live Integration Audit
+
+Smoke test live running API and Worker services against the 29-step audit script:
 
 ```bash
 node scripts/comprehensive-audit-test.js
@@ -306,10 +326,18 @@ ThreadPilot extracts key markers from your authentic Threads posts:
 
 ### 2. Resilient AI Fallback Engine
 
-To prevent workflow disruptions caused by API rate-limits (`429 RESOURCE_EXHAUSTED`) or server spikes (`503 UNAVAILABLE`), `@threadpilot/ai` includes an intelligent failover loop that automatically promotes compatible sibling models in real-time:
+To prevent workflow disruptions caused by API rate-limits (`429 RESOURCE_EXHAUSTED`) or transient server spikes (`503 UNAVAILABLE`), `@threadpilot/ai` includes an intelligent configuration-driven failover loop:
 
 ```
-gemini-3.5-flash-lite ──(429/503)──> gemini-flash-lite-latest ──(429/503)──> gemini-3.1-flash-lite ──(429/503)──> gemini-3.7-flash
+Configured Primary (e.g. gemini-3.5-flash-lite)
+    │
+    ├── Exponential backoff on 429 / 5xx
+    ├── Fast-fail abort on 401 / 400 / Schema error (no model fallback)
+    └── If retry budget exhausted (or 404 model unavailable)
+            │
+            ▼
+    Configured Fallback (e.g. gemini-3.1-flash-lite ──> gemini-3.7-flash)
+            └── Executed strictly through identical Interactions API (store: false)
 ```
 
 ---

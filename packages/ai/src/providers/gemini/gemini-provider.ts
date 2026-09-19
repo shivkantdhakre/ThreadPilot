@@ -1,5 +1,6 @@
-import { GoogleGenAI, GenerateContentResponse } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import { ZodError } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import {
   AIProvider,
   AIProviderCapabilities,
@@ -10,23 +11,12 @@ import {
   EmbeddingResponse,
 } from '../../core/ai-provider';
 
-const COMPLETION_FALLBACK_MODELS = [
-  'gemini-3.5-flash-lite',
-  'gemini-flash-lite-latest',
-  'gemini-3.1-flash-lite',
-  'gemini-3.7-flash',
-  'gemini-3.5-flash',
-];
-
-const EMBEDDING_FALLBACK_MODELS = [
-  'gemini-embedding-2',
-  'gemini-embedding-001',
-];
-
 /**
  * Classifies an AI error into retryable vs non-retryable categories per
- * Google Gemini troubleshooting specifications (exponential backoff for 429/503,
- * immediate abort for 400/401/403/invalid schemas).
+ * Google Gemini troubleshooting specifications:
+ * - Exponential backoff for 429/503
+ * - Fast-fail abort for 400/401/403/invalid schemas (no model fallback)
+ * - Immediate fallback for 404 (model unavailable)
  */
 export function classifyAIError(error: unknown): AIErrorClassification {
   if (!error) {
@@ -51,18 +41,26 @@ export function classifyAIError(error: unknown): AIErrorClassification {
     str.includes('UNAVAILABLE') ||
     str.includes('503') ||
     str.includes('500') ||
-    str.includes('timeout')
+    str.includes('timeout') ||
+    str.includes('DEADLINE_EXCEEDED')
   ) {
     return { isRetryable: true, category: 'TRANSIENT', statusCode: status ?? 503, message: str };
   }
-  if (status === 404 || str.includes('NOT_FOUND') || str.includes('404')) {
-    return { isRetryable: false, category: 'MODEL_NOT_FOUND', statusCode: 404, message: str };
+  if (
+    status === 404 ||
+    str.includes('NOT_FOUND') ||
+    str.includes('404') ||
+    str.includes('is not found') ||
+    str.includes('is not supported')
+  ) {
+    return { isRetryable: false, category: 'MODEL_UNAVAILABLE', statusCode: 404, message: str };
   }
   if (
     status === 401 ||
     status === 403 ||
     str.includes('PERMISSION_DENIED') ||
-    str.includes('UNAUTHENTICATED')
+    str.includes('UNAUTHENTICATED') ||
+    str.includes('API_KEY_INVALID')
   ) {
     return { isRetryable: false, category: 'AUTH_ERROR', statusCode: status ?? 401, message: str };
   }
@@ -73,21 +71,23 @@ export function classifyAIError(error: unknown): AIErrorClassification {
   return { isRetryable: false, category: 'UNKNOWN', message: str };
 }
 
-
 /**
- * GeminiProvider — wraps @google/genai using the Interactions API.
+ * GeminiProvider — wraps @google/genai strictly using the Interactions API.
  *
- * Key decisions:
- * - Uses Interactions API (ai.interactions.create) — Google's primary modern interface.
- * - Enforces store: false by default — PostgreSQL + pgvector is source of truth.
- * - When outputSchema is set: uses JSON response mime type + Zod validation.
- * - No temperature exposure — sampling params stay inside this adapter.
- * - AI failure classification: 429/5xx retry with backoff; 4xx/schema errors abort immediately.
+ * Key design rules:
+ * 1. Native Interactions API: Calls client.interactions.create with typed SDK signature.
+ * 2. Privacy contract: Enforces store: false so PostgreSQL + pgvector is authoritative.
+ * 3. Consistent fallback: Fallback means another configured Gemini model through the
+ *    SAME Interactions API contract (no legacy generateContent fallback).
+ * 4. Configuration purity: Fallback models are configuration-driven via constructor/options.
+ * 5. Structured output: Uses top-level response_format: { type: 'text', mime_type: 'application/json', schema }.
+ * 6. Native streaming: Uses Interactions API streaming with step.delta text events.
  */
 export class GeminiProvider implements AIProvider {
   private readonly client: GoogleGenAI;
   readonly providerName = 'gemini';
   readonly modelName: string;
+  readonly fallbackModels: string[];
   readonly timeoutMs: number;
   readonly capabilities: AIProviderCapabilities = {
     structuredOutput: true,
@@ -103,16 +103,18 @@ export class GeminiProvider implements AIProvider {
     private readonly maxRetries = 3,
     timeoutMs = 30000,
     private readonly embeddingDimensions?: number,
+    fallbackModels?: string[],
   ) {
     this.client = new GoogleGenAI({ apiKey });
     this.modelName = modelName;
     this.timeoutMs = timeoutMs;
+    this.fallbackModels = fallbackModels ?? [];
   }
 
   async complete<T = string>(request: CompletionRequest): Promise<CompletionResponse<T>> {
     const candidateModels = [
       this.modelName,
-      ...COMPLETION_FALLBACK_MODELS.filter((m) => m !== this.modelName),
+      ...this.fallbackModels.filter((m) => m !== this.modelName),
     ];
 
     let lastError: Error | undefined;
@@ -126,98 +128,84 @@ export class GeminiProvider implements AIProvider {
           lastError = error instanceof Error ? error : new Error(String(error));
 
           const classification = classifyAIError(error);
-          // Non-retryable errors (e.g. ZodError, invalid arguments, 400, 401, 403) abort immediately
-          if (!classification.isRetryable) {
+
+          // Fast-fail terminal errors immediately — do not retry or try fallback models
+          if (
+            classification.category === 'AUTH_ERROR' ||
+            classification.category === 'INVALID_REQUEST' ||
+            classification.category === 'SCHEMA_ERROR'
+          ) {
             throw lastError;
           }
 
-          // If quota exhausted or model unavailable on this model, break to try fallback model
-          if (classification.category === 'RATE_LIMIT' && attempt >= 1) {
+          // If the model does not exist or is unavailable, immediately try the next model
+          if (classification.category === 'MODEL_UNAVAILABLE') {
             break;
           }
 
+          // For RATE_LIMIT (429) or TRANSIENT (5xx/timeout), retry with backoff on current model
           if (attempt < this.maxRetries - 1) {
-            await this.delay(Math.pow(2, attempt) * 1000); // exponential backoff
+            await this.delay(Math.pow(2, attempt) * 1000);
           }
+          // When retry budget on this model is exhausted, the loop naturally advances to the next candidate model
         }
       }
     }
 
-    throw lastError ?? new Error('Unknown error after retries');
+    throw lastError ?? new Error('Unknown error after retries across candidate models');
   }
 
   private async executeCompletion<T>(
     request: CompletionRequest,
     modelName = this.modelName,
   ): Promise<CompletionResponse<T>> {
-    const useJsonMode = request.outputSchema != null;
+    const useJsonMode = Boolean(request.outputSchema || request.jsonSchema);
 
-    let text = '';
-    let inputTokens = 0;
-    let outputTokens = 0;
-    let finishReason: 'stop' | 'max_tokens' | 'error' = 'stop';
-
-    try {
-      // Primary: Modern Interactions API (ai.interactions.create)
-      const interaction = await (this.client as any).interactions.create({
-        model: modelName,
-        input: [{ role: 'user', parts: [{ text: request.userPrompt }] }],
-        system_instruction: request.systemPrompt,
-        ...(useJsonMode ? { response_mime_type: 'application/json' } : {}),
-        store: request.store ?? false,
-        ...(request.maxOutputTokens !== undefined
-          ? { generation_config: { maxOutputTokens: request.maxOutputTokens } }
-          : {}),
-      });
-
-      if (interaction.outputs && Array.isArray(interaction.outputs)) {
-        const textParts = interaction.outputs
-          .filter((o: any) => o.type === 'text' && typeof o.text === 'string')
-          .map((o: any) => o.text);
-        text = textParts.join('');
-      }
-      if (!text && interaction.text) {
-        text = interaction.text;
-      }
-
-      inputTokens = interaction.usage?.total_input_tokens ?? 0;
-      outputTokens = interaction.usage?.total_output_tokens ?? 0;
-      finishReason =
-        interaction.status === 'completed'
-          ? 'stop'
-          : (interaction.status as any) || 'stop';
-    } catch (interactionErr) {
-      const errStr = String(interactionErr);
-      const isMissingApi =
-        errStr.includes('is not a function') ||
-        errStr.includes('not supported') ||
-        errStr.includes('Method Not Allowed') ||
-        errStr.includes('405');
-
-      if (!isMissingApi || !this.client.models?.generateContent) {
-        throw interactionErr;
-      }
-
-      // Resilient fallback to models.generateContent if interactions API is not available in current environment
-      const response: GenerateContentResponse = await this.client.models.generateContent({
-        model: modelName,
-        contents: [{ role: 'user', parts: [{ text: request.userPrompt }] }],
-        config: {
-          systemInstruction: request.systemPrompt,
-          ...(request.maxOutputTokens !== undefined
-            ? { maxOutputTokens: request.maxOutputTokens }
-            : {}),
-          ...(useJsonMode ? { responseMimeType: 'application/json' } : {}),
-        },
-      });
-
-      text = response.text ?? '';
-      inputTokens = response.usageMetadata?.promptTokenCount ?? 0;
-      outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
-      finishReason =
-        response.candidates?.[0]?.finishReason === 'MAX_TOKENS' ? 'max_tokens' : 'stop';
+    let jsonSchema: Record<string, unknown> | undefined = request.jsonSchema;
+    if (!jsonSchema && request.outputSchema) {
+      jsonSchema = zodToJsonSchema(request.outputSchema as any, { target: 'openApi3' }) as Record<string, unknown>;
     }
 
+    // Modern Interactions API call via client.interactions.create
+    const interaction = await this.client.interactions.create({
+      model: modelName,
+      input: request.userPrompt,
+      system_instruction: request.systemPrompt,
+      store: request.store ?? false,
+      ...(useJsonMode
+        ? {
+            response_format: {
+              type: 'text' as const,
+              mime_type: 'application/json',
+              ...(jsonSchema ? { schema: jsonSchema } : {}),
+            },
+          }
+        : {}),
+      ...(request.maxOutputTokens !== undefined
+        ? {
+            generation_config: {
+              max_output_tokens: request.maxOutputTokens,
+            },
+          }
+        : {}),
+    });
+
+    let text = interaction.output_text ?? '';
+    if (!text && (interaction as any).outputs && Array.isArray((interaction as any).outputs)) {
+      const textParts = (interaction as any).outputs
+        .filter((o: any) => o.type === 'text' && typeof o.text === 'string')
+        .map((o: any) => o.text);
+      text = textParts.join('');
+    }
+
+    const inputTokens = interaction.usage?.total_input_tokens ?? 0;
+    const outputTokens = interaction.usage?.total_output_tokens ?? 0;
+    const finishReason: 'stop' | 'max_tokens' | 'error' =
+      interaction.status === 'completed'
+        ? 'stop'
+        : (interaction.status as any) === 'requires_action'
+        ? 'stop'
+        : 'stop';
 
     let result: T;
 
@@ -239,21 +227,35 @@ export class GeminiProvider implements AIProvider {
   }
 
   async *stream(request: CompletionRequest): AsyncIterable<string> {
-    const stream = await this.client.models.generateContentStream({
+    const stream = (await (this.client.interactions.create as any)({
       model: this.modelName,
-      contents: [{ role: 'user', parts: [{ text: request.userPrompt }] }],
-      config: { systemInstruction: request.systemPrompt },
-    });
+      input: request.userPrompt,
+      system_instruction: request.systemPrompt,
+      store: request.store ?? false,
+      stream: true,
+      ...(request.maxOutputTokens !== undefined
+        ? {
+            generation_config: {
+              max_output_tokens: request.maxOutputTokens,
+            },
+          }
+        : {}),
+    })) as unknown as AsyncIterable<any>;
 
-    for await (const chunk of stream) {
-      if (chunk.text) yield chunk.text;
+    for await (const event of stream) {
+      if (event.event_type === 'step.delta' && event.delta) {
+        const delta = event.delta as any;
+        if (delta.type === 'text' && typeof delta.text === 'string') {
+          yield delta.text;
+        }
+      }
     }
   }
 
   async embed(request: EmbeddingRequest): Promise<EmbeddingResponse> {
     const candidateModels = [
       this.modelName,
-      ...EMBEDDING_FALLBACK_MODELS.filter((m) => m !== this.modelName),
+      ...this.fallbackModels.filter((m) => m !== this.modelName),
     ];
 
     let lastError: Error | undefined;
@@ -284,14 +286,14 @@ export class GeminiProvider implements AIProvider {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         const classification = classifyAIError(error);
-        if (classification.isRetryable) {
+        if (classification.isRetryable || classification.category === 'MODEL_UNAVAILABLE') {
           continue;
         }
         throw error;
       }
     }
 
-    throw lastError ?? new Error('Unknown embedding error after retries');
+    throw lastError ?? new Error('Unknown embedding error after retries across candidate models');
   }
 
   private delay(ms: number): Promise<void> {

@@ -1,7 +1,7 @@
 // All exports from packages/threads-client
 // Threads API surface area is isolated here — zero Threads imports anywhere else.
 
-export { ThreadsApiClient } from './threads-api.client';
+export { ThreadsApiClient, ThreadsApiError } from './threads-api.client';
 export { ThreadsOAuthService, OAuthStateError } from './threads-oauth.service';
 export { ThreadsTokenService } from './token.service';
 export { TokenEncryptionService } from './token-encryption.service';

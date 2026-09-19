@@ -3,12 +3,14 @@ import assert from 'node:assert';
 import { z, ZodError } from 'zod';
 import { GeminiProvider, classifyAIError } from '../dist/index.js';
 
-
 describe('GeminiProvider Acceptance Tests', () => {
   it('initializes with required capabilities and configuration', () => {
-    const provider = new GeminiProvider('fake-test-key', 'gemini-3.5-flash-lite');
+    const provider = new GeminiProvider('fake-test-key', 'gemini-3.5-flash-lite', 3, 30000, undefined, [
+      'gemini-3.1-flash-lite',
+    ]);
     assert.strictEqual(provider.providerName, 'gemini');
     assert.strictEqual(provider.modelName, 'gemini-3.5-flash-lite');
+    assert.deepStrictEqual(provider.fallbackModels, ['gemini-3.1-flash-lite']);
     assert.strictEqual(provider.capabilities.structuredOutput, true);
     assert.strictEqual(provider.capabilities.embeddings, true);
     assert.strictEqual(provider.capabilities.streaming, true);
@@ -47,11 +49,11 @@ describe('GeminiProvider Acceptance Tests', () => {
     assert.strictEqual(class401.isRetryable, false);
     assert.strictEqual(class401.category, 'AUTH_ERROR');
 
-    // 404 Model not found
+    // 404 Model not found / unavailable
     const err404 = { status: 404, message: 'NOT_FOUND: Model does not exist' };
     const class404 = classifyAIError(err404);
     assert.strictEqual(class404.isRetryable, false);
-    assert.strictEqual(class404.category, 'MODEL_NOT_FOUND');
+    assert.strictEqual(class404.category, 'MODEL_UNAVAILABLE');
 
     // ZodError (malformed schema)
     const schema = z.object({ count: z.number() });
@@ -66,10 +68,9 @@ describe('GeminiProvider Acceptance Tests', () => {
     assert.strictEqual(classZod.category, 'SCHEMA_ERROR');
   });
 
-  it('executes completion through Interactions API with store: false', async () => {
+  it('executes completion through Interactions API with string input and store: false', async () => {
     const provider = new GeminiProvider('fake-test-key', 'gemini-3.5-flash-lite');
 
-    // Mock the internal interactions client
     let capturedParams: any = null;
     (provider as any).client = {
       interactions: {
@@ -78,7 +79,7 @@ describe('GeminiProvider Acceptance Tests', () => {
           return {
             id: 'interaction_123',
             status: 'completed',
-            outputs: [{ type: 'text', text: 'Interactions API response content' }],
+            output_text: 'Interactions API response content',
             usage: { total_input_tokens: 42, total_output_tokens: 15 },
           };
         },
@@ -95,15 +96,13 @@ describe('GeminiProvider Acceptance Tests', () => {
     assert.strictEqual(res.outputTokens, 15);
     assert.strictEqual(res.finishReason, 'stop');
 
-    // Verify privacy decision: store is false by default
+    // Verified: input is a string, store: false, system_instruction present
     assert.strictEqual(capturedParams.store, false);
     assert.strictEqual(capturedParams.system_instruction, 'System instructions');
-    assert.deepStrictEqual(capturedParams.input, [
-      { role: 'user', parts: [{ text: 'Write a thread hook' }] },
-    ]);
+    assert.strictEqual(capturedParams.input, 'Write a thread hook');
   });
 
-  it('validates structured output when outputSchema is provided', async () => {
+  it('configures structured output with top-level response_format and JSON schema', async () => {
     const provider = new GeminiProvider('fake-test-key', 'gemini-3.5-flash-lite');
 
     const TestSchema = z.object({
@@ -111,14 +110,15 @@ describe('GeminiProvider Acceptance Tests', () => {
       score: z.number(),
     });
 
+    let capturedParams: any = null;
     (provider as any).client = {
       interactions: {
         create: async (params: any) => {
-          assert.strictEqual(params.response_mime_type, 'application/json');
+          capturedParams = params;
           return {
             id: 'interaction_json_1',
             status: 'completed',
-            outputs: [{ type: 'text', text: JSON.stringify({ hook: 'Great hook!', score: 95 }) }],
+            output_text: JSON.stringify({ hook: 'Great hook!', score: 95 }),
             usage: { total_input_tokens: 50, total_output_tokens: 20 },
           };
         },
@@ -133,10 +133,18 @@ describe('GeminiProvider Acceptance Tests', () => {
 
     assert.strictEqual(res.result.hook, 'Great hook!');
     assert.strictEqual(res.result.score, 95);
+
+    // Verified: structured output uses response_format with type: text and mime_type: application/json
+    assert.strictEqual(capturedParams.response_format.type, 'text');
+    assert.strictEqual(capturedParams.response_format.mime_type, 'application/json');
+    assert.strictEqual(capturedParams.response_format.schema.type, 'object');
+    assert(capturedParams.response_format.schema.properties.hook);
   });
 
-  it('rejects malformed structured output immediately without retry (non-retryable)', async () => {
-    const provider = new GeminiProvider('fake-test-key', 'gemini-3.5-flash-lite', 3);
+  it('rejects malformed structured output immediately without retry or model fallback', async () => {
+    const provider = new GeminiProvider('fake-test-key', 'gemini-3.5-flash-lite', 3, 30000, undefined, [
+      'fallback-model-1',
+    ]);
 
     const TestSchema = z.object({
       requiredNumber: z.number(),
@@ -150,8 +158,7 @@ describe('GeminiProvider Acceptance Tests', () => {
           return {
             id: 'interaction_invalid',
             status: 'completed',
-            // Schema mismatch: returns string instead of number
-            outputs: [{ type: 'text', text: JSON.stringify({ requiredNumber: 'invalid_string' }) }],
+            output_text: JSON.stringify({ requiredNumber: 'invalid_string' }),
             usage: { total_input_tokens: 10, total_output_tokens: 10 },
           };
         },
@@ -172,30 +179,31 @@ describe('GeminiProvider Acceptance Tests', () => {
       },
     );
 
-    // Verifies that ZodError is not retried (callCount must be exactly 1)
-    assert.strictEqual(callCount, 1, 'Non-retryable schema error should not trigger retries');
+    // Schema error aborts immediately (callCount is 1: no retries, no fallback model attempts)
+    assert.strictEqual(callCount, 1, 'Non-retryable schema error should not trigger retries or fallbacks');
   });
 
-  it('retries on retryable errors (429/503) and succeeds on subsequent attempt', async () => {
-    const provider = new GeminiProvider('fake-test-key', 'gemini-3.5-flash-lite', 3);
-    // reduce delay for test speed
+  it('retries on retryable errors (429) and falls back to candidate model when retry budget is exhausted', async () => {
+    const provider = new GeminiProvider('fake-test-key', 'primary-model', 2, 30000, undefined, [
+      'fallback-model',
+    ]);
     (provider as any).delay = () => Promise.resolve();
 
-    let attempts = 0;
+    const attemptedModels: string[] = [];
     (provider as any).client = {
       interactions: {
-        create: async () => {
-          attempts++;
-          if (attempts === 1) {
-            const err: any = new Error('RESOURCE_EXHAUSTED: Rate limit exceeded');
+        create: async (params: any) => {
+          attemptedModels.push(params.model);
+          if (params.model === 'primary-model') {
+            const err: any = new Error('RESOURCE_EXHAUSTED: Rate limit on primary');
             err.status = 429;
             throw err;
           }
           return {
-            id: 'interaction_retry_success',
+            id: 'interaction_fallback_success',
             status: 'completed',
-            outputs: [{ type: 'text', text: 'Success after 429 backoff' }],
-            usage: { total_input_tokens: 10, total_output_tokens: 10 },
+            output_text: 'Recovered using fallback model',
+            usage: { total_input_tokens: 12, total_output_tokens: 8 },
           };
         },
       },
@@ -206,12 +214,16 @@ describe('GeminiProvider Acceptance Tests', () => {
       userPrompt: 'User',
     });
 
-    assert.strictEqual(attempts, 2, 'Should succeed on retry attempt');
-    assert.strictEqual(res.result, 'Success after 429 backoff');
+    // Primary was attempted 2 times (retry budget), then fell back to secondary
+    assert.deepStrictEqual(attemptedModels, ['primary-model', 'primary-model', 'fallback-model']);
+    assert.strictEqual(res.result, 'Recovered using fallback model');
+    assert.strictEqual(res.model, 'fallback-model');
   });
 
-  it('aborts immediately on non-retryable 4xx client errors without burning retries', async () => {
-    const provider = new GeminiProvider('fake-test-key', 'gemini-3.5-flash-lite', 3);
+  it('aborts immediately on 401 without burning retries or trying fallback models', async () => {
+    const provider = new GeminiProvider('fake-test-key', 'primary-model', 3, 30000, undefined, [
+      'fallback-model',
+    ]);
     let attempts = 0;
 
     (provider as any).client = {
@@ -238,6 +250,67 @@ describe('GeminiProvider Acceptance Tests', () => {
       },
     );
 
-    assert.strictEqual(attempts, 1, 'Non-retryable 401 error must not be retried');
+    assert.strictEqual(attempts, 1, 'Non-retryable 401 error must not be retried or fall back');
+  });
+
+  it('immediately switches to fallback model when primary returns 404 (model unavailable)', async () => {
+    const provider = new GeminiProvider('fake-test-key', 'deprecated-model', 3, 30000, undefined, [
+      'active-fallback-model',
+    ]);
+
+    const attemptedModels: string[] = [];
+    (provider as any).client = {
+      interactions: {
+        create: async (params: any) => {
+          attemptedModels.push(params.model);
+          if (params.model === 'deprecated-model') {
+            const err: any = new Error('NOT_FOUND: Model not supported');
+            err.status = 404;
+            throw err;
+          }
+          return {
+            id: 'interaction_fallback_404',
+            status: 'completed',
+            output_text: 'Fallback succeeded immediately',
+            usage: { total_input_tokens: 10, total_output_tokens: 10 },
+          };
+        },
+      },
+    };
+
+    const res = await provider.complete({
+      systemPrompt: 'System',
+      userPrompt: 'User',
+    });
+
+    // 404 does not waste 3 retries on deprecated-model; it immediately breaks to active-fallback-model
+    assert.deepStrictEqual(attemptedModels, ['deprecated-model', 'active-fallback-model']);
+    assert.strictEqual(res.result, 'Fallback succeeded immediately');
+  });
+
+  it('streams text chunks using Interactions API step.delta events', async () => {
+    const provider = new GeminiProvider('fake-test-key', 'gemini-3.5-flash-lite');
+
+    (provider as any).client = {
+      interactions: {
+        create: async () => {
+          // Return an async iterable that yields SSE events
+          return (async function* () {
+            yield { event_type: 'step.start' };
+            yield { event_type: 'step.delta', delta: { type: 'text', text: 'Hello ' } };
+            yield { event_type: 'step.delta', delta: { type: 'text', text: 'from ' } };
+            yield { event_type: 'step.delta', delta: { type: 'text', text: 'Interactions streaming!' } };
+            yield { event_type: 'interaction.completed' };
+          })();
+        },
+      },
+    };
+
+    const chunks: string[] = [];
+    for await (const chunk of provider.stream({ systemPrompt: 'System', userPrompt: 'Hello' })) {
+      chunks.push(chunk);
+    }
+
+    assert.strictEqual(chunks.join(''), 'Hello from Interactions streaming!');
   });
 });

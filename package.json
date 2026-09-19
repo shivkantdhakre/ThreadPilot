@@ -8,6 +8,7 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "test": "turbo test",
+    "test:gemini-live": "pnpm --filter @threadpilot/ai test:gemini-live",
     "db:generate": "turbo db:generate",
     "db:migrate": "turbo db:migrate",
     "db:studio": "pnpm --filter=database db:studio",
