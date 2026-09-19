@@ -1,0 +1,23 @@
+{
+  "name": "@threadpilot/ai",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/genai": "^1.0.0",
+    "@threadpilot/database": "workspace:*",
+    "@threadpilot/observability": "workspace:*",
+    "@threadpilot/types": "workspace:*",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@threadpilot/config": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.4"
+  }
+}

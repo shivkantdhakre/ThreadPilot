@@ -1,0 +1,6 @@
+{
+  "name": "@threadpilot/config",
+  "version": "0.0.1",
+  "private": true,
+  "files": ["tsconfig.base.json", "prettier.config.js", "eslint-base.js"]
+}

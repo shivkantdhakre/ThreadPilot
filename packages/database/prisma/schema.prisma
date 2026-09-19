@@ -1,0 +1,562 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// ThreadPilot — Prisma Schema
+// PostgreSQL 16 + pgvector
+// Scope: Phase 0 + Phase 1 only.
+// Vector columns (embedding vector(768)) are NOT declared here — they are added
+// via migration 0002_vector_columns using raw SQL after Prisma creates the tables.
+// All vector operations go through MemoryRepository using $queryRaw.
+//
+// Prisma version: ^6.3.0
+// pgvector extension: managed via customized migration (NOT previewFeatures).
+// See: https://www.prisma.io/docs/orm/prisma-schema/data-model/postgresql-extensions
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IDENTITY
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email         String         @unique
+  passwordHash  String         @map("password_hash")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  workspaces    Workspace[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+/// Family-based refresh token rotation with reuse detection.
+/// If a token is presented after usedAt is set → entire family is revoked.
+model RefreshToken {
+  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyId      String    @map("family_id") @db.Uuid
+  tokenHash     String    @map("token_hash")          // Argon2id hash
+  expiresAt     DateTime  @map("expires_at")
+  usedAt        DateTime? @map("used_at")             // set when consumed
+  replacedById  String?   @map("replaced_by_id") @db.Uuid
+  revokedAt     DateTime? @map("revoked_at")          // set on reuse detection
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MULTI-TENANCY
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Workspace {
+  id             String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId         String            @map("user_id") @db.Uuid
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  socialAccounts SocialAccount[]
+  profile        UserProfile?
+  preferences    UserPreferences?
+  styleSnapshots StyleProfileSnapshot[]
+  contentIdeas   ContentIdea[]
+  contentDrafts  ContentDraft[]
+  styleExamples  StyleExample[]
+  memoryItems    MemoryItem[]
+  jobRecords     JobRecord[]
+  notifications  Notification[]
+  agentRuns      AgentRun[]
+  auditLogs      AuditLog[]
+  aiUsage        AIUsage[]
+
+  @@map("workspaces")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THREADS AUTHORIZATION (separate from app auth)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SocialAccount {
+  id              String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId     String            @map("workspace_id") @db.Uuid
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  platform        String            @default("threads")
+  externalId      String            @map("external_id")
+  username        String
+  displayName     String?           @map("display_name")
+  profileUrl      String?           @map("profile_url")
+  isConnected     Boolean           @default(true) @map("is_connected")
+  connectedAt     DateTime          @map("connected_at")
+  disconnectedAt  DateTime?         @map("disconnected_at")
+
+  oauthToken      OAuthToken?
+  threadPosts     ThreadPost[]
+  externalPosts   ExternalPost[]
+  publishedPosts  PublishedPost[]
+  rateLimits      PlatformRateLimit[]
+
+  @@unique([workspaceId, platform, externalId])
+  @@index([workspaceId])
+  @@map("social_accounts")
+}
+
+/// Encrypted access/refresh tokens for Threads.
+/// Encryption format: "{keyVersion}:{base64(iv+authTag+ciphertext)}"
+/// Key rotation: increment TOKEN_ENCRYPTION_KEY_VERSION in env; old tokens still decrypt.
+model OAuthToken {
+  id                    String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  socialAccountId       String        @unique @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  accessTokenEncrypted  String        @map("access_token_encrypted")
+  refreshTokenEncrypted String?       @map("refresh_token_encrypted")
+  scopes                String[]
+  expiresAt             DateTime      @map("expires_at")
+  issuedAt              DateTime      @map("issued_at")
+  lastRefreshedAt       DateTime?     @map("last_refreshed_at")
+  revokedAt             DateTime?     @map("revoked_at")
+
+  @@map("oauth_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CANONICAL THREAD POST
+// Normalized representation of any post on the platform.
+// Both ingested historical posts and posts we publish resolve here.
+// Later phases attach analytics, engagement, and metrics to ThreadPost.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ThreadPost {
+  id              String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  socialAccountId String        @map("social_account_id") @db.Uuid
+  socialAccount   SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  threadsPostId   String        @map("threads_post_id")
+  text            String
+  mediaType       String        @default("TEXT")
+  postedAt        DateTime      @map("posted_at")
+  isOurs          Boolean       @default(true) @map("is_ours")
+  sourceType      String        @default("PUBLISHED")  // PUBLISHED | INGESTED
+  externalPostId  String?       @map("external_post_id") @db.Uuid
+  publishedPostId String?       @map("published_post_id") @db.Uuid
+
+  @@unique([socialAccountId, threadsPostId])
+  @@index([socialAccountId, postedAt])
+  @@map("thread_posts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HISTORICAL INGESTION
+// Raw payload stored before normalization — originals preserved if API evolves.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ExternalPost {
+  id              String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  socialAccountId String        @map("social_account_id") @db.Uuid
+  socialAccount   SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  externalId      String        @map("external_id")
+  rawPayload      Json          @map("raw_payload")
+  fetchedAt       DateTime      @map("fetched_at")
+  normalizedAt    DateTime?     @map("normalized_at")
+  threadPostId    String?       @map("thread_post_id") @db.Uuid  // populated after normalization
+
+  @@unique([socialAccountId, externalId])
+  @@index([socialAccountId, fetchedAt])
+  @@map("external_posts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PERSONAL AI PROFILE
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Identity fields are manual-only — never auto-modified by the learning engine.
+/// Style features are extracted from historical posts by StyleExtractionGraph.
+model UserProfile {
+  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId  String    @unique @map("workspace_id") @db.Uuid
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  bio          String?
+  profession   String?
+  expertise    String[]
+  positioning  String?
+
+  avgPostLengthChars    Float?  @map("avg_post_length_chars")
+  avgSentenceLengthWords Float? @map("avg_sentence_length_words")
+  questionFrequency     Float?  @map("question_frequency")
+  emojiFrequency        Float?  @map("emoji_frequency")
+  firstPersonFrequency  Float?  @map("first_person_frequency")
+  technicalVocabScore   Float?  @map("technical_vocab_score")
+  listUsageFrequency    Float?  @map("list_usage_frequency")
+  contraryHookFrequency Float?  @map("contrary_hook_frequency")
+
+  profileVersion    Int       @default(1) @map("profile_version")
+  styleExtractedAt  DateTime? @map("style_extracted_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@map("user_profiles")
+}
+
+/// Snapshot of every style profile version for reproducibility.
+/// AgentRun.profileVersion references this for full audit trail.
+model StyleProfileSnapshot {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  version     Int
+  features    Json
+  source      String    // 'style_extraction' | 'manual'
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([workspaceId, version])
+  @@map("style_profile_snapshots")
+}
+
+model UserPreferences {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId String    @unique @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  preferredTopics   String[]
+  excludedTopics    String[]
+  preferredFormats  String[]
+  postingFrequency  Int?      @map("posting_frequency")
+  preferredTimezone String    @default("UTC") @map("preferred_timezone")
+
+  autonomyPublishing  String  @default("MANUAL") @map("autonomy_publishing")
+  autonomyReplies     String  @default("MANUAL") @map("autonomy_replies")
+  autonomyResearch    String  @default("MANUAL") @map("autonomy_research")
+  autonomyContentGen  String  @default("MANUAL") @map("autonomy_content_gen")
+
+  automationPaused  Boolean @default(false) @map("automation_paused")
+  publishingPaused  Boolean @default(false) @map("publishing_paused")
+  repliesPaused     Boolean @default(false) @map("replies_paused")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("user_preferences")
+}
+
+/// Semantic style examples for retrieval-augmented generation.
+/// memoryItemId links to MemoryItem which holds the vector embedding.
+/// One vector store — no duplicate embedding systems.
+model StyleExample {
+  id            String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId   String     @map("workspace_id") @db.Uuid
+  workspace     Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  memoryItemId  String     @unique @map("memory_item_id") @db.Uuid
+  memoryItem    MemoryItem @relation(fields: [memoryItemId], references: [id])
+  sourcePostId  String?    @map("source_post_id") @db.Uuid
+  text          String
+  topic         String?
+  format        String?
+  styleFeatures Json       @map("style_features")
+  quality       Float?
+  userRating    Int?       @map("user_rating")  // -1 | 0 | 1
+
+  @@index([workspaceId, topic])
+  @@map("style_examples")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VECTOR MEMORY
+// embedding vector(768) column added via migration 0002_vector_columns.
+// NOT declared here — Prisma does not manage pgvector column types.
+// All read/write through MemoryRepository.$queryRaw.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model MemoryItem {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type        String    // POST | STYLE_EXAMPLE | EXPLICIT
+  content     String
+  metadata    Json      @default("{}")
+  sourceId    String?   @map("source_id")
+  embeddingModel String? @map("embedding_model")  // which model produced the embedding
+  // embedding vector(768) — managed via MemoryRepository, not here
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  styleExample StyleExample?
+
+  @@index([workspaceId, type])
+  @@map("memory_items")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTENT PIPELINE
+// ContentDraft.status = DRAFT | READY | ARCHIVED (authoring only)
+// Publishing lifecycle lives on ScheduledPost
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ContentIdea {
+  id          String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId String         @map("workspace_id") @db.Uuid
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  title       String
+  concept     String
+  reason      String
+  format      String
+  topic       String
+  confidence  Float
+  sources     String[]
+  drafts      ContentDraft[]
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  @@index([workspaceId])
+  @@map("content_ideas")
+}
+
+model ContentDraft {
+  id          String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId String           @map("workspace_id") @db.Uuid
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ideaId      String?          @map("idea_id") @db.Uuid
+  idea        ContentIdea?     @relation(fields: [ideaId], references: [id])
+
+  // Authoring state only — publishing state lives on ScheduledPost
+  status      String           @default("DRAFT")  // DRAFT | READY | ARCHIVED
+
+  generatedBy           String?  @map("generated_by")
+  promptVersion         String?  @map("prompt_version")
+  profileVersion        Int?     @map("profile_version")
+  researchSources       String[] @map("research_sources")
+  retrievedMemoryIds    String[] @map("retrieved_memory_ids")
+  retrievalSnapshotHash String?  @map("retrieval_snapshot_hash")
+  editedByUser          Boolean  @default(false) @map("edited_by_user")
+
+  versions      ContentVersion[]
+  scheduledPost ScheduledPost?
+  publishedPost PublishedPost?
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  @@index([workspaceId, status])
+  @@map("content_drafts")
+}
+
+model ContentVersion {
+  id          String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  draftId     String       @map("draft_id") @db.Uuid
+  draft       ContentDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  version     Int
+  body        String
+  hook        String?
+  cta         String?
+  editedBy    String       @map("edited_by")
+  diffSummary String?      @map("diff_summary")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  publishedPost PublishedPost?
+
+  @@unique([draftId, version])
+  @@index([draftId])
+  @@map("content_versions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SCHEDULING & PUBLISHING
+// Postgres = source of truth. BullMQ = executor.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ScheduledPost {
+  id              String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId     String       @map("workspace_id") @db.Uuid
+  draftId         String       @unique @map("draft_id") @db.Uuid
+  draft           ContentDraft @relation(fields: [draftId], references: [id])
+
+  scheduledAt     DateTime     @map("scheduled_at")
+  timezone        String
+
+  // SCHEDULED → PROCESSING → PUBLISHED | FAILED_RETRYABLE | FAILED_PERMANENT | CANCELLED | EXPIRED
+  status          String       @default("SCHEDULED")
+
+  idempotencyKey  String       @unique @map("idempotency_key")
+  attemptCount    Int          @default(0) @map("attempt_count")
+  lastAttemptAt   DateTime?    @map("last_attempt_at")
+  nextRetryAt     DateTime?    @map("next_retry_at")
+  lastErrorCode   String?      @map("last_error_code")
+  lastErrorMsg    String?      @map("last_error_msg")
+  bullJobId       String?      @map("bull_job_id")
+
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  @@index([workspaceId, status, scheduledAt])
+  @@map("scheduled_posts")
+}
+
+/// Explicitly records which ContentVersion was published — not just the draft.
+model PublishedPost {
+  id                 String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId        String         @map("workspace_id") @db.Uuid
+  socialAccountId    String         @map("social_account_id") @db.Uuid
+  socialAccount      SocialAccount  @relation(fields: [socialAccountId], references: [id])
+  draftId            String         @unique @map("draft_id") @db.Uuid
+  draft              ContentDraft   @relation(fields: [draftId], references: [id])
+  publishedVersionId String         @unique @map("published_version_id") @db.Uuid
+  publishedVersion   ContentVersion @relation(fields: [publishedVersionId], references: [id])
+  threadsPostId      String         @map("threads_post_id")
+  publishedAt        DateTime       @map("published_at")
+
+  @@unique([socialAccountId, threadsPostId])
+  @@index([workspaceId])
+  @@map("published_posts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JOB TRACKING
+// Persistent job status for idempotency and /jobs/:requestId/status API.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model JobRecord {
+  id               String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId      String    @map("workspace_id") @db.Uuid
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  bullJobId        String?   @map("bull_job_id")
+  requestId        String    @unique @map("request_id")
+  type             String    // INGESTION | STYLE | CONTENT | IMPROVE | TOKEN_REFRESH
+  status           String    @default("PENDING")  // PENDING | RUNNING | COMPLETE | FAILED
+  progress         Int       @default(0)
+  progressMessage  String?   @map("progress_message")
+  resultEntityType String?   @map("result_entity_type")
+  resultEntityId   String?   @map("result_entity_id")
+  error            String?
+  startedAt        DateTime? @map("started_at")
+  completedAt      DateTime? @map("completed_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  @@index([workspaceId, type, status])
+  @@map("job_records")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RATE LIMITS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PlatformRateLimit {
+  id              String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  socialAccountId String        @map("social_account_id") @db.Uuid
+  socialAccount   SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  category        String        // 'post' | 'reply'
+  limitValue      Int           @map("limit_value")
+  used            Int           @default(0)
+  remaining       Int
+  resetAt         DateTime      @map("reset_at")
+  lastSyncedAt    DateTime      @map("last_synced_at")
+
+  @@unique([socialAccountId, category])
+  @@map("platform_rate_limits")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGENT TRACING
+// Hierarchy: AgentRun → AgentAction → AIUsage (one per model call)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AgentRun {
+  id                String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId       String        @map("workspace_id") @db.Uuid
+  workspace         Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  jobRecordId       String?       @map("job_record_id") @db.Uuid
+  workflowId        String        @map("workflow_id")
+  workflowVersion   String        @map("workflow_version")
+  parentRunId       String?       @map("parent_run_id") @db.Uuid
+  status            String
+  promptVersion     String        @map("prompt_version")
+  profileVersion    Int?          @map("profile_version")
+  inputHash         String        @map("input_hash")
+  outputHash        String?       @map("output_hash")
+  totalInputTokens  Int           @default(0) @map("total_input_tokens")
+  totalOutputTokens Int           @default(0) @map("total_output_tokens")
+  totalCostUsd      Float         @default(0) @map("total_cost_usd")
+  latencyMs         Int?          @map("latency_ms")
+  error             String?
+  startedAt         DateTime      @map("started_at")
+  completedAt       DateTime?     @map("completed_at")
+  actions           AgentAction[]
+
+  @@index([workspaceId, workflowId, startedAt])
+  @@map("agent_runs")
+}
+
+model AgentAction {
+  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  runId        String    @map("run_id") @db.Uuid
+  run          AgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  capability   String
+  input        Json
+  output       Json?
+  result       String
+  userApproval String?   @map("user_approval")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  aiUsage      AIUsage[]
+
+  @@index([runId])
+  @@map("agent_actions")
+}
+
+model AIUsage {
+  id               String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId      String       @map("workspace_id") @db.Uuid
+  workspace        Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agentActionId    String?      @map("agent_action_id") @db.Uuid
+  agentAction      AgentAction? @relation(fields: [agentActionId], references: [id])
+  provider         String
+  model            String
+  inputTokens      Int          @map("input_tokens")
+  outputTokens     Int          @map("output_tokens")
+  estimatedCostUsd Float        @map("estimated_cost_usd")
+  timestamp        DateTime     @default(now())
+
+  @@index([workspaceId, timestamp])
+  @@map("ai_usage")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIT + NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent       String?
+  action      String
+  entityType  String?   @map("entity_type")
+  entityId    String?   @map("entity_id")
+  input       Json?
+  output      Json?
+  result      String
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([workspaceId, createdAt])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type        String
+  title       String
+  body        String
+  entityType  String?   @map("entity_type")
+  entityId    String?   @map("entity_id")
+  read        Boolean   @default(false)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([workspaceId, read, createdAt])
+  @@map("notifications")
+}

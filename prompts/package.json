@@ -1,0 +1,18 @@
+{
+  "name": "@threadpilot/prompts",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "lint": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@threadpilot/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@threadpilot/config": "workspace:*",
+    "typescript": "^5.5.4"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@threadpilot/observability",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "pino": "^9.4.0",
+    "pino-pretty": "^11.2.2"
+  },
+  "devDependencies": {
+    "@threadpilot/config": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.4"
+  }
+}

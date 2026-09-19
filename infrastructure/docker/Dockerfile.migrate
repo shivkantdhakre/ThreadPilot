@@ -1,0 +1,24 @@
+FROM node:22-alpine AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable pnpm
+
+# ── migrate stage ──────────────────────────────────────────────────────────────
+# This container runs prisma migrate deploy then the vector column migration.
+# It exits when done. api and worker wait for: condition: service_completed_successfully
+FROM base AS migrate
+WORKDIR /app
+COPY package.json pnpm-workspace.yaml ./
+COPY packages/config/package.json ./packages/config/
+COPY packages/database/package.json ./packages/database/
+RUN pnpm install --frozen-lockfile --filter=@threadpilot/database
+
+COPY packages/database ./packages/database
+
+RUN pnpm --filter=@threadpilot/database db:generate
+
+# Script runs both prisma migrate deploy and the vector column SQL
+COPY infrastructure/docker/scripts/migrate.sh /migrate.sh
+RUN chmod +x /migrate.sh
+
+CMD ["/migrate.sh"]

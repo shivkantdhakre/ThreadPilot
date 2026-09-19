@@ -1,0 +1,131 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: threadpilot
+      POSTGRES_USER: threadpilot
+      POSTGRES_PASSWORD: threadpilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/10_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U threadpilot -d threadpilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Dedicated migrate service.
+  # Runs prisma migrate deploy + 0002 vector migration, then exits.
+  # api and worker depend on this completing successfully.
+  migrate:
+    build:
+      context: ../../
+      dockerfile: infrastructure/docker/Dockerfile.migrate
+    environment:
+      DATABASE_URL: postgresql://threadpilot:threadpilot@postgres:5432/threadpilot
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ../../
+      dockerfile: infrastructure/docker/Dockerfile.api
+    ports:
+      - "3001:3001"
+    env_file: ../../.env
+    environment:
+      DATABASE_URL: postgresql://threadpilot:threadpilot@postgres:5432/threadpilot
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  worker:
+    build:
+      context: ../../
+      dockerfile: infrastructure/docker/Dockerfile.worker
+    ports:
+      - "3002:3002"
+    env_file: ../../.env
+    environment:
+      DATABASE_URL: postgresql://threadpilot:threadpilot@postgres:5432/threadpilot
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  web:
+    build:
+      context: ../../
+      dockerfile: infrastructure/docker/Dockerfile.web
+    ports:
+      - "3000:3000"
+    environment:
+      # Browser-facing — uses localhost
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      # SSR/internal — uses service name
+      API_INTERNAL_URL: http://api:3001
+      NODE_ENV: production
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # ─── Dev profile ──────────────────────────────────────────────────────────
+  # Start with: docker compose --profile dev up
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    profiles: [dev]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@local.dev}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+volumes:
+  postgres_data:
+  redis_data:
+  pgadmin_data:

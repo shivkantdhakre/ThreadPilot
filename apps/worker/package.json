@@ -1,0 +1,36 @@
+{
+  "name": "@threadpilot/worker",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "node dist/main.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/bull": "^11.0.0",
+    "@nestjs/config": "^3.3.0",
+    "@threadpilot/agents": "workspace:*",
+    "@threadpilot/ai": "workspace:*",
+    "@threadpilot/database": "workspace:*",
+    "@threadpilot/observability": "workspace:*",
+    "@threadpilot/prompts": "workspace:*",
+    "@threadpilot/threads-client": "workspace:*",
+    "@threadpilot/types": "workspace:*",
+    "bull": "^4.16.3",
+    "ioredis": "^5.4.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@threadpilot/config": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.4"
+  }
+}

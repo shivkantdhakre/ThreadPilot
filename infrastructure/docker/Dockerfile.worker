@@ -1,0 +1,33 @@
+FROM node:22-alpine AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable pnpm
+
+FROM base AS deps
+WORKDIR /app
+COPY package.json pnpm-workspace.yaml ./
+COPY packages/config/package.json ./packages/config/
+COPY packages/types/package.json ./packages/types/
+COPY packages/observability/package.json ./packages/observability/
+COPY packages/database/package.json ./packages/database/
+COPY packages/ai/package.json ./packages/ai/
+COPY packages/threads-client/package.json ./packages/threads-client/
+COPY packages/agents/package.json ./packages/agents/
+COPY apps/worker/package.json ./apps/worker/
+RUN pnpm install --frozen-lockfile
+
+FROM deps AS build
+WORKDIR /app
+COPY . .
+RUN pnpm --filter=@threadpilot/database db:generate
+RUN pnpm --filter=@threadpilot/worker build
+
+FROM base AS production
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
+COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+COPY --from=build /app/packages/database/node_modules/.prisma ./packages/database/node_modules/.prisma
+
+EXPOSE 3002
+CMD ["node", "apps/worker/dist/main.js"]
