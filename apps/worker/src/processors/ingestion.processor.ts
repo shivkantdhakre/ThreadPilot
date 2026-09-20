@@ -1,9 +1,9 @@
 import { Processor, Process } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
-import { Logger } from '@nestjs/common';
+import { Logger, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { ConfigService } from '@nestjs/config';
-import { prisma } from '@threadpilot/database';
+import { prisma, MemoryRepository } from '@threadpilot/database';
 import {
   QUEUES,
   IngestionJobPayload,
@@ -14,6 +14,7 @@ import {
   TokenEncryptionService,
 } from '@threadpilot/threads-client';
 import { JobProgressService } from '../services/job-progress.service';
+import { AIFactoryService } from '../services/ai-factory.service';
 import { randomUUID } from 'crypto';
 
 @Processor(QUEUES.INGESTION)
@@ -21,11 +22,13 @@ export class IngestionProcessor {
   private readonly logger = new Logger(IngestionProcessor.name);
   private readonly encryptionService: TokenEncryptionService;
   private readonly threadsApiClient: ThreadsApiClient;
+  private readonly memoryRepo = new MemoryRepository(prisma);
 
   constructor(
     private readonly progressService: JobProgressService,
     private readonly config: ConfigService,
     @InjectQueue(QUEUES.STYLE) private readonly styleQueue: Queue,
+    @Optional() private readonly aiFactory?: AIFactoryService,
   ) {
     const encKey = this.config.get<string>('TOKEN_ENCRYPTION_KEY', 'CHANGE_ME_32_BYTE_BASE64_KEY');
     const encVersion = Number(this.config.get<number>('TOKEN_ENCRYPTION_KEY_VERSION', 1));
@@ -116,7 +119,7 @@ export class IngestionProcessor {
           });
 
           // 2. Canonical ThreadPost
-          await prisma.threadPost.upsert({
+          const threadPost = await prisma.threadPost.upsert({
             where: {
               socialAccountId_threadsPostId: {
                 socialAccountId,
@@ -139,6 +142,78 @@ export class IngestionProcessor {
               postedAt: new Date(post.timestamp),
             },
           });
+
+          // 3. Historical Vector Memory: Create MemoryItem & dual embeddings (DOCUMENT + SIMILARITY)
+          const postText = (post.text ?? '').trim();
+          if (postText && this.aiFactory) {
+            try {
+              let memoryItem = await prisma.memoryItem.findFirst({
+                where: { workspaceId, sourceId: threadPost.id },
+              });
+
+              if (!memoryItem) {
+                memoryItem = await prisma.memoryItem.create({
+                  data: {
+                    workspaceId,
+                    type: 'POST',
+                    content: postText,
+                    sourceId: threadPost.id,
+                    metadata: {
+                      socialAccountId,
+                      threadsPostId: postId,
+                      postedAt: post.timestamp,
+                    },
+                  },
+                });
+              }
+
+              const aiProvider = this.aiFactory.getProvider();
+
+              // Generate both embeddings:
+              // - DOCUMENT: for asymmetric semantic retrieval (retrieveMemories)
+              // - SIMILARITY: for symmetric duplicate detection (checkDuplicate)
+              const [docResponse, simResponse] = await Promise.all([
+                aiProvider.embed({
+                  texts: [postText],
+                  taskType: 'DOCUMENT',
+                }),
+                aiProvider.embed({
+                  texts: [postText],
+                  taskType: 'SIMILARITY',
+                }),
+              ]);
+
+              const docVector = docResponse.embeddings[0];
+              const simVector = simResponse.embeddings[0];
+
+              if (docVector && docVector.length > 0) {
+                await this.memoryRepo.upsertEmbedding(
+                  memoryItem.id,
+                  docVector,
+                  aiProvider.modelName,
+                  docVector.length,
+                  'DOCUMENT',
+                  'v2',
+                );
+              }
+
+              if (simVector && simVector.length > 0) {
+                await this.memoryRepo.upsertEmbedding(
+                  memoryItem.id,
+                  simVector,
+                  aiProvider.modelName,
+                  simVector.length,
+                  'SIMILARITY',
+                  'v2',
+                );
+              }
+            } catch (embedErr) {
+              this.logger.warn(
+                { err: embedErr, postId },
+                'Failed to create dual vector memory embeddings for ingested post, continuing',
+              );
+            }
+          }
 
           totalIngested++;
         }

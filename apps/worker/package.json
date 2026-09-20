@@ -6,7 +6,7 @@
     "build": "nest build",
     "dev": "nest start --watch",
     "start": "node dist/main.js",
-    "test": "node --experimental-strip-types --test test/crash-recovery.spec.ts test/ingestion-interruption.spec.ts",
+    "test": "node --experimental-strip-types --test test/crash-recovery.spec.ts test/ingestion-interruption.spec.ts test/historical-duplicate-e2e.spec.ts",
     "lint": "tsc --noEmit"
   },
 

@@ -6,12 +6,12 @@ import {
 } from '../dist/index.js';
 
 describe('MemoryRepository Provenance and Pipeline Version Isolation', () => {
-  it('persists embedding with full provenance metadata including pipeline version', async () => {
-    let capturedExecuteRawArgs: any = null;
+  it('persists embedding into memory_embeddings table with full provenance metadata', async () => {
+    const capturedCalls: any[] = [];
 
     const mockPrisma = {
       $executeRaw: async (strings: TemplateStringsArray, ...values: any[]) => {
-        capturedExecuteRawArgs = { strings, values };
+        capturedCalls.push({ strings, values });
         return 1;
       },
     } as any;
@@ -29,26 +29,25 @@ describe('MemoryRepository Provenance and Pipeline Version Isolation', () => {
       'v2',
     );
 
-    assert(capturedExecuteRawArgs !== null, 'Expected $executeRaw to be called');
-    const { values } = capturedExecuteRawArgs;
+    assert.strictEqual(capturedCalls.length, 2, 'Expected 2 $executeRaw calls (memory_embeddings + memory_items)');
 
-    // values[0] is vectorLiteral
-    assert.strictEqual(values[0], `[${mockVector.join(',')}]`);
-    // values[1] is embeddingModel
-    assert.strictEqual(values[1], 'gemini-embedding-2');
-    // values[2] is metadataUpdate JSON
-    const parsedMetadata = JSON.parse(values[2]);
-    assert.deepStrictEqual(parsedMetadata, {
-      embeddingModel: 'gemini-embedding-2',
-      embeddingDimensions: 768,
-      taskType: 'DOCUMENT',
-      embeddingPipelineVersion: 'v2',
-    });
-    // values[3] is memoryItemId
-    assert.strictEqual(values[3], memoryItemId);
+    // Call 1: INSERT into memory_embeddings
+    const insertCall = capturedCalls[0];
+    const insertSerialized = JSON.stringify(insertCall.values);
+    assert(insertSerialized.includes('gemini-embedding-2'));
+    assert(insertSerialized.includes('768'));
+    assert(insertSerialized.includes('DOCUMENT'));
+    assert(insertSerialized.includes('v2'));
+    assert(insertSerialized.includes(memoryItemId));
+
+    // Call 2: Legacy backward-compat update on memory_items
+    const updateCall = capturedCalls[1];
+    const updateSerialized = JSON.stringify(updateCall.values);
+    assert(updateSerialized.includes(memoryItemId));
+    assert(updateSerialized.includes('gemini-embedding-2'));
   });
 
-  it('isolates similarity queries by pipelineVersion to prevent mixing incompatible vector spaces', async () => {
+  it('isolates similarity queries on memory_embeddings by pipelineVersion and taskType', async () => {
     let capturedQueryArgs: any = null;
 
     const mockPrisma = {
@@ -83,6 +82,44 @@ describe('MemoryRepository Provenance and Pipeline Version Isolation', () => {
     assert(serializedValues.includes(workspaceId));
     assert(serializedValues.includes('0.88'));
     assert(serializedValues.includes('SIMILARITY'));
+    assert(serializedValues.includes(CURRENT_EMBEDDING_PIPELINE_VERSION));
+  });
+
+  it('explicitly filters taskType = DOCUMENT when searching style examples', async () => {
+    let capturedQueryArgs: any = null;
+
+    const mockPrisma = {
+      $queryRaw: async (strings: TemplateStringsArray, ...values: any[]) => {
+        capturedQueryArgs = { strings, values };
+        return [
+          {
+            style_example_id: 'se-1',
+            text: 'Style reference text',
+            topic: 'engineering',
+            similarity: 0.91,
+          },
+        ];
+      },
+    } as any;
+
+    const repo = new MemoryRepository(mockPrisma);
+    const queryVector = new Array(768).fill(0.03);
+    const workspaceId = '44444444-4444-4444-4444-444444444444';
+
+    const results = await repo.findSimilarStyleExamples(
+      workspaceId,
+      queryVector,
+      'engineering',
+      5,
+      CURRENT_EMBEDDING_PIPELINE_VERSION,
+      'DOCUMENT',
+    );
+
+    assert.strictEqual(results.length, 1);
+    const serializedValues = JSON.stringify(capturedQueryArgs.values);
+    assert(serializedValues.includes(workspaceId));
+    assert(serializedValues.includes('DOCUMENT'));
+    assert(serializedValues.includes('engineering'));
     assert(serializedValues.includes(CURRENT_EMBEDDING_PIPELINE_VERSION));
   });
 

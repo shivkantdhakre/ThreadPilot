@@ -76,6 +76,7 @@ model Workspace {
   contentDrafts  ContentDraft[]
   styleExamples  StyleExample[]
   memoryItems    MemoryItem[]
+  memoryEmbeddings MemoryEmbedding[]
   jobRecords     JobRecord[]
   notifications  Notification[]
   agentRuns      AgentRun[]
@@ -289,9 +290,34 @@ model MemoryItem {
   createdAt   DateTime  @default(now()) @map("created_at")
 
   styleExample StyleExample?
+  embeddings   MemoryEmbedding[]
 
   @@index([workspaceId, type])
   @@map("memory_items")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MEMORY EMBEDDINGS (Multi-Representation Vector Storage)
+// Allows a single MemoryItem to hold multiple task-specific vectors:
+// e.g. taskType: DOCUMENT (retrieval) and taskType: SIMILARITY (duplicate check)
+// embedding vector(768) managed via MemoryRepository raw SQL.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model MemoryEmbedding {
+  id              String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  memoryItemId    String      @map("memory_item_id") @db.Uuid
+  memoryItem      MemoryItem  @relation(fields: [memoryItemId], references: [id], onDelete: Cascade)
+  workspaceId     String      @map("workspace_id") @db.Uuid
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  model           String
+  dimensions      Int
+  taskType        String      @map("task_type") // 'DOCUMENT' | 'QUERY' | 'SIMILARITY'
+  pipelineVersion String      @map("pipeline_version")
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  @@unique([memoryItemId, model, taskType, pipelineVersion], name: "unique_memory_embedding")
+  @@index([workspaceId, taskType, pipelineVersion])
+  @@map("memory_embeddings")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

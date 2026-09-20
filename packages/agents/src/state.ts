@@ -78,6 +78,9 @@ export interface DuplicateCheckResult {
   isDuplicate: boolean;
   similarityScore: number;
   similarMemoryItemId: string | null;
+  checkFailed?: boolean;
+  failureReason?: string;
+  requiresReview?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -55,7 +55,7 @@ export interface DuplicatePolicy {
  */
 export const DEFAULT_DUPLICATE_POLICY: DuplicatePolicy = {
   threshold: 0.88,
-  calibrationVersion: 'v2-gemini-live',
+  calibrationVersion: 'v2-gemini-live-initial',
   embeddingModel: 'gemini-embedding-2',
   embeddingPipelineVersion: 'v2',
   calibratedAt: '2026-09-20',
@@ -117,6 +117,9 @@ export function createContentGraph(deps: ContentGraphDependencies) {
       const similar = await memoryRepo.findSimilar(state.workspaceId, queryEmbedding, {
         limit: 5,
         minSimilarity: 0.65,
+        type: 'POST',
+        taskType: 'DOCUMENT',
+        pipelineVersion: 'v2',
       });
 
       return {
@@ -148,6 +151,8 @@ export function createContentGraph(deps: ContentGraphDependencies) {
           queryEmbedding,
           state.topic,
           5,
+          'v2',
+          'DOCUMENT',
         );
 
         return {
@@ -303,9 +308,17 @@ export function createContentGraph(deps: ContentGraphDependencies) {
         dupeCheck: { isDuplicate: false, similarityScore: topMatch?.similarity ?? 0, similarMemoryItemId: null },
       };
     } catch (err) {
-      logger.warn({ err }, 'Duplicate check encountered error, continuing');
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      logger.error({ err }, 'Duplicate check encountered error');
       return {
-        dupeCheck: { isDuplicate: false, similarityScore: 0, similarMemoryItemId: null },
+        dupeCheck: {
+          isDuplicate: false,
+          similarityScore: 0,
+          similarMemoryItemId: null,
+          checkFailed: true,
+          failureReason: errorMsg,
+          requiresReview: true,
+        },
       };
     }
   }
