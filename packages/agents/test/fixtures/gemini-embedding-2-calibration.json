@@ -1,0 +1,479 @@
+{
+  "calibratedAt": "2026-09-20T00:18:23.180Z",
+  "embeddingModel": "gemini-embedding-2",
+  "embeddingDimensions": 768,
+  "embeddingPipelineVersion": "v2",
+  "taskType": "SIMILARITY",
+  "datasetSize": {
+    "trueDuplicates": 20,
+    "relatedDistinct": 20,
+    "completelyUnrelated": 20,
+    "totalPairs": 60
+  },
+  "scores": {
+    "trueDuplicates": [
+      {
+        "a": "Building in public changed my engineering career completely.",
+        "b": "Building in public has changed my entire engineering career.",
+        "similarity": 0.9928787512555656
+      },
+      {
+        "a": "Stop using console.log for production debugging in Node.js.",
+        "b": "Stop using console.log for production Node.js debugging.",
+        "similarity": 0.9959912332054391
+      },
+      {
+        "a": "PostgreSQL + pgvector is all the vector database you need.",
+        "b": "PostgreSQL + pgvector is honestly all the vector DB you will need.",
+        "similarity": 0.9841901516470795
+      },
+      {
+        "a": "The biggest mistake junior engineers make is avoiding documentation.",
+        "b": "The biggest mistake early engineers make is avoiding documentation.",
+        "similarity": 0.9804833532099735
+      },
+      {
+        "a": "AI will not replace engineers, but engineers who use AI will replace those who do not.",
+        "b": "AI won’t replace engineers, but engineers using AI will replace those who don’t.",
+        "similarity": 0.9948867284289086
+      },
+      {
+        "a": "Never deploy on Friday afternoon without an automated rollback plan.",
+        "b": "Do not deploy on Friday afternoon unless you have automated rollbacks.",
+        "similarity": 0.9797075155394582
+      },
+      {
+        "a": "Why SQLite in production is more scalable than you think.",
+        "b": "Why using SQLite in production can scale much further than you think.",
+        "similarity": 0.9907764591454727
+      },
+      {
+        "a": "Every senior engineer should learn how to write compelling design docs.",
+        "b": "Every senior engineer needs to learn to write clear technical design docs.",
+        "similarity": 0.9713396648330952
+      },
+      {
+        "a": "Clean code isn’t about fewer lines; it’s about clarity and maintainability.",
+        "b": "Writing clean code is about readability and ease of maintenance, not fewer lines.",
+        "similarity": 0.9748424469377595
+      },
+      {
+        "a": "Microservices before product-market fit is the fastest way to kill your startup.",
+        "b": "Adopting microservices before finding product-market fit kills startups rapidly.",
+        "similarity": 0.9836873367074752
+      },
+      {
+        "a": "The best engineers I know spend more time reading code than writing it.",
+        "b": "Top engineers often spend significantly more time reading code than authoring new lines.",
+        "similarity": 0.9651027075251837
+      },
+      {
+        "a": "If you don’t write tests today, you will spend tomorrow debugging production.",
+        "b": "Skipping tests today means you will spend all day tomorrow fixing production bugs.",
+        "similarity": 0.9568701975648656
+      },
+      {
+        "a": "Remote work demands asynchronous communication and thorough documentation.",
+        "b": "Successful remote engineering teams rely on async communication and deep documentation.",
+        "similarity": 0.9251655945152902
+      },
+      {
+        "a": "Premature optimization remains the root of all software complexity.",
+        "b": "Optimizing code prematurely is the single biggest source of unnecessary complexity.",
+        "similarity": 0.950258412374338
+      },
+      {
+        "a": "Refactoring code without automated tests is just making changes and praying.",
+        "b": "Refactoring without a solid test suite is pure guesswork and hoping nothing breaks.",
+        "similarity": 0.9409008950515059
+      },
+      {
+        "a": "Consistency beats talent every single day in software development.",
+        "b": "Daily consistency in programming always outpaces raw talent in the long term.",
+        "similarity": 0.9530450590307697
+      },
+      {
+        "a": "The best feature you can ship is the one you decide to delete.",
+        "b": "Deleting unnecessary features is often the highest-impact code you can ship.",
+        "similarity": 0.9432765210577944
+      },
+      {
+        "a": "Database migrations should always be backwards-compatible for zero-downtime releases.",
+        "b": "Zero-downtime deployments require backwards-compatible database migrations every time.",
+        "similarity": 0.9654305931022378
+      },
+      {
+        "a": "A 15-minute sync that could have been an email is why engineering morale drops.",
+        "b": "Unnecessary 15-minute meetings that should be emails destroy engineering productivity.",
+        "similarity": 0.9201794831250565
+      },
+      {
+        "a": "Simplicity in system design is the hardest engineering discipline to master.",
+        "b": "Designing simple, elegant software architectures is the most challenging skill in tech.",
+        "similarity": 0.9053094768462757
+      }
+    ],
+    "relatedDistinct": [
+      {
+        "a": "PostgreSQL + pgvector is great for simple semantic search.",
+        "b": "MongoDB Atlas vector search has improved latency under high concurrent writes.",
+        "similarity": 0.8064918944510346
+      },
+      {
+        "a": "Building in public creates high accountability for solo founders.",
+        "b": "Private stealth development allows teams to iterate without premature customer scrutiny.",
+        "similarity": 0.7961669472450345
+      },
+      {
+        "a": "Why we decided to migrate our backend from Node.js to Go.",
+        "b": "Why our team chose TypeScript and NestJS for rapid enterprise iteration.",
+        "similarity": 0.8204196109448526
+      },
+      {
+        "a": "Junior engineers should focus on foundational algorithms before frameworks.",
+        "b": "Junior engineers accelerate their careers by shipping full-stack production features early.",
+        "similarity": 0.8442304587905443
+      },
+      {
+        "a": "Automating social media posting saves founders 10 hours every week.",
+        "b": "Direct authentic community engagement cannot be delegated to automation.",
+        "similarity": 0.7842027585726211
+      },
+      {
+        "a": "Never deploy on Friday afternoon without an automated rollback plan.",
+        "b": "Why continuous deployment on weekends reduces release anxiety.",
+        "similarity": 0.8496314010322584
+      },
+      {
+        "a": "Why SQLite in production is more scalable than you think.",
+        "b": "Why enterprise scale demands multi-region distributed databases like CockroachDB.",
+        "similarity": 0.8091786940525844
+      },
+      {
+        "a": "Every senior engineer should learn how to write compelling design docs.",
+        "b": "Why senior engineers should spend more time reviewing PRs than writing specs.",
+        "similarity": 0.8653294424298705
+      },
+      {
+        "a": "Clean code isn’t about fewer lines; it’s about clarity and maintainability.",
+        "b": "Performance-critical systems often require sacrificing clean code patterns for cache locality.",
+        "similarity": 0.8433711991710194
+      },
+      {
+        "a": "Microservices before product-market fit is the fastest way to kill your startup.",
+        "b": "Why domain-driven design leads naturally to early microservice boundaries.",
+        "similarity": 0.8028157663046772
+      },
+      {
+        "a": "The best engineers I know spend more time reading code than writing it.",
+        "b": "Pair programming and live mob debugging produce better software than solitary code reviews.",
+        "similarity": 0.818747997738092
+      },
+      {
+        "a": "If you don’t write tests today, you will spend tomorrow debugging production.",
+        "b": "TDD slows down zero-to-one prototyping when product requirements change hourly.",
+        "similarity": 0.8047033209535276
+      },
+      {
+        "a": "Remote work demands asynchronous communication and thorough documentation.",
+        "b": "In-person colocation accelerates creative architectural breakthroughs during early ideation.",
+        "similarity": 0.7684120640045907
+      },
+      {
+        "a": "Premature optimization remains the root of all software complexity.",
+        "b": "Designing for scale on day one prevents catastrophic multi-month database rewrites later.",
+        "similarity": 0.7811190246971228
+      },
+      {
+        "a": "Refactoring code without automated tests is just making changes and praying.",
+        "b": "Sometimes rewriting a legacy module from scratch is faster than incremental refactoring.",
+        "similarity": 0.8244395492210179
+      },
+      {
+        "a": "Consistency beats talent every single day in software development.",
+        "b": "Deep specialized technical brilliance is what solves unsolvable distributed systems bugs.",
+        "similarity": 0.8063666721645594
+      },
+      {
+        "a": "The best feature you can ship is the one you decide to delete.",
+        "b": "Customer retention in B2B SaaS is driven by shipping high-frequency product enhancements.",
+        "similarity": 0.7922267464601164
+      },
+      {
+        "a": "Database migrations should always be backwards-compatible for zero-downtime releases.",
+        "b": "Why schema-less document databases eliminate relational migration overhead entirely.",
+        "similarity": 0.8273633110669787
+      },
+      {
+        "a": "A 15-minute sync that could have been an email is why engineering morale drops.",
+        "b": "Weekly open-mic engineering standups foster team psychological safety and camaraderie.",
+        "similarity": 0.7795102706662013
+      },
+      {
+        "a": "Simplicity in system design is the hardest engineering discipline to master.",
+        "b": "Advanced event-driven CQRS architectures are essential for financial transaction auditing.",
+        "similarity": 0.756254320616076
+      }
+    ],
+    "completelyUnrelated": [
+      {
+        "a": "Why we decided to migrate our backend from Node.js to Go.",
+        "b": "The secret to brewing perfect pour-over Ethiopian coffee at home.",
+        "similarity": 0.6938624496956589
+      },
+      {
+        "a": "PostgreSQL + pgvector is all the vector database you need.",
+        "b": "Morning running routines improved my cardiovascular endurance by 20%.",
+        "similarity": 0.6971523428233292
+      },
+      {
+        "a": "Building in public changed my engineering career completely.",
+        "b": "Best budget mechanical keyboards under $100 in 2026.",
+        "similarity": 0.6894144610417814
+      },
+      {
+        "a": "AI agent evaluation requires deterministic validation gates.",
+        "b": "Hiking in the Dolomites during autumn is a breathtaking experience.",
+        "similarity": 0.6875578645549425
+      },
+      {
+        "a": "The new Threads API publishing limit endpoint provides live quota states.",
+        "b": "How to prune bonsai ficus trees during early spring dormancy.",
+        "similarity": 0.6469517427648814
+      },
+      {
+        "a": "Never deploy on Friday afternoon without an automated rollback plan.",
+        "b": "Sourdough starter feeding schedules for high-hydration loaves.",
+        "similarity": 0.6915206660858989
+      },
+      {
+        "a": "Why SQLite in production is more scalable than you think.",
+        "b": "Top 10 scenic train routes through the Swiss Alps in winter.",
+        "similarity": 0.6988337040592958
+      },
+      {
+        "a": "Every senior engineer should learn how to write compelling design docs.",
+        "b": "The physics behind aerodynamic bicycle wheel design.",
+        "similarity": 0.7299230444222435
+      },
+      {
+        "a": "Clean code isn’t about fewer lines; it’s about clarity and maintainability.",
+        "b": "Ancient Roman aqueduct engineering and hydraulic concrete.",
+        "similarity": 0.6931010366823522
+      },
+      {
+        "a": "Microservices before product-market fit is the fastest way to kill your startup.",
+        "b": "Beginner guide to watercolor landscape painting.",
+        "similarity": 0.6543352407182145
+      },
+      {
+        "a": "The best engineers I know spend more time reading code than writing it.",
+        "b": "How to care for monstera deliciosa houseplants in winter.",
+        "similarity": 0.6633190546625519
+      },
+      {
+        "a": "If you don’t write tests today, you will spend tomorrow debugging production.",
+        "b": "The history of mechanical pocket watches in 18th century Geneva.",
+        "similarity": 0.6861262414259357
+      },
+      {
+        "a": "Remote work demands asynchronous communication and thorough documentation.",
+        "b": "Essential spices for authentic southern Indian sambar.",
+        "similarity": 0.6924648796331351
+      },
+      {
+        "a": "Premature optimization remains the root of all software complexity.",
+        "b": "How telescope optical collimation works for stargazing.",
+        "similarity": 0.6911232777944998
+      },
+      {
+        "a": "Refactoring code without automated tests is just making changes and praying.",
+        "b": "Learning classical acoustic guitar fingerpicking patterns.",
+        "similarity": 0.7032453060804593
+      },
+      {
+        "a": "Consistency beats talent every single day in software development.",
+        "b": "Training for your first Olympic distance triathlon.",
+        "similarity": 0.7291376999063692
+      },
+      {
+        "a": "The best feature you can ship is the one you decide to delete.",
+        "b": "Wild mushroom foraging rules for Pacific Northwest chanterelles.",
+        "similarity": 0.6833074369082088
+      },
+      {
+        "a": "Database migrations should always be backwards-compatible for zero-downtime releases.",
+        "b": "Restoring mid-century modern teak furniture with tung oil.",
+        "similarity": 0.7042245002169489
+      },
+      {
+        "a": "A 15-minute sync that could have been an email is why engineering morale drops.",
+        "b": "How honeybees communicate flower patch distances using the waggle dance.",
+        "similarity": 0.695225146989081
+      },
+      {
+        "a": "Simplicity in system design is the hardest engineering discipline to master.",
+        "b": "French pastry technique for creating 72-layer laminated croissants.",
+        "similarity": 0.7157403455357225
+      }
+    ]
+  },
+  "sweep": [
+    {
+      "threshold": 0.7,
+      "tp": 20,
+      "fp": 25,
+      "fpRelated": 20,
+      "fpUnrelated": 5,
+      "fn": 0,
+      "tn": 15,
+      "precision": 0.4444,
+      "recall": 1,
+      "f1": 0.6154,
+      "fpRate": 0.625
+    },
+    {
+      "threshold": 0.75,
+      "tp": 20,
+      "fp": 20,
+      "fpRelated": 20,
+      "fpUnrelated": 0,
+      "fn": 0,
+      "tn": 20,
+      "precision": 0.5,
+      "recall": 1,
+      "f1": 0.6667,
+      "fpRate": 0.5
+    },
+    {
+      "threshold": 0.78,
+      "tp": 20,
+      "fp": 17,
+      "fpRelated": 17,
+      "fpUnrelated": 0,
+      "fn": 0,
+      "tn": 23,
+      "precision": 0.5405,
+      "recall": 1,
+      "f1": 0.7018,
+      "fpRate": 0.425
+    },
+    {
+      "threshold": 0.8,
+      "tp": 20,
+      "fp": 13,
+      "fpRelated": 13,
+      "fpUnrelated": 0,
+      "fn": 0,
+      "tn": 27,
+      "precision": 0.6061,
+      "recall": 1,
+      "f1": 0.7547,
+      "fpRate": 0.325
+    },
+    {
+      "threshold": 0.82,
+      "tp": 20,
+      "fp": 7,
+      "fpRelated": 7,
+      "fpUnrelated": 0,
+      "fn": 0,
+      "tn": 33,
+      "precision": 0.7407,
+      "recall": 1,
+      "f1": 0.8511,
+      "fpRate": 0.175
+    },
+    {
+      "threshold": 0.84,
+      "tp": 20,
+      "fp": 4,
+      "fpRelated": 4,
+      "fpUnrelated": 0,
+      "fn": 0,
+      "tn": 36,
+      "precision": 0.8333,
+      "recall": 1,
+      "f1": 0.9091,
+      "fpRate": 0.1
+    },
+    {
+      "threshold": 0.85,
+      "tp": 20,
+      "fp": 1,
+      "fpRelated": 1,
+      "fpUnrelated": 0,
+      "fn": 0,
+      "tn": 39,
+      "precision": 0.9524,
+      "recall": 1,
+      "f1": 0.9756,
+      "fpRate": 0.025
+    },
+    {
+      "threshold": 0.86,
+      "tp": 20,
+      "fp": 1,
+      "fpRelated": 1,
+      "fpUnrelated": 0,
+      "fn": 0,
+      "tn": 39,
+      "precision": 0.9524,
+      "recall": 1,
+      "f1": 0.9756,
+      "fpRate": 0.025
+    },
+    {
+      "threshold": 0.88,
+      "tp": 20,
+      "fp": 0,
+      "fpRelated": 0,
+      "fpUnrelated": 0,
+      "fn": 0,
+      "tn": 40,
+      "precision": 1,
+      "recall": 1,
+      "f1": 1,
+      "fpRate": 0
+    },
+    {
+      "threshold": 0.9,
+      "tp": 20,
+      "fp": 0,
+      "fpRelated": 0,
+      "fpUnrelated": 0,
+      "fn": 0,
+      "tn": 40,
+      "precision": 1,
+      "recall": 1,
+      "f1": 1,
+      "fpRate": 0
+    },
+    {
+      "threshold": 0.92,
+      "tp": 19,
+      "fp": 0,
+      "fpRelated": 0,
+      "fpUnrelated": 0,
+      "fn": 1,
+      "tn": 40,
+      "precision": 1,
+      "recall": 0.95,
+      "f1": 0.9744,
+      "fpRate": 0
+    },
+    {
+      "threshold": 0.95,
+      "tp": 15,
+      "fp": 0,
+      "fpRelated": 0,
+      "fpUnrelated": 0,
+      "fn": 5,
+      "tn": 40,
+      "precision": 1,
+      "recall": 0.75,
+      "f1": 0.8571,
+      "fpRate": 0
+    }
+  ]
+}

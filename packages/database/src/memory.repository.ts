@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 export const CURRENT_EMBEDDING_PIPELINE_VERSION = 'v2';
 
@@ -55,6 +55,7 @@ export class MemoryRepository {
    * Returns items ordered by similarity descending.
    * Supports optional pipelineVersion filtering to prevent mixing vectors created
    * with different embedding preparation pipelines without an explicit migration check.
+   * Supports taskType filtering to ensure symmetric coordinate comparison.
    */
   async findSimilar(
     workspaceId: string,
@@ -64,9 +65,10 @@ export class MemoryRepository {
       limit?: number;
       minSimilarity?: number;
       pipelineVersion?: string;
+      taskType?: 'DOCUMENT' | 'QUERY' | 'SIMILARITY';
     } = {},
   ): Promise<Array<{ memoryItemId: string; content: string; similarity: number }>> {
-    const { type, limit = 10, minSimilarity = 0.7, pipelineVersion } = options;
+    const { type, limit = 10, minSimilarity = 0.7, pipelineVersion, taskType } = options;
     const vectorLiteral = `[${queryEmbedding.join(',')}]`;
 
     type RawResult = { memory_item_id: string; content: string; similarity: number };
@@ -79,8 +81,9 @@ export class MemoryRepository {
       FROM memory_items
       WHERE workspace_id = ${workspaceId}::uuid
         AND embedding IS NOT NULL
-        ${type ? this.db.$queryRaw`AND type = ${type}` : this.db.$queryRaw``}
-        ${pipelineVersion ? this.db.$queryRaw`AND (metadata->>'embeddingPipelineVersion') = ${pipelineVersion}` : this.db.$queryRaw``}
+        ${type ? Prisma.sql`AND type = ${type}` : Prisma.empty}
+        ${taskType ? Prisma.sql`AND (metadata->>'taskType') = ${taskType}` : Prisma.empty}
+        ${pipelineVersion ? Prisma.sql`AND (metadata->>'embeddingPipelineVersion') = ${pipelineVersion}` : Prisma.empty}
         AND 1 - (embedding <=> ${vectorLiteral}::vector) >= ${minSimilarity}
       ORDER BY embedding <=> ${vectorLiteral}::vector
       LIMIT ${limit}
@@ -125,8 +128,8 @@ export class MemoryRepository {
       WHERE se.workspace_id = ${workspaceId}::uuid
         AND mi.embedding IS NOT NULL
         AND (se.user_rating IS NULL OR se.user_rating >= 0)
-        ${topic ? this.db.$queryRaw`AND se.topic = ${topic}` : this.db.$queryRaw``}
-        ${pipelineVersion ? this.db.$queryRaw`AND (mi.metadata->>'embeddingPipelineVersion') = ${pipelineVersion}` : this.db.$queryRaw``}
+        ${topic ? Prisma.sql`AND se.topic = ${topic}` : Prisma.empty}
+        ${pipelineVersion ? Prisma.sql`AND (mi.metadata->>'embeddingPipelineVersion') = ${pipelineVersion}` : Prisma.empty}
       ORDER BY mi.embedding <=> ${vectorLiteral}::vector
       LIMIT ${limit}
     `;

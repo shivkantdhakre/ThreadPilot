@@ -120,12 +120,17 @@ describe('Gemini Live Interactions Smoke Test', () => {
     assert.strictEqual(simRes.embeddings.length, 1);
     assert.strictEqual(simRes.embeddings[0].length, 768, 'SIMILARITY vector must have 768 dimensions');
 
-    // 4. Assert that no unsupported taskType request field was sent to Gemini API
+    // 4. Assert that no unsupported taskType request field was sent to Gemini API (object + wire JSON inspection)
     for (const call of capturedCallConfigs) {
       assert.strictEqual(call.config?.taskType, undefined, 'Must not send taskType in config to gemini-embedding-2');
       assert.strictEqual(call.config?.task_type, undefined, 'Must not send task_type in config to gemini-embedding-2');
       assert.strictEqual(call.taskType, undefined, 'Must not send taskType in request root');
       assert.strictEqual(call.config?.outputDimensionality, 768, 'Must configure outputDimensionality: 768');
+
+      // Wire-level assertion: serialized JSON payload contains no taskType or task_type field
+      const wireJson = JSON.stringify(call);
+      assert(!wireJson.includes('"taskType"'), 'Wire payload must not contain taskType');
+      assert(!wireJson.includes('"task_type"'), 'Wire payload must not contain task_type');
     }
 
     console.log(`\n[Live Gemini Embedding 2 Smoke Test Passed]`);
@@ -133,6 +138,71 @@ describe('Gemini Live Interactions Smoke Test', () => {
     console.log(`- DOCUMENT Vector Length: ${docRes.embeddings[0].length}`);
     console.log(`- QUERY Vector Length: ${queryRes.embeddings[0].length}`);
     console.log(`- SIMILARITY Vector Length: ${simRes.embeddings[0].length}`);
-    console.log(`- Verified: No taskType API field was sent across ${capturedCallConfigs.length} live requests`);
+    console.log(`- Verified: Wire JSON contains no taskType across ${capturedCallConfigs.length} live requests`);
+  });
+
+  it('verifies live semantic duplicate discrimination with Gemini Embedding 2 vectors', async (t) => {
+    const apiKey = getLiveApiKey();
+
+    if (!isLiveTestEnabled || !apiKey) {
+      t.skip('Skipping live Gemini smoke test: GEMINI_API_KEY not found or GEMINI_LIVE_TEST != true');
+      return;
+    }
+
+    const embeddingProvider = new GeminiProvider(apiKey, 'gemini-embedding-2', 2, 30000, 768, []);
+
+    // Canonical domain pairs for semantic duplicate discrimination:
+    // 1. True Duplicate Pair (near-duplicate claim with wording change)
+    const historicalPost = 'PostgreSQL + pgvector is all the vector database you need.';
+    const candidateDuplicate = 'Honestly, PostgreSQL with pgvector is enough for most vector-search projects.';
+
+    // 2. Related-But-Distinct Pair (same domain & keywords, completely different claim)
+    const candidateDistinct = 'MongoDB Atlas vector search can perform well under heavy concurrent writes.';
+
+    const embedRes = await embeddingProvider.embed({
+      texts: [historicalPost, candidateDuplicate, candidateDistinct],
+      taskType: 'SIMILARITY',
+    });
+
+    const [histVec, dupeVec, distinctVec] = embedRes.embeddings;
+
+    function cosine(a: number[], b: number[]): number {
+      let dot = 0, normA = 0, normB = 0;
+      for (let i = 0; i < a.length; i++) {
+        dot += a[i] * b[i];
+        normA += a[i] * a[i];
+        normB += b[i] * b[i];
+      }
+      return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
+
+    const dupeSim = cosine(histVec, dupeVec);
+    const distinctSim = cosine(histVec, distinctVec);
+    const CALIBRATED_THRESHOLD = 0.88;
+
+    console.log(`\n[Live Semantic Duplicate Discrimination Test]`);
+    console.log(`- Historical: "${historicalPost}"`);
+    console.log(`- Duplicate Candidate: "${candidateDuplicate}"`);
+    console.log(`  Similarity: ${dupeSim.toFixed(4)} (Expected >= ${CALIBRATED_THRESHOLD})`);
+    console.log(`- Distinct Candidate: "${candidateDistinct}"`);
+    console.log(`  Similarity: ${distinctSim.toFixed(4)} (Expected < ${CALIBRATED_THRESHOLD})`);
+
+    // 1. Paraphrase must exceed threshold (detected as duplicate)
+    assert(
+      dupeSim >= CALIBRATED_THRESHOLD,
+      `Duplicate similarity (${dupeSim.toFixed(4)}) must exceed threshold (${CALIBRATED_THRESHOLD})`,
+    );
+
+    // 2. Same-topic contrasting post must remain below threshold (NOT flagged as duplicate)
+    assert(
+      distinctSim < CALIBRATED_THRESHOLD,
+      `Distinct similarity (${distinctSim.toFixed(4)}) must remain below threshold (${CALIBRATED_THRESHOLD})`,
+    );
+
+    // 3. Clear discrimination margin
+    assert(
+      dupeSim - distinctSim >= 0.05,
+      `Expected discrimination margin >= 0.05, got ${(dupeSim - distinctSim).toFixed(4)}`,
+    );
   });
 });

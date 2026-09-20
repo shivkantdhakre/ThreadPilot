@@ -69,18 +69,21 @@ describe('MemoryRepository Provenance and Pipeline Version Isolation', () => {
     const workspaceId = '22222222-2222-2222-2222-222222222222';
 
     const results = await repo.findSimilar(workspaceId, queryVector, {
-      minSimilarity: 0.82,
+      minSimilarity: 0.88,
       pipelineVersion: CURRENT_EMBEDDING_PIPELINE_VERSION,
+      taskType: 'SIMILARITY',
     });
 
     assert.strictEqual(results.length, 1);
     assert.strictEqual(results[0].memoryItemId, 'item-1');
     assert.strictEqual(results[0].similarity, 0.89);
 
-    // Verify query parameters contained workspaceId and minSimilarity
-    const values = capturedQueryArgs.values;
-    assert(values.includes(workspaceId));
-    assert(values.includes(0.82));
+    // Verify query parameters contained workspaceId, minSimilarity, pipelineVersion, and taskType
+    const serializedValues = JSON.stringify(capturedQueryArgs.values);
+    assert(serializedValues.includes(workspaceId));
+    assert(serializedValues.includes('0.88'));
+    assert(serializedValues.includes('SIMILARITY'));
+    assert(serializedValues.includes(CURRENT_EMBEDDING_PIPELINE_VERSION));
   });
 
   it('identifies memory items needing re-embedding when pipeline version is outdated', async () => {
