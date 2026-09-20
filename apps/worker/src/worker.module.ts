@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { BullModule } from '@nestjs/bull';
+import { BullModule } from '@nestjs/bullmq';
 import { QUEUES } from '@threadpilot/types';
 import { HealthModule } from './health/health.module';
 import { RedisModule } from './redis/redis.module';
 import { JobProgressService } from './services/job-progress.service';
 import { AIFactoryService } from './services/ai-factory.service';
+import { EmbeddingReconciliationService } from './services/embedding-reconciliation.service';
 import { IngestionProcessor } from './processors/ingestion.processor';
 import { StyleProcessor } from './processors/style.processor';
 import { ContentProcessor } from './processors/content.processor';
@@ -43,7 +44,7 @@ function parseRedisUrl(urlStr: string) {
           config.get<string>('REDIS_URL') ??
           'redis://localhost:6379';
         return {
-          redis: parseRedisUrl(redisUrl),
+          connection: parseRedisUrl(redisUrl),
         };
       },
     }),
@@ -58,11 +59,13 @@ function parseRedisUrl(urlStr: string) {
   providers: [
     JobProgressService,
     AIFactoryService,
+    EmbeddingReconciliationService,
     IngestionProcessor,
     StyleProcessor,
     ContentProcessor,
     TokenRefreshProcessor,
     EmbeddingProcessor,
   ],
+  exports: [EmbeddingReconciliationService],
 })
 export class WorkerModule {}

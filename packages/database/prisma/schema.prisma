@@ -272,9 +272,8 @@ model StyleExample {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VECTOR MEMORY
-// embedding vector(768) column added via migration 0002_vector_columns.
-// NOT declared here — Prisma does not manage pgvector column types.
-// All read/write through MemoryRepository.$queryRaw.
+// All vector embeddings live strictly in the memory_embeddings table.
+// Legacy memory_items.embedding column dropped via migration 0005.
 // ─────────────────────────────────────────────────────────────────────────────
 
 model MemoryItem {
@@ -285,7 +284,6 @@ model MemoryItem {
   content     String
   metadata    Json      @default("{}")
   sourceId    String?   @map("source_id")
-  // embedding vector(768) — managed via MemoryRepository, not here
   createdAt   DateTime  @default(now()) @map("created_at")
 
   styleExample StyleExample?

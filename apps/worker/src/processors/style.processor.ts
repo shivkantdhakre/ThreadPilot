@@ -1,5 +1,5 @@
-import { Processor, Process } from '@nestjs/bull';
-import { Job } from 'bull';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { prisma, MemoryRepository } from '@threadpilot/database';
 import { QUEUES, StyleExtractionJobPayload } from '@threadpilot/types';
@@ -10,16 +10,21 @@ import { AIFactoryService } from '../services/ai-factory.service';
 import { createHash } from 'crypto';
 
 @Processor(QUEUES.STYLE)
-export class StyleProcessor {
+export class StyleProcessor extends WorkerHost {
   private readonly logger = new Logger(StyleProcessor.name);
   private readonly memoryRepo = new MemoryRepository(prisma);
 
   constructor(
     private readonly progressService: JobProgressService,
     private readonly aiFactory: AIFactoryService,
-  ) {}
+  ) {
+    super();
+  }
 
-  @Process('STYLE')
+  async process(job: Job<StyleExtractionJobPayload>): Promise<void> {
+    return this.handle(job);
+  }
+
   async handle(job: Job<StyleExtractionJobPayload>): Promise<void> {
     const { requestId, workspaceId, socialAccountId } = job.data;
     this.logger.log(`Starting style extraction job ${requestId} for account ${socialAccountId}`);

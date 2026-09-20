@@ -1,5 +1,5 @@
-import { Processor, Process } from '@nestjs/bull';
-import { Job } from 'bull';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job } from 'bullmq';
 import { Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
@@ -13,7 +13,7 @@ import { REDIS_CLIENT } from '../redis/redis.module';
 import { JobProgressService } from '../services/job-progress.service';
 
 @Processor(QUEUES.TOKEN_REFRESH)
-export class TokenRefreshProcessor {
+export class TokenRefreshProcessor extends WorkerHost {
   private readonly logger = new Logger(TokenRefreshProcessor.name);
   private readonly tokenService: ThreadsTokenService;
 
@@ -22,6 +22,7 @@ export class TokenRefreshProcessor {
     private readonly config: ConfigService,
     private readonly progressService: JobProgressService,
   ) {
+    super();
     const encKey = this.config.get<string>('TOKEN_ENCRYPTION_KEY', 'CHANGE_ME_32_BYTE_BASE64_KEY');
     const encVersion = Number(this.config.get<number>('TOKEN_ENCRYPTION_KEY_VERSION', 1));
     const encryption = new TokenEncryptionService(encKey, encVersion);
@@ -48,7 +49,10 @@ export class TokenRefreshProcessor {
     );
   }
 
-  @Process('TOKEN_REFRESH')
+  async process(job: Job<TokenRefreshJobPayload>): Promise<void> {
+    return this.handle(job);
+  }
+
   async handle(job: Job<TokenRefreshJobPayload>): Promise<void> {
     const { requestId, socialAccountId, force } = job.data;
     this.logger.log(`Executing token refresh job ${requestId} for account ${socialAccountId}`);

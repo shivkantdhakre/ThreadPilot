@@ -150,11 +150,13 @@ export function createContentGraph(deps: ContentGraphDependencies) {
         const examples = await memoryRepo.findSimilarStyleExamples(
           state.workspaceId,
           queryEmbedding,
-          state.topic,
-          5,
-          'v2',
-          'DOCUMENT',
-          aiProvider.modelName,
+          {
+            model: aiProvider.modelName,
+            topic: state.topic,
+            limit: 5,
+            pipelineVersion: 'v2',
+            taskType: 'DOCUMENT',
+          },
         );
 
         return {

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { BullModule } from '@nestjs/bull';
+import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { QUEUES } from '@threadpilot/types';
 import { JobsService } from './jobs.service';
@@ -32,7 +32,12 @@ function parseRedisUrl(urlStr: string) {
           'redis://localhost:6379';
         const parsed = parseRedisUrl(redisUrl);
         return {
-          redis: parsed,
+          connection: {
+            host: parsed.host,
+            port: parsed.port,
+            password: parsed.password,
+            username: parsed.username,
+          },
         };
       },
     }),
@@ -41,6 +46,7 @@ function parseRedisUrl(urlStr: string) {
       { name: QUEUES.STYLE },
       { name: QUEUES.CONTENT },
       { name: QUEUES.TOKEN_REFRESH },
+      { name: QUEUES.EMBEDDING },
     ),
   ],
   controllers: [JobsController],

@@ -29,7 +29,7 @@ describe('MemoryRepository Provenance and Pipeline Version Isolation', () => {
       'v2',
     );
 
-    assert.strictEqual(capturedCalls.length, 2, 'Expected 2 $executeRaw calls (memory_embeddings + memory_items)');
+    assert.strictEqual(capturedCalls.length, 1, 'Expected 1 $executeRaw call (memory_embeddings authoritative store)');
 
     // Call 1: INSERT into memory_embeddings
     const insertCall = capturedCalls[0];
@@ -39,11 +39,6 @@ describe('MemoryRepository Provenance and Pipeline Version Isolation', () => {
     assert(insertSerialized.includes('DOCUMENT'));
     assert(insertSerialized.includes('v2'));
     assert(insertSerialized.includes(memoryItemId));
-
-    // Call 2: Legacy backward-compat update on memory_items
-    const updateCall = capturedCalls[1];
-    const updateSerialized = JSON.stringify(updateCall.values);
-    assert(updateSerialized.includes(memoryItemId));
   });
 
   it('isolates similarity queries on memory_embeddings by model, pipelineVersion, and taskType', async () => {
@@ -110,11 +105,13 @@ describe('MemoryRepository Provenance and Pipeline Version Isolation', () => {
     const results = await repo.findSimilarStyleExamples(
       workspaceId,
       queryVector,
-      'engineering',
-      5,
-      CURRENT_EMBEDDING_PIPELINE_VERSION,
-      'DOCUMENT',
-      'gemini-embedding-2',
+      {
+        model: 'gemini-embedding-2',
+        topic: 'engineering',
+        limit: 5,
+        pipelineVersion: CURRENT_EMBEDDING_PIPELINE_VERSION,
+        taskType: 'DOCUMENT',
+      },
     );
 
     assert.strictEqual(results.length, 1);

@@ -26,6 +26,14 @@ export interface ReEmbeddingItem {
   missingTaskTypes: Array<'DOCUMENT' | 'SIMILARITY'>;
 }
 
+export interface FindSimilarStyleExamplesOptions {
+  model: string; // Required: enforces strict coordinate-space isolation with no silent default
+  topic?: string;
+  limit?: number;
+  pipelineVersion?: string;
+  taskType?: 'DOCUMENT' | 'QUERY' | 'SIMILARITY';
+}
+
 /**
  * MemoryRepository
  *
@@ -38,10 +46,33 @@ export class MemoryRepository {
   constructor(private readonly db: PrismaClient) {}
 
   /**
+   * Check whether an exact vector representation already exists for a MemoryItem.
+   * Used for DB-level preflight idempotency checks to avoid redundant external AI API calls.
+   */
+  async hasEmbedding(
+    memoryItemId: string,
+    model: string,
+    taskType: 'DOCUMENT' | 'QUERY' | 'SIMILARITY',
+    pipelineVersion = CURRENT_EMBEDDING_PIPELINE_VERSION,
+  ): Promise<boolean> {
+    const existing = await this.db.memoryEmbedding.findUnique({
+      where: {
+        unique_memory_embedding: {
+          memoryItemId,
+          model,
+          taskType,
+          pipelineVersion,
+        },
+      },
+      select: { id: true },
+    });
+    return !!existing;
+  }
+
+  /**
    * Store or update a vector embedding for a MemoryItem in the multi-representation memory_embeddings table.
    * Enables storing multiple task-specific representations (e.g. DOCUMENT for retrieval and SIMILARITY for duplicate check)
    * for the same memory item with full provenance.
-   * Also updates memory_items metadata and primary embedding for backward compatibility.
    */
   async upsertEmbedding(
     memoryItemId: string,
@@ -52,15 +83,8 @@ export class MemoryRepository {
     embeddingPipelineVersion = CURRENT_EMBEDDING_PIPELINE_VERSION,
   ): Promise<void> {
     const vectorLiteral = `[${embedding.join(',')}]`;
-    const provenance: EmbeddingMetadataProvenance = {
-      embeddingModel,
-      embeddingDimensions,
-      taskType,
-      embeddingPipelineVersion,
-    };
-    const metadataUpdate = JSON.stringify(provenance);
 
-    // 1. Insert/Update into memory_embeddings table
+    // Insert/Update into memory_embeddings table (sole authoritative vector store)
     await this.db.$executeRaw`
       INSERT INTO memory_embeddings (
         id,
@@ -91,22 +115,6 @@ export class MemoryRepository {
         dimensions = EXCLUDED.dimensions,
         created_at = NOW()
     `;
-
-    // 2. Also keep memory_items updated for backward compatibility (primary DOCUMENT embedding)
-    if (taskType === 'DOCUMENT') {
-      await this.db.$executeRaw`
-        UPDATE memory_items
-        SET embedding = ${vectorLiteral}::vector,
-            metadata = metadata || ${metadataUpdate}::jsonb
-        WHERE id = ${memoryItemId}::uuid
-      `;
-    } else {
-      await this.db.$executeRaw`
-        UPDATE memory_items
-        SET metadata = metadata || ${metadataUpdate}::jsonb
-        WHERE id = ${memoryItemId}::uuid
-      `;
-    }
   }
 
   /**
@@ -156,19 +164,28 @@ export class MemoryRepository {
 
   /**
    * Find semantically similar style examples.
-   * Explicitly filters model and taskType: 'DOCUMENT' to ensure asymmetric retrieval vectors are compared.
+   * Requires explicit model to guarantee coordinate space isolation with no silent default.
+   * Filters taskType (defaults to 'DOCUMENT') to ensure asymmetric retrieval vectors are compared.
    * Optionally filter by topic for more targeted retrieval.
    * Excludes examples with userRating = -1 (explicitly rejected by user).
    */
   async findSimilarStyleExamples(
     workspaceId: string,
     queryEmbedding: number[],
-    topic?: string,
-    limit = 5,
-    pipelineVersion?: string,
-    taskType: 'DOCUMENT' | 'QUERY' | 'SIMILARITY' = 'DOCUMENT',
-    model = 'gemini-embedding-2',
+    options: FindSimilarStyleExamplesOptions,
   ): Promise<Array<{ id: string; text: string; topic: string | null; similarity: number }>> {
+    const {
+      model,
+      topic,
+      limit = 5,
+      pipelineVersion = CURRENT_EMBEDDING_PIPELINE_VERSION,
+      taskType = 'DOCUMENT',
+    } = options;
+
+    if (!model) {
+      throw new Error('findSimilarStyleExamples requires an explicit model parameter to ensure vector coordinate isolation.');
+    }
+
     const vectorLiteral = `[${queryEmbedding.join(',')}]`;
 
     type RawResult = {

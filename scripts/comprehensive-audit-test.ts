@@ -573,14 +573,14 @@ async function runAudit() {
 
   // --- SUITE 9: Database Vector Search (pgvector) ---
   console.log('\n--- Suite 9: Database & Vector Search ---');
-  await assert('Database', 'pgvector extension & memory_items table verified', async () => {
+  await assert('Database', 'pgvector extension & memory_embeddings table verified', async () => {
     const result: any = await prisma.$queryRaw`
       SELECT column_name, data_type, udt_name 
       FROM information_schema.columns 
-      WHERE table_name = 'memory_items' AND column_name = 'embedding';
+      WHERE table_name = 'memory_embeddings' AND column_name = 'embedding';
     `;
     if (!Array.isArray(result) || result.length === 0) {
-      throw new Error('embedding column not found on memory_items table');
+      throw new Error('embedding column not found on memory_embeddings table');
     }
     if (result[0].udt_name !== 'vector') {
       throw new Error(`Expected udt_name 'vector', got ${result[0].udt_name}`);

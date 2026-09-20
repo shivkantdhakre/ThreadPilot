@@ -1,7 +1,6 @@
-import { Processor, Process } from '@nestjs/bull';
-import { Job, Queue } from 'bull';
+import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
+import { Job, Queue } from 'bullmq';
 import { Logger, Optional } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bull';
 import { ConfigService } from '@nestjs/config';
 import { prisma, MemoryRepository } from '@threadpilot/database';
 import {
@@ -18,7 +17,7 @@ import { AIFactoryService } from '../services/ai-factory.service';
 import { randomUUID } from 'crypto';
 
 @Processor(QUEUES.INGESTION)
-export class IngestionProcessor {
+export class IngestionProcessor extends WorkerHost {
   private readonly logger = new Logger(IngestionProcessor.name);
   private readonly encryptionService: TokenEncryptionService;
   private readonly threadsApiClient: ThreadsApiClient;
@@ -31,6 +30,7 @@ export class IngestionProcessor {
     @InjectQueue(QUEUES.EMBEDDING) private readonly embeddingQueue: Queue,
     private readonly aiFactory: AIFactoryService,
   ) {
+    super();
     const encKey = this.config.get<string>('TOKEN_ENCRYPTION_KEY', 'CHANGE_ME_32_BYTE_BASE64_KEY');
     const encVersion = Number(this.config.get<number>('TOKEN_ENCRYPTION_KEY_VERSION', 1));
     this.encryptionService = new TokenEncryptionService(encKey, encVersion);
@@ -39,7 +39,10 @@ export class IngestionProcessor {
     this.threadsApiClient = new ThreadsApiClient(baseUrl);
   }
 
-  @Process('INGESTION')
+  async process(job: Job<IngestionJobPayload>): Promise<void> {
+    return this.handle(job);
+  }
+
   async handle(job: Job<IngestionJobPayload>): Promise<void> {
     const { requestId, workspaceId, socialAccountId, maxPosts = 500, pageSize = 25, isInitial } = job.data;
     this.logger.log(`Starting ingestion job ${requestId} for account ${socialAccountId}`);
@@ -207,7 +210,7 @@ export class IngestionProcessor {
                   { postId, reason },
                   'DOCUMENT embedding failed inline, enqueuing for background retry',
                 );
-                const docJobId = `embedding:${memoryItem.id}:${aiProvider.modelName}:DOCUMENT:v2`;
+                const docJobId = `embedding-${memoryItem.id}-${aiProvider.modelName}-DOCUMENT-v2`;
                 await this.embeddingQueue.add(
                   'EMBEDDING',
                   {
@@ -240,7 +243,7 @@ export class IngestionProcessor {
                   { postId, reason },
                   'SIMILARITY embedding failed inline, enqueuing for background retry',
                 );
-                const simJobId = `embedding:${memoryItem.id}:${aiProvider.modelName}:SIMILARITY:v2`;
+                const simJobId = `embedding-${memoryItem.id}-${aiProvider.modelName}-SIMILARITY-v2`;
                 await this.embeddingQueue.add(
                   'EMBEDDING',
                   {

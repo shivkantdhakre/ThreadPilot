@@ -1,5 +1,5 @@
-import { Processor, Process } from '@nestjs/bull';
-import { Job } from 'bull';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { prisma, MemoryRepository } from '@threadpilot/database';
 import {
@@ -19,16 +19,27 @@ import { AIFactoryService } from '../services/ai-factory.service';
 import { createHash } from 'crypto';
 
 @Processor(QUEUES.CONTENT)
-export class ContentProcessor {
+export class ContentProcessor extends WorkerHost {
   private readonly logger = new Logger(ContentProcessor.name);
   private readonly memoryRepo = new MemoryRepository(prisma);
 
   constructor(
     private readonly progressService: JobProgressService,
     private readonly aiFactory: AIFactoryService,
-  ) {}
+  ) {
+    super();
+  }
 
-  @Process('CONTENT')
+  async process(job: Job): Promise<any> {
+    switch (job.name) {
+      case 'IMPROVE':
+        return this.handleImprovement(job as Job<ContentImprovementJobPayload>);
+      case 'CONTENT':
+      default:
+        return this.handleGeneration(job as Job<ContentGenerationJobPayload>);
+    }
+  }
+
   async handleGeneration(job: Job<ContentGenerationJobPayload>): Promise<void> {
     const { requestId, workspaceId, topic, format, tone, additionalContext } = job.data;
     const actorId = job.data.actorId ?? job.data.requestedBy ?? 'system';
@@ -210,7 +221,6 @@ export class ContentProcessor {
   }
 
 
-  @Process('IMPROVE')
   async handleImprovement(job: Job<ContentImprovementJobPayload>): Promise<void> {
     const { requestId, workspaceId, draftId, versionId, instruction } = job.data;
     this.logger.log(`Starting content improvement job ${requestId} for draft ${draftId}`);
