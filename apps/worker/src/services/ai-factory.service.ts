@@ -28,7 +28,12 @@ class CompositeAIProvider implements AIProvider {
     embeddings: true,
     tools: false,
     vision: false,
+    multimodal: false,
   };
+
+  getCapabilities() {
+    return this.capabilities;
+  }
 
   constructor(
     private readonly contentProvider: GeminiProvider,
@@ -54,13 +59,14 @@ class CompositeAIProvider implements AIProvider {
 /**
  * AIFactoryService — provides task-aware AI providers via ModelRouter.
  *
- * Bug fix (2026-09-19): Previously read 'GEMINI_MODEL' (undefined) falling back
- * to deprecated 'gemini-2.5-flash' → API 404. Now reads all GEMINI_MODEL_*
- * env vars and properly routes through ModelRouter.
- *
  * The composite provider pattern ensures embed() calls use gemini-embedding-2
- * while complete() calls use gemini-3.6-flash — all through the same AIProvider
+ * while complete() calls use gemini-3.5-flash-lite — all through the same AIProvider
  * interface the graphs expect.
+ *
+ * Vector Coordinate Space Purity:
+ * GEMINI_MODEL_EMBEDDING_FALLBACKS defaults to empty. We never silently fall back
+ * to a different embedding model (e.g. gemini-embedding-001) within the same pgvector
+ * index because different models inhabit distinct vector coordinate spaces.
  */
 @Injectable()
 export class AIFactoryService {
@@ -74,8 +80,9 @@ export class AIFactoryService {
       .map((s) => s.trim())
       .filter(Boolean);
 
+    // Default to empty: do not switch vector coordinate spaces across models in the same index
     const embeddingFallbacks = this.config
-      .get<string>('GEMINI_MODEL_EMBEDDING_FALLBACKS', 'gemini-embedding-001')
+      .get<string>('GEMINI_MODEL_EMBEDDING_FALLBACKS', '')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);

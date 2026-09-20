@@ -16,6 +16,8 @@ describe('GeminiProvider Acceptance Tests', () => {
     assert.strictEqual(provider.capabilities.streaming, true);
     assert.strictEqual(provider.capabilities.tools, false);
     assert.strictEqual(provider.capabilities.vision, false);
+    assert.strictEqual(provider.capabilities.multimodal, false);
+    assert.deepStrictEqual(provider.getCapabilities(), provider.capabilities);
   });
 
   it('correctly classifies retryable vs non-retryable errors per Google Gemini troubleshooting specs', () => {
@@ -24,6 +26,12 @@ describe('GeminiProvider Acceptance Tests', () => {
     const class429 = classifyAIError(err429);
     assert.strictEqual(class429.isRetryable, true);
     assert.strictEqual(class429.category, 'RATE_LIMIT');
+
+    // Timeout / Deadline Exceeded
+    const errTimeout = { status: 408, message: 'DEADLINE_EXCEEDED: socket timeout' };
+    const classTimeout = classifyAIError(errTimeout);
+    assert.strictEqual(classTimeout.isRetryable, true);
+    assert.strictEqual(classTimeout.category, 'TIMEOUT');
 
     // 503 Service unavailable
     const err503 = { status: 503, message: 'UNAVAILABLE' };
@@ -313,4 +321,41 @@ describe('GeminiProvider Acceptance Tests', () => {
 
     assert.strictEqual(chunks.join(''), 'Hello from Interactions streaming!');
   });
+
+  it('guarantees embedding vector space purity: retries transient errors on primary model without silently swapping models', async () => {
+    const provider = new GeminiProvider('fake-test-key', 'gemini-embedding-2', 2, 30000, 768);
+    (provider as any).delay = () => Promise.resolve();
+
+    let calls = 0;
+    let capturedConfig: any = null;
+    (provider as any).client = {
+      models: {
+        embedContent: async (args: any) => {
+          calls++;
+          capturedConfig = args.config;
+          if (calls === 1) {
+            const err: any = new Error('UNAVAILABLE: Transient network glitch');
+            err.status = 503;
+            throw err;
+          }
+          return {
+            embeddings: [{ values: new Array(768).fill(0.1) }],
+          };
+        },
+      },
+    };
+
+    const res = await provider.embed({
+      texts: ['Personal post about tech'],
+      taskType: 'DOCUMENT',
+    });
+
+    assert.strictEqual(calls, 2, 'Should retry transient error on the same model');
+    assert.strictEqual(res.model, 'gemini-embedding-2', 'Must never switch vector space model');
+    assert.strictEqual(res.embeddings.length, 1);
+    assert.strictEqual(res.embeddings[0].length, 768);
+    assert.strictEqual(capturedConfig.outputDimensionality, 768);
+    assert.strictEqual(capturedConfig.taskType, 'RETRIEVAL_DOCUMENT');
+  });
 });
+

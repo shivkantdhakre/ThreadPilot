@@ -20,11 +20,13 @@ export class MemoryRepository {
     embedding: number[],
     embeddingModel: string,
     embeddingDimensions = embedding.length,
+    taskType?: 'DOCUMENT' | 'QUERY',
   ): Promise<void> {
     const vectorLiteral = `[${embedding.join(',')}]`;
     const metadataUpdate = JSON.stringify({
       embeddingModel,
       embeddingDimensions,
+      ...(taskType ? { taskType } : {}),
     });
     await this.db.$executeRaw`
       UPDATE memory_items

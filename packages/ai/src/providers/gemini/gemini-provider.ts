@@ -35,14 +35,22 @@ export function classifyAIError(error: unknown): AIErrorClassification {
     return { isRetryable: true, category: 'RATE_LIMIT', statusCode: 429, message: str };
   }
   if (
+    status === 408 ||
+    str.includes('timeout') ||
+    str.includes('DEADLINE_EXCEEDED') ||
+    str.includes('ETIMEDOUT') ||
+    str.includes('ESOCKETTIMEDOUT')
+  ) {
+    return { isRetryable: true, category: 'TIMEOUT', statusCode: status ?? 408, message: str };
+  }
+  if (
     status === 503 ||
     status === 500 ||
     status === 504 ||
     str.includes('UNAVAILABLE') ||
     str.includes('503') ||
     str.includes('500') ||
-    str.includes('timeout') ||
-    str.includes('DEADLINE_EXCEEDED')
+    str.includes('INTERNAL')
   ) {
     return { isRetryable: true, category: 'TRANSIENT', statusCode: status ?? 503, message: str };
   }
@@ -77,11 +85,13 @@ export function classifyAIError(error: unknown): AIErrorClassification {
  * Key design rules:
  * 1. Native Interactions API: Calls client.interactions.create with typed SDK signature.
  * 2. Privacy contract: Enforces store: false so PostgreSQL + pgvector is authoritative.
- * 3. Consistent fallback: Fallback means another configured Gemini model through the
- *    SAME Interactions API contract (no legacy generateContent fallback).
- * 4. Configuration purity: Fallback models are configuration-driven via constructor/options.
- * 5. Structured output: Uses top-level response_format: { type: 'text', mime_type: 'application/json', schema }.
- * 6. Native streaming: Uses Interactions API streaming with step.delta text events.
+ * 3. Consistent fallback: Generative fallback cascades through configured models using the
+ *    SAME Interactions API contract (store: false).
+ * 4. Embedding coordinate space purity: embed() does NOT silently swap embedding models
+ *    (e.g. embedding-2 ≠ embedding-001); transient errors retry, avoiding index vector corruption.
+ * 5. Configuration purity: Models are configuration-driven via constructor/options.
+ * 6. Structured output: Uses top-level response_format: { type: 'text', mime_type: 'application/json', schema }.
+ * 7. Native streaming: Uses Interactions API streaming with step.delta text events.
  */
 export class GeminiProvider implements AIProvider {
   private readonly client: GoogleGenAI;
@@ -95,7 +105,12 @@ export class GeminiProvider implements AIProvider {
     embeddings: true,
     tools: false,
     vision: false,
+    multimodal: false,
   };
+
+  getCapabilities(): AIProviderCapabilities {
+    return this.capabilities;
+  }
 
   constructor(
     apiKey: string,
@@ -253,14 +268,17 @@ export class GeminiProvider implements AIProvider {
   }
 
   async embed(request: EmbeddingRequest): Promise<EmbeddingResponse> {
-    const candidateModels = [
-      this.modelName,
-      ...this.fallbackModels.filter((m) => m !== this.modelName),
-    ];
+    const model = this.modelName;
+    const taskType =
+      request.taskType === 'DOCUMENT'
+        ? 'RETRIEVAL_DOCUMENT'
+        : request.taskType === 'QUERY'
+        ? 'RETRIEVAL_QUERY'
+        : undefined;
 
     let lastError: Error | undefined;
 
-    for (const model of candidateModels) {
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
         const results: number[][] = [];
         let totalInputTokens = 0;
@@ -271,14 +289,20 @@ export class GeminiProvider implements AIProvider {
           const response = await this.client.models.embedContent({
             model,
             contents: batch.map((text) => ({ role: 'user', parts: [{ text }] })),
-            ...(this.embeddingDimensions !== undefined
-              ? { config: { outputDimensionality: this.embeddingDimensions } }
+            ...(this.embeddingDimensions !== undefined || taskType
+              ? {
+                  config: {
+                    ...(this.embeddingDimensions !== undefined
+                      ? { outputDimensionality: this.embeddingDimensions }
+                      : {}),
+                    ...(taskType ? { taskType } : {}),
+                  },
+                }
               : {}),
           });
 
           for (const embedding of response.embeddings ?? []) {
             results.push(embedding.values ?? []);
-            totalInputTokens += 0;
           }
         }
 
@@ -286,14 +310,23 @@ export class GeminiProvider implements AIProvider {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         const classification = classifyAIError(error);
-        if (classification.isRetryable || classification.category === 'MODEL_UNAVAILABLE') {
-          continue;
+
+        // Terminal errors: immediately abort without retrying
+        if (!classification.isRetryable) {
+          throw lastError;
         }
-        throw error;
+
+        // Retry with exponential backoff on the single authoritative model
+        if (attempt < this.maxRetries - 1) {
+          await this.delay(Math.pow(2, attempt) * 1000);
+        }
       }
     }
 
-    throw lastError ?? new Error('Unknown embedding error after retries across candidate models');
+    throw (
+      lastError ??
+      new Error(`Embedding generation failed for model ${model} after ${this.maxRetries} attempts`)
+    );
   }
 
   private delay(ms: number): Promise<void> {

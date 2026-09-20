@@ -20,8 +20,8 @@
 ### ✨ Highlights
 
 - **🧬 Personal Voice & Stylometric Fingerprinting**: Real-time extraction of 8 distinct stylistic metrics (post length, sentence cadence, question ratio, emoji frequency, first-person voice, technical depth, contrary hooks, and list patterns).
-- **🧠 Vector Memory & Exemplar Retrieval**: Semantic similarity matching over past successful posts using Google GenAI embeddings (`gemini-embedding-2` / `gemini-embedding-001`) with cosine distance ranking in PostgreSQL.
-- **🛡️ Google GenAI Interactions API**: Native `@google/genai` Interactions API (`client.interactions.create`) with `store: false` to ensure Google does not persist creator content, with built-in resilient fallback and failure classification.
+- **🧠 Vector Memory & Exemplar Retrieval**: Semantic similarity matching over past successful posts using Google GenAI embeddings (`gemini-embedding-2`) with cosine distance ranking in PostgreSQL `pgvector`. Vector coordinate space purity is preserved without cross-model mixing.
+- **🛡️ Stateless Interactions API Requests**: ThreadPilot uses stateless Interactions API requests (`store: false`) and does not rely on Gemini's server-side interaction history as its application memory. PostgreSQL + pgvector serves as the sole authoritative memory store.
 - **🔒 In-Memory Token Security & OAuth 2.0 PKCE**: Access tokens are held exclusively in-memory (never persisted in `localStorage` to eliminate XSS risks), paired with HttpOnly, SameSite=Lax rotating refresh tokens and strict multi-tenant workspace isolation.
 - **⚡ Asynchronous Queue Architecture**: Powered by Redis and BullMQ with live Server-Sent Events (SSE) streaming real-time job lifecycle stages (`QUEUED` → `LOADING_MEMORY` → `GENERATING` → `EVALUATING` → `PERSISTING` → `COMPLETE`).
 - **🛡️ Deterministic Final Validation Gate**: Post-editing validation node ensures AI polishing never expands content past 500 characters or produces empty drafts.
@@ -180,7 +180,7 @@ GEMINI_MODEL_CONTENT="gemini-3.5-flash-lite"
 GEMINI_MODEL_CONTENT_FALLBACKS="gemini-3.1-flash-lite,gemini-3.7-flash"
 GEMINI_MODEL_CLASSIFICATION="gemini-3.5-flash-lite"
 GEMINI_MODEL_EMBEDDING="gemini-embedding-2"
-GEMINI_MODEL_EMBEDDING_FALLBACKS="gemini-embedding-001"
+GEMINI_MODEL_EMBEDDING_FALLBACKS="" # Disabled to guarantee vector space coordinate purity
 GEMINI_EMBEDDING_DIMENSIONS=768
 ```
 
@@ -250,15 +250,17 @@ Run all automated unit, crash recovery, and negative-path test suites across the
 pnpm test
 ```
 
-| Test Suite | Package / App | Coverage / Behaviors Verified |
-|---|---|---|
-| **Gemini Interactions API** | `@threadpilot/ai` | `ai.interactions.create()`, `store: false`, Zod output validation, fast-fail on 4xx/schema errors, exponential backoff on 429/5xx, streaming |
-| **Duplicate Calibration** | `@threadpilot/agents` | Cosine similarity benchmark across true duplicates, related-but-distinct, and unrelated posts (0.80–0.95 threshold) |
-| **OAuth Security & Negative Paths** | `@threadpilot/threads-client` | PKCE handshake, invalid state, TTL expired state, atomic one-time state consumption (`getdel`), server-side workspace identity enforcement |
-| **Threads Live Contract** | `@threadpilot/threads-client` | Response shapes for `/me`, `/me/threads`, `/me/threads_publishing_limit`, rate-limit and auth error propagation |
-| **Worker Crash Recovery** | `@threadpilot/worker` | Idempotent skip on completed jobs, result caching recovery across process crashes (at-most-once DB effect; external AI call retry-safe via hash recovery) |
-| **Ingestion Interruption** | `@threadpilot/worker` | Multi-page pagination termination (no cursor), mid-stream interruption retry without duplicate post creation (`socialAccountId_externalId`) |
-| **Cross-Tenant Isolation** | `@threadpilot/api` | `WorkspaceScopeGuard` 403 authorization, database query scoping (`where: { workspaceId, id }`) returning 404 for drafts, style examples, memories, jobs, and notifications |
+| Level | Test Suite | Package / App | Coverage & Guarantees Verified |
+|---|---|---|---|
+| **Unit** | **Interactions API & Capabilities** | `@threadpilot/ai` | `interactions.create()` payload, `store: false`, Zod JSON schema validation, `getCapabilities()`, vector coordinate space purity |
+| **Unit** | **Error Classification** | `@threadpilot/ai` | Fast-fail on 4xx/schema errors, exponential backoff on 429/5xx, `TIMEOUT` handling, streaming |
+| **Unit** | **Duplicate Calibration** | `@threadpilot/agents` | Cosine similarity benchmark across true duplicates, related-but-distinct, and unrelated posts (0.80–0.95 threshold) |
+| **Integration** | **OAuth Negative Paths** | `@threadpilot/threads-client` | PKCE handshake, invalid state, TTL expired state, atomic one-time state consumption (`getdel`), server-side workspace identity enforcement |
+| **Integration** | **Crash Recovery & Idempotency** | `@threadpilot/worker` | Idempotent skip on completed jobs, result caching recovery across process crashes (at-most-once DB effect; external AI call retry-safe via hash recovery) |
+| **Integration** | **Ingestion Interruption** | `@threadpilot/worker` | Multi-page pagination termination (no cursor), mid-stream interruption retry without duplicate post creation (`socialAccountId_externalId`) |
+| **Contract** | **Threads Graph API Contract** | `@threadpilot/threads-client` | Response shapes for `/me`, `/me/threads`, `/me/threads_publishing_limit`, rate-limit and auth error propagation |
+| **Live Smoke** | **Google Gemini Interactions** | `@threadpilot/ai` | Live request against Google servers: authentication, string input, `store: false`, Zod validation, token usage |
+| **E2E Security** | **Cross-Tenant Isolation** | `@threadpilot/api` | `WorkspaceScopeGuard` 403 authorization, database query scoping (`where: { workspaceId, id }`) returning 404 for drafts, style examples, memories, jobs, and notifications |
 
 ### 2. Live Gemini Interactions Smoke Test
 

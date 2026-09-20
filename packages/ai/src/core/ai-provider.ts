@@ -42,7 +42,8 @@ export interface CompletionResponse<T = string> {
 
 export interface EmbeddingRequest {
   texts: string[];
-  dimensions?: number;  // from GEMINI_EMBEDDING_DIMENSIONS env
+  dimensions?: number;          // from GEMINI_EMBEDDING_DIMENSIONS env
+  taskType?: 'DOCUMENT' | 'QUERY'; // Task-specific instruction for text retrieval
 }
 
 export interface EmbeddingResponse {
@@ -57,11 +58,13 @@ export interface AIProviderCapabilities {
   embeddings: boolean;
   tools: boolean;
   vision: boolean;
+  multimodal: boolean;
 }
 
 export type AIFailureCategory =
   | 'TRANSIENT'
   | 'RATE_LIMIT'
+  | 'TIMEOUT'
   | 'INVALID_REQUEST'
   | 'SCHEMA_ERROR'
   | 'AUTH_ERROR'
@@ -83,6 +86,7 @@ export interface AIProvider {
    */
   stream(request: CompletionRequest): AsyncIterable<string>;
   embed(request: EmbeddingRequest): Promise<EmbeddingResponse>;
+  getCapabilities(): AIProviderCapabilities;
   readonly providerName: string;
   readonly modelName: string;
   readonly capabilities: AIProviderCapabilities;
