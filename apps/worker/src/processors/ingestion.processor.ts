@@ -28,7 +28,8 @@ export class IngestionProcessor {
     private readonly progressService: JobProgressService,
     private readonly config: ConfigService,
     @InjectQueue(QUEUES.STYLE) private readonly styleQueue: Queue,
-    @Optional() private readonly aiFactory?: AIFactoryService,
+    @InjectQueue(QUEUES.EMBEDDING) private readonly embeddingQueue: Queue,
+    private readonly aiFactory: AIFactoryService,
   ) {
     const encKey = this.config.get<string>('TOKEN_ENCRYPTION_KEY', 'CHANGE_ME_32_BYTE_BASE64_KEY');
     const encVersion = Number(this.config.get<number>('TOKEN_ENCRYPTION_KEY_VERSION', 1));
@@ -145,34 +146,40 @@ export class IngestionProcessor {
 
           // 3. Historical Vector Memory: Create MemoryItem & dual embeddings (DOCUMENT + SIMILARITY)
           const postText = (post.text ?? '').trim();
-          if (postText && this.aiFactory) {
+          if (postText) {
             try {
-              let memoryItem = await prisma.memoryItem.findFirst({
-                where: { workspaceId, sourceId: threadPost.id },
-              });
-
-              if (!memoryItem) {
-                memoryItem = await prisma.memoryItem.create({
-                  data: {
+              const memoryItem = await prisma.memoryItem.upsert({
+                where: {
+                  workspaceId_sourceId: {
                     workspaceId,
-                    type: 'POST',
-                    content: postText,
                     sourceId: threadPost.id,
-                    metadata: {
-                      socialAccountId,
-                      threadsPostId: postId,
-                      postedAt: post.timestamp,
-                    },
                   },
-                });
-              }
+                },
+                create: {
+                  workspaceId,
+                  type: 'POST',
+                  content: postText,
+                  sourceId: threadPost.id,
+                  metadata: {
+                    socialAccountId,
+                    threadsPostId: postId,
+                    postedAt: post.timestamp,
+                  },
+                },
+                update: {
+                  content: postText,
+                  metadata: {
+                    socialAccountId,
+                    threadsPostId: postId,
+                    postedAt: post.timestamp,
+                  },
+                },
+              });
 
               const aiProvider = this.aiFactory.getProvider();
 
-              // Generate both embeddings:
-              // - DOCUMENT: for asymmetric semantic retrieval (retrieveMemories)
-              // - SIMILARITY: for symmetric duplicate detection (checkDuplicate)
-              const [docResponse, simResponse] = await Promise.all([
+              // Generate both embeddings independently (DOCUMENT + SIMILARITY)
+              const [docResult, simResult] = await Promise.allSettled([
                 aiProvider.embed({
                   texts: [postText],
                   taskType: 'DOCUMENT',
@@ -183,9 +190,8 @@ export class IngestionProcessor {
                 }),
               ]);
 
-              const docVector = docResponse.embeddings[0];
-              const simVector = simResponse.embeddings[0];
-
+              // Persist or enqueue DOCUMENT representation
+              const docVector = docResult.status === 'fulfilled' ? docResult.value.embeddings[0] : undefined;
               if (docVector && docVector.length > 0) {
                 await this.memoryRepo.upsertEmbedding(
                   memoryItem.id,
@@ -195,8 +201,30 @@ export class IngestionProcessor {
                   'DOCUMENT',
                   'v2',
                 );
+              } else {
+                const reason = docResult.status === 'rejected' ? docResult.reason : 'empty embedding';
+                this.logger.warn(
+                  { postId, reason },
+                  'DOCUMENT embedding failed inline, enqueuing for background retry',
+                );
+                const docJobId = `embedding:${memoryItem.id}:${aiProvider.modelName}:DOCUMENT:v2`;
+                await this.embeddingQueue.add(
+                  'EMBEDDING',
+                  {
+                    requestId: randomUUID(),
+                    workspaceId,
+                    memoryItemId: memoryItem.id,
+                    text: postText,
+                    taskType: 'DOCUMENT',
+                    model: aiProvider.modelName,
+                    pipelineVersion: 'v2',
+                  },
+                  { jobId: docJobId, attempts: 3, backoff: { type: 'exponential', delay: 1000 } },
+                );
               }
 
+              // Persist or enqueue SIMILARITY representation
+              const simVector = simResult.status === 'fulfilled' ? simResult.value.embeddings[0] : undefined;
               if (simVector && simVector.length > 0) {
                 await this.memoryRepo.upsertEmbedding(
                   memoryItem.id,
@@ -206,11 +234,31 @@ export class IngestionProcessor {
                   'SIMILARITY',
                   'v2',
                 );
+              } else {
+                const reason = simResult.status === 'rejected' ? simResult.reason : 'empty embedding';
+                this.logger.warn(
+                  { postId, reason },
+                  'SIMILARITY embedding failed inline, enqueuing for background retry',
+                );
+                const simJobId = `embedding:${memoryItem.id}:${aiProvider.modelName}:SIMILARITY:v2`;
+                await this.embeddingQueue.add(
+                  'EMBEDDING',
+                  {
+                    requestId: randomUUID(),
+                    workspaceId,
+                    memoryItemId: memoryItem.id,
+                    text: postText,
+                    taskType: 'SIMILARITY',
+                    model: aiProvider.modelName,
+                    pipelineVersion: 'v2',
+                  },
+                  { jobId: simJobId, attempts: 3, backoff: { type: 'exponential', delay: 1000 } },
+                );
               }
             } catch (embedErr) {
-              this.logger.warn(
+              this.logger.error(
                 { err: embedErr, postId },
-                'Failed to create dual vector memory embeddings for ingested post, continuing',
+                'Failed during memory item creation or dual embedding handling',
               );
             }
           }
@@ -229,7 +277,10 @@ export class IngestionProcessor {
         hasMore = Boolean(currentCursor && postList.paging?.next);
       }
 
-      // If initial ingestion and posts were found, trigger style extraction
+      // If initial ingestion and posts were found, trigger style extraction.
+      // Architectural Note: Style extraction operates directly on canonical ThreadPost text rows
+      // to calculate linguistic features (sentence patterns, vocabulary, emojis, hooks).
+      // It is intentionally decoupled from the asynchronous vector embedding pipeline.
       if (isInitial && totalIngested > 0) {
         const styleRequestId = randomUUID();
         const stylePayload: StyleExtractionJobPayload = {
@@ -258,8 +309,9 @@ export class IngestionProcessor {
       await this.progressService.update(requestId, {
         status: 'COMPLETE',
         progress: 100,
-        progressMessage: `Successfully ingested ${totalIngested} posts`,
-        resultEntityType: 'thread_post',
+        progressMessage: `Ingestion complete: ${totalIngested} historical posts imported. Vector memory enrichment enqueued.`,
+        resultEntityType: 'socialAccount',
+        resultEntityId: socialAccountId,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

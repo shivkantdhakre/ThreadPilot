@@ -9,6 +9,23 @@ export interface EmbeddingMetadataProvenance {
   embeddingPipelineVersion: string;
 }
 
+export interface FindSimilarOptions {
+  model: string; // Required: enforces strict coordinate-space isolation
+  type?: string;
+  limit?: number;
+  minSimilarity?: number;
+  pipelineVersion?: string;
+  taskType?: 'DOCUMENT' | 'QUERY' | 'SIMILARITY';
+  dimensions?: number;
+}
+
+export interface ReEmbeddingItem {
+  id: string;
+  content: string;
+  type: string;
+  missingTaskTypes: Array<'DOCUMENT' | 'SIMILARITY'>;
+}
+
 /**
  * MemoryRepository
  *
@@ -80,7 +97,6 @@ export class MemoryRepository {
       await this.db.$executeRaw`
         UPDATE memory_items
         SET embedding = ${vectorLiteral}::vector,
-            embedding_model = ${embeddingModel},
             metadata = metadata || ${metadataUpdate}::jsonb
         WHERE id = ${memoryItemId}::uuid
       `;
@@ -96,6 +112,7 @@ export class MemoryRepository {
   /**
    * Find semantically similar MemoryItems using cosine similarity over memory_embeddings.
    * Returns items ordered by similarity descending.
+   * Requires model filtering to guarantee coordinate space isolation.
    * Supports pipelineVersion filtering to prevent mixing vectors created
    * with different embedding preparation pipelines without an explicit migration check.
    * Supports taskType filtering to ensure symmetric coordinate comparison:
@@ -105,15 +122,9 @@ export class MemoryRepository {
   async findSimilar(
     workspaceId: string,
     queryEmbedding: number[],
-    options: {
-      type?: string;
-      limit?: number;
-      minSimilarity?: number;
-      pipelineVersion?: string;
-      taskType?: 'DOCUMENT' | 'QUERY' | 'SIMILARITY';
-    } = {},
+    options: FindSimilarOptions,
   ): Promise<Array<{ memoryItemId: string; content: string; similarity: number }>> {
-    const { type, limit = 10, minSimilarity = 0.7, pipelineVersion, taskType } = options;
+    const { model, type, limit = 10, minSimilarity = 0.7, pipelineVersion, taskType, dimensions } = options;
     const vectorLiteral = `[${queryEmbedding.join(',')}]`;
 
     type RawResult = { memory_item_id: string; content: string; similarity: number };
@@ -126,9 +137,11 @@ export class MemoryRepository {
       FROM memory_embeddings me
       JOIN memory_items mi ON mi.id = me.memory_item_id
       WHERE me.workspace_id = ${workspaceId}::uuid
+        AND me.model = ${model}
         ${type ? Prisma.sql`AND mi.type = ${type}` : Prisma.empty}
         ${taskType ? Prisma.sql`AND me.task_type = ${taskType}` : Prisma.empty}
         ${pipelineVersion ? Prisma.sql`AND me.pipeline_version = ${pipelineVersion}` : Prisma.empty}
+        ${dimensions ? Prisma.sql`AND me.dimensions = ${dimensions}` : Prisma.empty}
         AND 1 - (me.embedding <=> ${vectorLiteral}::vector) >= ${minSimilarity}
       ORDER BY me.embedding <=> ${vectorLiteral}::vector
       LIMIT ${limit}
@@ -143,7 +156,7 @@ export class MemoryRepository {
 
   /**
    * Find semantically similar style examples.
-   * Explicitly filters taskType: 'DOCUMENT' to ensure asymmetric retrieval vectors are compared.
+   * Explicitly filters model and taskType: 'DOCUMENT' to ensure asymmetric retrieval vectors are compared.
    * Optionally filter by topic for more targeted retrieval.
    * Excludes examples with userRating = -1 (explicitly rejected by user).
    */
@@ -154,6 +167,7 @@ export class MemoryRepository {
     limit = 5,
     pipelineVersion?: string,
     taskType: 'DOCUMENT' | 'QUERY' | 'SIMILARITY' = 'DOCUMENT',
+    model = 'gemini-embedding-2',
   ): Promise<Array<{ id: string; text: string; topic: string | null; similarity: number }>> {
     const vectorLiteral = `[${queryEmbedding.join(',')}]`;
 
@@ -174,6 +188,7 @@ export class MemoryRepository {
       JOIN memory_embeddings me ON me.memory_item_id = se.memory_item_id
       WHERE se.workspace_id = ${workspaceId}::uuid
         AND (se.user_rating IS NULL OR se.user_rating >= 0)
+        AND me.model = ${model}
         AND me.task_type = ${taskType}
         ${topic ? Prisma.sql`AND se.topic = ${topic}` : Prisma.empty}
         ${pipelineVersion ? Prisma.sql`AND me.pipeline_version = ${pipelineVersion}` : Prisma.empty}
@@ -190,26 +205,75 @@ export class MemoryRepository {
   }
 
   /**
-   * Find MemoryItems that require re-embedding (missing embedding or older pipeline version).
-   * Ensures existing vectors can be re-generated safely without vector space corruption.
+   * Find MemoryItems that require re-embedding (missing required embeddings or older pipeline version).
+   * For POST items: requires BOTH DOCUMENT and SIMILARITY representations for target pipeline version and model.
+   * For other items (e.g. STYLE_EXAMPLE): requires DOCUMENT representation.
    */
   async findItemsNeedingReEmbedding(
     workspaceId: string,
-    targetPipelineVersion = CURRENT_EMBEDDING_PIPELINE_VERSION,
-    limit = 100,
-  ): Promise<Array<{ id: string; content: string; type: string }>> {
-    type RawItem = { id: string; content: string; type: string };
+    options: {
+      targetPipelineVersion?: string;
+      model?: string;
+      limit?: number;
+    } = {},
+  ): Promise<ReEmbeddingItem[]> {
+    const {
+      targetPipelineVersion = CURRENT_EMBEDDING_PIPELINE_VERSION,
+      model = 'gemini-embedding-2',
+      limit = 100,
+    } = options;
+
+    type RawItem = {
+      id: string;
+      content: string;
+      type: string;
+      existing_task_types: string[] | null;
+    };
+
     const items = await this.db.$queryRaw<RawItem[]>`
-      SELECT mi.id, mi.content, mi.type
+      SELECT
+        mi.id,
+        mi.content,
+        mi.type,
+        ARRAY_AGG(DISTINCT me.task_type) FILTER (WHERE me.task_type IS NOT NULL) as existing_task_types
       FROM memory_items mi
       LEFT JOIN memory_embeddings me
         ON me.memory_item_id = mi.id
        AND me.pipeline_version = ${targetPipelineVersion}
+       AND me.model = ${model}
       WHERE mi.workspace_id = ${workspaceId}::uuid
-        AND me.id IS NULL
+      GROUP BY mi.id, mi.content, mi.type, mi.created_at
+      HAVING (
+        (mi.type = 'POST' AND (
+          NOT ('DOCUMENT' = ANY(ARRAY_AGG(me.task_type))) OR
+          NOT ('SIMILARITY' = ANY(ARRAY_AGG(me.task_type))) OR
+          ARRAY_AGG(me.task_type) IS NULL
+        ))
+        OR
+        (mi.type != 'POST' AND (
+          NOT ('DOCUMENT' = ANY(ARRAY_AGG(me.task_type))) OR
+          ARRAY_AGG(me.task_type) IS NULL
+        ))
+      )
       ORDER BY mi.created_at ASC
       LIMIT ${limit}
     `;
-    return items;
+
+    return items.map((item) => {
+      const existing = new Set(item.existing_task_types ?? []);
+      const missingTaskTypes: Array<'DOCUMENT' | 'SIMILARITY'> = [];
+      if (!existing.has('DOCUMENT')) {
+        missingTaskTypes.push('DOCUMENT');
+      }
+      if (item.type === 'POST' && !existing.has('SIMILARITY')) {
+        missingTaskTypes.push('SIMILARITY');
+      }
+      return {
+        id: item.id,
+        content: item.content,
+        type: item.type,
+        missingTaskTypes,
+      };
+    });
   }
 }

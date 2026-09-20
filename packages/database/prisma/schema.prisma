@@ -285,13 +285,13 @@ model MemoryItem {
   content     String
   metadata    Json      @default("{}")
   sourceId    String?   @map("source_id")
-  embeddingModel String? @map("embedding_model")  // which model produced the embedding
   // embedding vector(768) — managed via MemoryRepository, not here
   createdAt   DateTime  @default(now()) @map("created_at")
 
   styleExample StyleExample?
   embeddings   MemoryEmbedding[]
 
+  @@unique([workspaceId, sourceId])
   @@index([workspaceId, type])
   @@map("memory_items")
 }

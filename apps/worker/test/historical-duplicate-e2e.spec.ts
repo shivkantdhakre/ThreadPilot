@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { createContentGraph, DEFAULT_DUPLICATE_POLICY } from '@threadpilot/agents';
 import { MemoryRepository } from '@threadpilot/database';
 
-describe('Historical Post Ingestion to Duplicate Detection E2E Pipeline', () => {
+describe('Historical Post Ingestion to Duplicate Detection Workflow Integration (Mocked Infrastructure)', () => {
   const workspaceId = '00000000-0000-0000-0000-000000000001';
   const socialAccountId = '00000000-0000-0000-0000-000000000002';
 
@@ -39,6 +39,12 @@ describe('Historical Post Ingestion to Duplicate Detection E2E Pipeline', () => 
 
     const mockDb = {
       memoryItem: {
+        upsert: async ({ create }: any) => {
+          const id = 'mem-item-101';
+          const record = { id, ...create, createdAt: new Date() };
+          memoryItemsStore.set(id, record);
+          return record;
+        },
         findFirst: async ({ where }: any) => {
           for (const item of memoryItemsStore.values()) {
             if (item.workspaceId === where.workspaceId && item.sourceId === where.sourceId) {
@@ -186,6 +192,7 @@ describe('Historical Post Ingestion to Duplicate Detection E2E Pipeline', () => 
 
     const retrievalCall = capturedFindSimilarCalls.find((c) => c.opts?.taskType === 'DOCUMENT');
     assert(retrievalCall !== undefined, 'retrieveMemories must call memoryRepo.findSimilar with taskType = DOCUMENT');
+    assert.strictEqual(retrievalCall.opts.model, 'gemini-embedding-2', 'Must pass model for coordinate space isolation');
     assert.strictEqual(retrievalCall.opts.pipelineVersion, 'v2', 'Must filter pipelineVersion = v2');
     assert.strictEqual(retrievalCall.opts.type, 'POST', 'Must restrict to POST memory items');
     assert.deepStrictEqual(result.retrievedMemoryIds, ['mem-item-101']);
@@ -198,10 +205,12 @@ describe('Historical Post Ingestion to Duplicate Detection E2E Pipeline', () => 
 
   it('detects duplicate when candidate paraphrases historical ThreadPost (similarity = 0.9434 >= 0.88)', async () => {
     let checkedTaskType: string | undefined;
+    let checkedModel: string | undefined;
 
     const mockMemoryRepo = {
       findSimilar: async (_wsId: string, _vec: number[], opts: any) => {
         checkedTaskType = opts?.taskType;
+        checkedModel = opts?.model;
         // Paraphrase matches historical post SIMILARITY vector at 0.9434
         if (opts?.taskType === 'SIMILARITY') {
           return [
@@ -252,8 +261,9 @@ describe('Historical Post Ingestion to Duplicate Detection E2E Pipeline', () => 
     });
 
     // Verification:
-    // 1. Must use symmetric taskType = 'SIMILARITY'
+    // 1. Must use symmetric taskType = 'SIMILARITY' and model = 'gemini-embedding-2'
     assert.strictEqual(checkedTaskType, 'SIMILARITY');
+    assert.strictEqual(checkedModel, 'gemini-embedding-2');
     // 2. Must detect duplicate
     assert.strictEqual(finalState.dupeCheck?.isDuplicate, true);
     assert.strictEqual(finalState.dupeCheck?.similarMemoryItemId, 'mem-item-101');

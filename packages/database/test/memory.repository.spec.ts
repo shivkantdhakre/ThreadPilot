@@ -44,10 +44,9 @@ describe('MemoryRepository Provenance and Pipeline Version Isolation', () => {
     const updateCall = capturedCalls[1];
     const updateSerialized = JSON.stringify(updateCall.values);
     assert(updateSerialized.includes(memoryItemId));
-    assert(updateSerialized.includes('gemini-embedding-2'));
   });
 
-  it('isolates similarity queries on memory_embeddings by pipelineVersion and taskType', async () => {
+  it('isolates similarity queries on memory_embeddings by model, pipelineVersion, and taskType', async () => {
     let capturedQueryArgs: any = null;
 
     const mockPrisma = {
@@ -68,6 +67,7 @@ describe('MemoryRepository Provenance and Pipeline Version Isolation', () => {
     const workspaceId = '22222222-2222-2222-2222-222222222222';
 
     const results = await repo.findSimilar(workspaceId, queryVector, {
+      model: 'gemini-embedding-2',
       minSimilarity: 0.88,
       pipelineVersion: CURRENT_EMBEDDING_PIPELINE_VERSION,
       taskType: 'SIMILARITY',
@@ -77,15 +77,16 @@ describe('MemoryRepository Provenance and Pipeline Version Isolation', () => {
     assert.strictEqual(results[0].memoryItemId, 'item-1');
     assert.strictEqual(results[0].similarity, 0.89);
 
-    // Verify query parameters contained workspaceId, minSimilarity, pipelineVersion, and taskType
+    // Verify query parameters contained workspaceId, model, minSimilarity, pipelineVersion, and taskType
     const serializedValues = JSON.stringify(capturedQueryArgs.values);
     assert(serializedValues.includes(workspaceId));
+    assert(serializedValues.includes('gemini-embedding-2'));
     assert(serializedValues.includes('0.88'));
     assert(serializedValues.includes('SIMILARITY'));
     assert(serializedValues.includes(CURRENT_EMBEDDING_PIPELINE_VERSION));
   });
 
-  it('explicitly filters taskType = DOCUMENT when searching style examples', async () => {
+  it('explicitly filters model and taskType = DOCUMENT when searching style examples', async () => {
     let capturedQueryArgs: any = null;
 
     const mockPrisma = {
@@ -113,24 +114,37 @@ describe('MemoryRepository Provenance and Pipeline Version Isolation', () => {
       5,
       CURRENT_EMBEDDING_PIPELINE_VERSION,
       'DOCUMENT',
+      'gemini-embedding-2',
     );
 
     assert.strictEqual(results.length, 1);
     const serializedValues = JSON.stringify(capturedQueryArgs.values);
     assert(serializedValues.includes(workspaceId));
+    assert(serializedValues.includes('gemini-embedding-2'));
     assert(serializedValues.includes('DOCUMENT'));
     assert(serializedValues.includes('engineering'));
     assert(serializedValues.includes(CURRENT_EMBEDDING_PIPELINE_VERSION));
   });
 
-  it('identifies memory items needing re-embedding when pipeline version is outdated', async () => {
+  it('identifies memory items needing re-embedding and detects missing required representations', async () => {
     let capturedArgs: any = null;
 
     const mockPrisma = {
       $queryRaw: async (strings: TemplateStringsArray, ...values: any[]) => {
         capturedArgs = { strings, values };
         return [
-          { id: 'old-1', content: 'Legacy post needing v2 embedding', type: 'POST' },
+          {
+            id: 'post-missing-sim',
+            content: 'Post with only DOCUMENT vector',
+            type: 'POST',
+            existing_task_types: ['DOCUMENT'],
+          },
+          {
+            id: 'post-unembedded',
+            content: 'Post with no vectors',
+            type: 'POST',
+            existing_task_types: null,
+          },
         ];
       },
     } as any;
@@ -138,12 +152,25 @@ describe('MemoryRepository Provenance and Pipeline Version Isolation', () => {
     const repo = new MemoryRepository(mockPrisma);
     const workspaceId = '33333333-3333-3333-3333-333333333333';
 
-    const items = await repo.findItemsNeedingReEmbedding(workspaceId, 'v2', 50);
+    const items = await repo.findItemsNeedingReEmbedding(workspaceId, {
+      targetPipelineVersion: 'v2',
+      model: 'gemini-embedding-2',
+      limit: 50,
+    });
 
-    assert.strictEqual(items.length, 1);
-    assert.strictEqual(items[0].id, 'old-1');
-    assert(capturedArgs.values.includes(workspaceId));
-    assert(capturedArgs.values.includes('v2'));
-    assert(capturedArgs.values.includes(50));
+    assert.strictEqual(items.length, 2);
+    // Item 1: has DOCUMENT, missing SIMILARITY
+    assert.strictEqual(items[0].id, 'post-missing-sim');
+    assert.deepStrictEqual(items[0].missingTaskTypes, ['SIMILARITY']);
+
+    // Item 2: has nothing, missing both DOCUMENT and SIMILARITY
+    assert.strictEqual(items[1].id, 'post-unembedded');
+    assert.deepStrictEqual(items[1].missingTaskTypes, ['DOCUMENT', 'SIMILARITY']);
+
+    const serialized = JSON.stringify(capturedArgs.values);
+    assert(serialized.includes(workspaceId));
+    assert(serialized.includes('v2'));
+    assert(serialized.includes('gemini-embedding-2'));
+    assert(serialized.includes(50));
   });
 });

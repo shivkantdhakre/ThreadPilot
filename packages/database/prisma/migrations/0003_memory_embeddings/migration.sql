@@ -16,11 +16,11 @@ CREATE TABLE IF NOT EXISTS memory_embeddings (
   CONSTRAINT unique_memory_embedding UNIQUE (memory_item_id, model, task_type, pipeline_version)
 );
 
--- IVFFlat index for cosine similarity search on memory_embeddings
-CREATE INDEX IF NOT EXISTS memory_embeddings_vector_idx
-  ON memory_embeddings USING ivfflat (embedding vector_cosine_ops)
-  WITH (lists = 100);
+-- Exact vector search provides perfect recall and is appropriate for the current Phase 1 dataset size.
+-- ANN indexing (such as HNSW) will be introduced after workload-based benchmarking on production corpus.
+DROP INDEX IF EXISTS memory_embeddings_vector_idx;
 
--- Composite index for fast tenant and task-type lookup
+-- Composite index for fast tenant, model, and task-type lookup
 CREATE INDEX IF NOT EXISTS memory_embeddings_lookup_idx
-  ON memory_embeddings (workspace_id, task_type, pipeline_version);
+  ON memory_embeddings (workspace_id, model, task_type, pipeline_version);
+

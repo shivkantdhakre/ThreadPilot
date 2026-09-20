@@ -115,6 +115,7 @@ export function createContentGraph(deps: ContentGraphDependencies) {
       }
 
       const similar = await memoryRepo.findSimilar(state.workspaceId, queryEmbedding, {
+        model: aiProvider.modelName,
         limit: 5,
         minSimilarity: 0.65,
         type: 'POST',
@@ -153,6 +154,7 @@ export function createContentGraph(deps: ContentGraphDependencies) {
           5,
           'v2',
           'DOCUMENT',
+          aiProvider.modelName,
         );
 
         return {
@@ -283,6 +285,7 @@ export function createContentGraph(deps: ContentGraphDependencies) {
 
       // Symmetric similarity search: queries against items embedded with taskType: 'SIMILARITY'
       const similar = await memoryRepo.findSimilar(state.workspaceId, embedding, {
+        model: policy.embeddingModel,
         limit: 1,
         minSimilarity: dupeThreshold,
         pipelineVersion: policy.embeddingPipelineVersion,

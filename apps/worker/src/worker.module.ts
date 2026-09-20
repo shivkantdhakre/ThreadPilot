@@ -10,6 +10,7 @@ import { IngestionProcessor } from './processors/ingestion.processor';
 import { StyleProcessor } from './processors/style.processor';
 import { ContentProcessor } from './processors/content.processor';
 import { TokenRefreshProcessor } from './processors/token-refresh.processor';
+import { EmbeddingProcessor } from './processors/embedding.processor';
 
 function parseRedisUrl(urlStr: string) {
   try {
@@ -51,6 +52,7 @@ function parseRedisUrl(urlStr: string) {
       { name: QUEUES.STYLE },
       { name: QUEUES.CONTENT },
       { name: QUEUES.TOKEN_REFRESH },
+      { name: QUEUES.EMBEDDING },
     ),
   ],
   providers: [
@@ -60,6 +62,7 @@ function parseRedisUrl(urlStr: string) {
     StyleProcessor,
     ContentProcessor,
     TokenRefreshProcessor,
+    EmbeddingProcessor,
   ],
 })
 export class WorkerModule {}

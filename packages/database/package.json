@@ -6,7 +6,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "node --experimental-strip-types --test test/memory.repository.spec.ts",
+    "test": "node --experimental-strip-types --test test/memory.repository.spec.ts test/real-pgvector-duplicate.spec.ts",
     "lint": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",

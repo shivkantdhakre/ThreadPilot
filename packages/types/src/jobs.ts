@@ -6,13 +6,14 @@ export const QUEUES = {
   STYLE:         'style',
   CONTENT:       'content',
   TOKEN_REFRESH: 'token-refresh',
+  EMBEDDING:     'embedding',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
 export type JobStatus = 'PENDING' | 'RUNNING' | 'COMPLETE' | 'FAILED';
 
-export type JobType = 'INGESTION' | 'STYLE' | 'CONTENT' | 'IMPROVE' | 'TOKEN_REFRESH';
+export type JobType = 'INGESTION' | 'STYLE' | 'CONTENT' | 'IMPROVE' | 'TOKEN_REFRESH' | 'EMBEDDING';
 
 export interface ExecutionContext {
   requestId: string;
@@ -75,6 +76,14 @@ export interface ContentImprovementJobPayload extends BaseJobPayload {
 export interface TokenRefreshJobPayload extends BaseJobPayload {
   socialAccountId: string;
   force?: boolean;
+}
+
+export interface EmbeddingJobPayload extends BaseJobPayload {
+  memoryItemId: string;
+  text: string;
+  taskType: 'DOCUMENT' | 'SIMILARITY';
+  model?: string;
+  pipelineVersion?: string;
 }
 
 // ─── Job status response ──────────────────────────────────────────────────────
