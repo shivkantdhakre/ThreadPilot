@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { z, ZodError } from 'zod';
-import { GeminiProvider, classifyAIError } from '../dist/index.js';
+import { GeminiProvider, classifyAIError, formatGeminiEmbeddingInput } from '../dist/index.js';
 
 describe('GeminiProvider Acceptance Tests', () => {
   it('initializes with required capabilities and configuration', () => {
@@ -322,17 +322,112 @@ describe('GeminiProvider Acceptance Tests', () => {
     assert.strictEqual(chunks.join(''), 'Hello from Interactions streaming!');
   });
 
+  it('formats input content correctly for Gemini Embedding 2 task semantics', () => {
+    // 1. DOCUMENT with explicit title
+    const docWithTitle = formatGeminiEmbeddingInput('Post content here', 'DOCUMENT', 'Style Guide');
+    assert.strictEqual(docWithTitle, 'title: Style Guide | text: Post content here');
+
+    // 2. DOCUMENT without title (defaults to "none")
+    const docNoTitle = formatGeminiEmbeddingInput('Post content here', 'DOCUMENT');
+    assert.strictEqual(docNoTitle, 'title: none | text: Post content here');
+
+    const docEmptyTitle = formatGeminiEmbeddingInput('Post content here', 'DOCUMENT', '   ');
+    assert.strictEqual(docEmptyTitle, 'title: none | text: Post content here');
+
+    // 3. QUERY format
+    const query = formatGeminiEmbeddingInput('Find engineering stories', 'QUERY');
+    assert.strictEqual(query, 'task: search result | query: Find engineering stories');
+
+    // 4. SIMILARITY format
+    const sim = formatGeminiEmbeddingInput('Compare this candidate post', 'SIMILARITY');
+    assert.strictEqual(sim, 'task: sentence similarity | query: Compare this candidate post');
+
+    // 5. Unspecified taskType returns raw content
+    const raw = formatGeminiEmbeddingInput('Raw content unchanged');
+    assert.strictEqual(raw, 'Raw content unchanged');
+  });
+
+  it('embeds using Gemini Embedding 2: ensures NO taskType API field is sent and validates 768 dimensions', async () => {
+    const provider = new GeminiProvider('fake-test-key', 'gemini-embedding-2', 2, 30000, 768);
+
+    let capturedArgs: any = null;
+    (provider as any).client = {
+      models: {
+        embedContent: async (args: any) => {
+          capturedArgs = args;
+          return {
+            embeddings: [{ values: new Array(768).fill(0.05) }],
+          };
+        },
+      },
+    };
+
+    const res = await provider.embed({
+      texts: ['How to build scalable backends in Node.js'],
+      taskType: 'DOCUMENT',
+      title: 'Backend Architecture',
+    });
+
+    // 1. CRITICAL: Ensure NO taskType or task_type field is sent to gemini-embedding-2
+    assert.strictEqual(capturedArgs.config?.taskType, undefined, 'gemini-embedding-2 must NOT receive taskType in config');
+    assert.strictEqual(capturedArgs.config?.task_type, undefined, 'gemini-embedding-2 must NOT receive task_type in config');
+    assert.strictEqual(capturedArgs.taskType, undefined, 'gemini-embedding-2 must NOT receive taskType on top level');
+    assert.strictEqual(capturedArgs.task_type, undefined, 'gemini-embedding-2 must NOT receive task_type on top level');
+
+    // 2. Output dimensionality is properly passed in config
+    assert.strictEqual(capturedArgs.config?.outputDimensionality, 768);
+
+    // 3. Contents are formatted with the documented prefix
+    assert.strictEqual(
+      capturedArgs.contents[0].parts[0].text,
+      'title: Backend Architecture | text: How to build scalable backends in Node.js',
+    );
+
+    // 4. Result validation
+    assert.strictEqual(res.model, 'gemini-embedding-2');
+    assert.strictEqual(res.embeddings.length, 1);
+    assert.strictEqual(res.embeddings[0].length, 768);
+  });
+
+  it('validates embedding dimensionality and throws when returned vector dimension mismatches', async () => {
+    const provider = new GeminiProvider('fake-test-key', 'gemini-embedding-2', 1, 30000, 768);
+
+    (provider as any).client = {
+      models: {
+        embedContent: async () => {
+          return {
+            // Returns 256 dimensions instead of expected 768
+            embeddings: [{ values: new Array(256).fill(0.1) }],
+          };
+        },
+      },
+    };
+
+    await assert.rejects(
+      async () => {
+        await provider.embed({
+          texts: ['Testing dimension validation'],
+          taskType: 'SIMILARITY',
+        });
+      },
+      (err: Error) => {
+        assert(err.message.includes('Embedding dimension mismatch'));
+        assert(err.message.includes('expected 768'));
+        assert(err.message.includes('received 256'));
+        return true;
+      },
+    );
+  });
+
   it('guarantees embedding vector space purity: retries transient errors on primary model without silently swapping models', async () => {
     const provider = new GeminiProvider('fake-test-key', 'gemini-embedding-2', 2, 30000, 768);
     (provider as any).delay = () => Promise.resolve();
 
     let calls = 0;
-    let capturedConfig: any = null;
     (provider as any).client = {
       models: {
         embedContent: async (args: any) => {
           calls++;
-          capturedConfig = args.config;
           if (calls === 1) {
             const err: any = new Error('UNAVAILABLE: Transient network glitch');
             err.status = 503;
@@ -354,8 +449,6 @@ describe('GeminiProvider Acceptance Tests', () => {
     assert.strictEqual(res.model, 'gemini-embedding-2', 'Must never switch vector space model');
     assert.strictEqual(res.embeddings.length, 1);
     assert.strictEqual(res.embeddings[0].length, 768);
-    assert.strictEqual(capturedConfig.outputDimensionality, 768);
-    assert.strictEqual(capturedConfig.taskType, 'RETRIEVAL_DOCUMENT');
   });
 });
 

@@ -7,7 +7,12 @@ export type {
   CompletionResponse,
   EmbeddingRequest,
   EmbeddingResponse,
+  EmbeddingTaskType,
 } from './core/ai-provider';
 export { ModelRouter } from './core/model-router';
 export type { TaskType, AIConfig } from './core/model-router';
-export { GeminiProvider, classifyAIError } from './providers/gemini/gemini-provider';
+export {
+  GeminiProvider,
+  classifyAIError,
+  formatGeminiEmbeddingInput,
+} from './providers/gemini/gemini-provider';

@@ -21,4 +21,8 @@ if (process.env['NODE_ENV'] !== 'production') {
 }
 
 export * from '@prisma/client';
-export { MemoryRepository } from './memory.repository';
+export {
+  MemoryRepository,
+  CURRENT_EMBEDDING_PIPELINE_VERSION,
+  type EmbeddingMetadataProvenance,
+} from './memory.repository';

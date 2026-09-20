@@ -253,18 +253,20 @@ pnpm test
 | Level | Test Suite | Package / App | Coverage & Guarantees Verified |
 |---|---|---|---|
 | **Unit** | **Interactions API & Capabilities** | `@threadpilot/ai` | `interactions.create()` payload, `store: false`, Zod JSON schema validation, `getCapabilities()`, vector coordinate space purity |
+| **Unit** | **Gemini Embedding 2 Pipeline** | `@threadpilot/ai` | Prefix formatting (`title: ... | text: ...`, `task: search result | query: ...`, `task: sentence similarity | query: ...`), assertion of NO `taskType` in API payload, 768-dim validation |
 | **Unit** | **Error Classification** | `@threadpilot/ai` | Fast-fail on 4xx/schema errors, exponential backoff on 429/5xx, `TIMEOUT` handling, streaming |
-| **Unit** | **Duplicate Calibration** | `@threadpilot/agents` | Cosine similarity benchmark across true duplicates, related-but-distinct, and unrelated posts (0.80–0.95 threshold) |
+| **Unit** | **Duplicate Calibration** | `@threadpilot/agents` | Cosine similarity benchmark across true duplicates, related-but-distinct, and unrelated posts with calibrated 0.82 threshold |
+| **Unit** | **Embedding Provenance & Isolation** | `@threadpilot/database` | Provenance metadata (`embeddingModel`, `dimensions`, `taskType`, `pipelineVersion: v2`), pipeline version isolation in vector queries |
 | **Integration** | **OAuth Negative Paths** | `@threadpilot/threads-client` | PKCE handshake, invalid state, TTL expired state, atomic one-time state consumption (`getdel`), server-side workspace identity enforcement |
 | **Integration** | **Crash Recovery & Idempotency** | `@threadpilot/worker` | Idempotent skip on completed jobs, result caching recovery across process crashes (at-most-once DB effect; external AI call retry-safe via hash recovery) |
 | **Integration** | **Ingestion Interruption** | `@threadpilot/worker` | Multi-page pagination termination (no cursor), mid-stream interruption retry without duplicate post creation (`socialAccountId_externalId`) |
 | **Contract** | **Threads Graph API Contract** | `@threadpilot/threads-client` | Response shapes for `/me`, `/me/threads`, `/me/threads_publishing_limit`, rate-limit and auth error propagation |
-| **Live Smoke** | **Google Gemini Interactions** | `@threadpilot/ai` | Live request against Google servers: authentication, string input, `store: false`, Zod validation, token usage |
+| **Live Smoke** | **Google Gemini Live Smoke** | `@threadpilot/ai` | Live request against Google servers: Interactions API (`store: false`) + Gemini Embedding 2 (DOCUMENT, QUERY, SIMILARITY, 768 dims, no API `taskType`) |
 | **E2E Security** | **Cross-Tenant Isolation** | `@threadpilot/api` | `WorkspaceScopeGuard` 403 authorization, database query scoping (`where: { workspaceId, id }`) returning 404 for drafts, style examples, memories, jobs, and notifications |
 
-### 2. Live Gemini Interactions Smoke Test
+### 2. Live Gemini Interactions & Embedding Smoke Test
 
-Perform a genuine live test against Google's Gemini Interactions API using your server-side API key:
+Perform genuine live tests against Google's Gemini Interactions and Embedding APIs using your server-side API key:
 
 ```bash
 pnpm test:gemini-live
@@ -272,10 +274,10 @@ pnpm test:gemini-live
 
 Validates:
 - Live authentication with Google Gemini servers
-- Interactions API payload execution with `input: string`
-- Strict privacy verification (`store: false`)
-- Structured JSON output with Zod schema validation
-- Token usage extraction (`inputTokens`, `outputTokens`)
+- Interactions API payload execution with `input: string` and strict privacy (`store: false`)
+- Structured JSON output with Zod schema validation and token usage extraction
+- Gemini Embedding 2 execution across `DOCUMENT`, `QUERY`, and `SIMILARITY` formats
+- Verification that all vectors return exact 768 dimensions with NO unsupported `taskType` request field sent to the API
 
 ### 3. 29-Step Live Integration Audit
 

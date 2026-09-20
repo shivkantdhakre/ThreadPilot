@@ -100,7 +100,12 @@ export function createStyleExtractionGraph(deps: {
 
     try {
       const texts = state.exampleCandidates.map((ex) => ex.text);
-      const embedResponse = await aiProvider.embed({ texts });
+      const titles = state.exampleCandidates.map((ex) => ex.topic || 'none');
+      const embedResponse = await aiProvider.embed({
+        texts,
+        taskType: 'DOCUMENT',
+        titles,
+      });
 
       return {
         embeddings: embedResponse.embeddings,
@@ -215,7 +220,14 @@ export function createStyleExtractionGraph(deps: {
       // Upsert embeddings after transaction commits to prevent deadlocks and transaction timeouts
       for (const item of embeddingsToUpsert) {
         try {
-          await memoryRepo.upsertEmbedding(item.memoryItemId, item.embedding, aiProvider.modelName);
+          await memoryRepo.upsertEmbedding(
+            item.memoryItemId,
+            item.embedding,
+            aiProvider.modelName,
+            item.embedding.length,
+            'DOCUMENT',
+            'v2',
+          );
         } catch (embErr) {
           logger.warn({ err: embErr, memoryItemId: item.memoryItemId }, 'Failed to persist embedding for style example');
         }

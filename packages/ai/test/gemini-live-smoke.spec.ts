@@ -74,4 +74,65 @@ describe('Gemini Live Interactions Smoke Test', () => {
     console.log(`- Input Tokens: ${response.inputTokens}, Output Tokens: ${response.outputTokens}`);
     console.log(`- Parsed Result:`, response.result);
   });
+
+  it('executes live gemini-embedding-2 requests for DOCUMENT, QUERY, and SIMILARITY with 768 dimensions and no taskType API field', async (t) => {
+    const apiKey = getLiveApiKey();
+
+    if (!isLiveTestEnabled || !apiKey) {
+      t.skip('Skipping live Gemini smoke test: GEMINI_API_KEY not found or GEMINI_LIVE_TEST != true');
+      return;
+    }
+
+    const embeddingModel = process.env.GEMINI_MODEL_EMBEDDING || 'gemini-embedding-2';
+    // Single model policy: fallbacks array is strictly empty to preserve vector coordinate space purity
+    const embeddingProvider = new GeminiProvider(apiKey, embeddingModel, 2, 30000, 768, []);
+
+    // Intercept client.models.embedContent to assert NO taskType API field is ever passed
+    const originalEmbedContent = (embeddingProvider as any).client.models.embedContent.bind((embeddingProvider as any).client.models);
+    const capturedCallConfigs: any[] = [];
+    (embeddingProvider as any).client.models.embedContent = async (params: any) => {
+      capturedCallConfigs.push(params);
+      return originalEmbedContent(params);
+    };
+
+    // 1. DOCUMENT embedding
+    const docRes = await embeddingProvider.embed({
+      texts: ['ThreadPilot architecture uses PostgreSQL + pgvector for authoritative semantic memory.'],
+      taskType: 'DOCUMENT',
+      title: 'Architecture Overview',
+    });
+    assert.strictEqual(docRes.embeddings.length, 1);
+    assert.strictEqual(docRes.embeddings[0].length, 768, 'DOCUMENT vector must have 768 dimensions');
+
+    // 2. QUERY embedding
+    const queryRes = await embeddingProvider.embed({
+      texts: ['What vector database does ThreadPilot use?'],
+      taskType: 'QUERY',
+    });
+    assert.strictEqual(queryRes.embeddings.length, 1);
+    assert.strictEqual(queryRes.embeddings[0].length, 768, 'QUERY vector must have 768 dimensions');
+
+    // 3. SIMILARITY embedding
+    const simRes = await embeddingProvider.embed({
+      texts: ['Building in public changed my engineering career completely.'],
+      taskType: 'SIMILARITY',
+    });
+    assert.strictEqual(simRes.embeddings.length, 1);
+    assert.strictEqual(simRes.embeddings[0].length, 768, 'SIMILARITY vector must have 768 dimensions');
+
+    // 4. Assert that no unsupported taskType request field was sent to Gemini API
+    for (const call of capturedCallConfigs) {
+      assert.strictEqual(call.config?.taskType, undefined, 'Must not send taskType in config to gemini-embedding-2');
+      assert.strictEqual(call.config?.task_type, undefined, 'Must not send task_type in config to gemini-embedding-2');
+      assert.strictEqual(call.taskType, undefined, 'Must not send taskType in request root');
+      assert.strictEqual(call.config?.outputDimensionality, 768, 'Must configure outputDimensionality: 768');
+    }
+
+    console.log(`\n[Live Gemini Embedding 2 Smoke Test Passed]`);
+    console.log(`- Model: ${docRes.model}`);
+    console.log(`- DOCUMENT Vector Length: ${docRes.embeddings[0].length}`);
+    console.log(`- QUERY Vector Length: ${queryRes.embeddings[0].length}`);
+    console.log(`- SIMILARITY Vector Length: ${simRes.embeddings[0].length}`);
+    console.log(`- Verified: No taskType API field was sent across ${capturedCallConfigs.length} live requests`);
+  });
 });

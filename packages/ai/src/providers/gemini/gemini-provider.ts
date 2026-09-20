@@ -9,7 +9,39 @@ import {
   CompletionResponse,
   EmbeddingRequest,
   EmbeddingResponse,
+  EmbeddingTaskType,
 } from '../../core/ai-provider';
+
+/**
+ * Formats input content for Gemini Embedding 2 according to official Google documentation:
+ * - DOCUMENT:   title: {title or "none"} | text: {content}
+ * - QUERY:      task: search result | query: {content}
+ * - SIMILARITY: task: sentence similarity | query: {content}
+ *
+ * Critical: gemini-embedding-2 does NOT support the task_type/taskType API parameter.
+ * Task semantics are provided entirely through input text formatting.
+ */
+export function formatGeminiEmbeddingInput(
+  content: string,
+  taskType?: EmbeddingTaskType,
+  title?: string,
+): string {
+  if (!taskType) {
+    return content;
+  }
+  switch (taskType) {
+    case 'DOCUMENT': {
+      const cleanTitle = title && title.trim().length > 0 ? title.trim() : 'none';
+      return `title: ${cleanTitle} | text: ${content}`;
+    }
+    case 'QUERY':
+      return `task: search result | query: ${content}`;
+    case 'SIMILARITY':
+      return `task: sentence similarity | query: ${content}`;
+    default:
+      return content;
+  }
+}
 
 /**
  * Classifies an AI error into retryable vs non-retryable categories per
@@ -269,13 +301,7 @@ export class GeminiProvider implements AIProvider {
 
   async embed(request: EmbeddingRequest): Promise<EmbeddingResponse> {
     const model = this.modelName;
-    const taskType =
-      request.taskType === 'DOCUMENT'
-        ? 'RETRIEVAL_DOCUMENT'
-        : request.taskType === 'QUERY'
-        ? 'RETRIEVAL_QUERY'
-        : undefined;
-
+    const targetDimensions = request.dimensions ?? this.embeddingDimensions;
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
@@ -286,23 +312,36 @@ export class GeminiProvider implements AIProvider {
         const BATCH_SIZE = 100;
         for (let i = 0; i < request.texts.length; i += BATCH_SIZE) {
           const batch = request.texts.slice(i, i + BATCH_SIZE);
+          const formattedBatch = batch.map((text, idx) => {
+            const globalIdx = i + idx;
+            const itemTitle = request.titles?.[globalIdx] ?? request.title;
+            return formatGeminiEmbeddingInput(text, request.taskType, itemTitle);
+          });
+
+          // gemini-embedding-2 does NOT support taskType in config.
+          // Task semantics are handled strictly via formatGeminiEmbeddingInput prefixing.
+          const config: Record<string, unknown> = {};
+          if (targetDimensions !== undefined) {
+            config.outputDimensionality = targetDimensions;
+          }
+
           const response = await this.client.models.embedContent({
             model,
-            contents: batch.map((text) => ({ role: 'user', parts: [{ text }] })),
-            ...(this.embeddingDimensions !== undefined || taskType
-              ? {
-                  config: {
-                    ...(this.embeddingDimensions !== undefined
-                      ? { outputDimensionality: this.embeddingDimensions }
-                      : {}),
-                    ...(taskType ? { taskType } : {}),
-                  },
-                }
-              : {}),
+            contents: formattedBatch.map((formattedText) => ({
+              role: 'user',
+              parts: [{ text: formattedText }],
+            })),
+            ...(Object.keys(config).length > 0 ? { config } : {}),
           });
 
           for (const embedding of response.embeddings ?? []) {
-            results.push(embedding.values ?? []);
+            const values = embedding.values ?? [];
+            if (targetDimensions !== undefined && values.length !== targetDimensions) {
+              throw new Error(
+                `Embedding dimension mismatch: expected ${targetDimensions}, received ${values.length} from model ${model}`,
+              );
+            }
+            results.push(values);
           }
         }
 

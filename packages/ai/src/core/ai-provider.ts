@@ -40,10 +40,14 @@ export interface CompletionResponse<T = string> {
   finishReason: 'stop' | 'max_tokens' | 'error';
 }
 
+export type EmbeddingTaskType = 'DOCUMENT' | 'QUERY' | 'SIMILARITY';
+
 export interface EmbeddingRequest {
   texts: string[];
-  dimensions?: number;          // from GEMINI_EMBEDDING_DIMENSIONS env
-  taskType?: 'DOCUMENT' | 'QUERY'; // Task-specific instruction for text retrieval
+  dimensions?: number; // from GEMINI_EMBEDDING_DIMENSIONS env
+  taskType?: EmbeddingTaskType; // Internal/provider-neutral task semantics
+  title?: string; // Optional document title for DOCUMENT task formatting
+  titles?: string[]; // Optional per-item document titles for batch DOCUMENT embeddings
 }
 
 export interface EmbeddingResponse {
