@@ -15,8 +15,12 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\""
   },
   "devDependencies": {
-    "turbo": "^2.5.3",
+    "@threadpilot/database": "workspace:^",
+    "@threadpilot/threads-client": "workspace:^",
+    "@threadpilot/types": "workspace:^",
+    "ioredis": "^5.4.1",
     "prettier": "^3.3.3",
+    "turbo": "^2.5.3",
     "typescript": "^5.5.4"
   },
   "engines": {

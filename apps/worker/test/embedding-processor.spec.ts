@@ -183,4 +183,139 @@ describe('EmbeddingProcessor Integration & Retry Resilience', () => {
     assert.strictEqual(attemptCount, 2);
     assert.strictEqual(persistedSuccessfully, true);
   });
+
+  it('prevents redundant external Gemini calls via representation-level Redis lock during concurrent worker execution', async () => {
+    let apiCallCount = 0;
+    const redisLocks = new Map<string, string>();
+
+    const mockRedis = {
+      set: async (key: string, val: string, mode: string, duration: number, flag: string) => {
+        if (redisLocks.has(key)) {
+          return null; // lock already held
+        }
+        redisLocks.set(key, val);
+        return 'OK';
+      },
+      eval: async (script: string, numkeys: number, key: string, token: string) => {
+        if (redisLocks.get(key) === token) {
+          redisLocks.delete(key);
+          return 1;
+        }
+        return 0;
+      },
+      del: async (key: string) => {
+        redisLocks.delete(key);
+        return 1;
+      },
+    } as any;
+
+    const mockAiProvider = {
+      modelName: 'gemini-embedding-2',
+      embed: async () => {
+        apiCallCount++;
+        // Simulate a 40ms external network call
+        await new Promise((res) => setTimeout(res, 40));
+        return {
+          embeddings: [sampleVector],
+          model: 'gemini-embedding-2',
+          dimensions: 768,
+        };
+      },
+    };
+
+    const mockAiFactory = {
+      getProvider: () => mockAiProvider,
+    } as any;
+
+    // Both Worker A and Worker B are configured with the shared mock Redis
+    const workerA = new EmbeddingProcessor(mockAiFactory, mockRedis);
+    const workerB = new EmbeddingProcessor(mockAiFactory, mockRedis);
+
+    let dbStored = false;
+    const sharedMemoryRepo = {
+      hasEmbedding: async () => dbStored,
+      upsertEmbedding: async () => {
+        dbStored = true;
+      },
+    };
+
+    (workerA as any).memoryRepo = sharedMemoryRepo;
+    (workerB as any).memoryRepo = sharedMemoryRepo;
+
+    const job = {
+      data: {
+        requestId: 'req-concurrent-001',
+        workspaceId,
+        memoryItemId,
+        text: postText,
+        taskType: 'SIMILARITY',
+        model: 'gemini-embedding-2',
+        pipelineVersion: 'v2',
+      } satisfies EmbeddingJobPayload,
+    } as any;
+
+    // Concurrently trigger Worker A and Worker B for the exact same memoryItem representation
+    await Promise.all([workerA.process(job), workerB.process(job)]);
+
+    // The representation lock must ensure only ONE external Gemini API call occurred!
+    assert.strictEqual(
+      apiCallCount,
+      1,
+      'External Gemini API should be invoked exactly once across concurrent workers for the same representation',
+    );
+    assert.strictEqual(dbStored, true, 'Embedding must be successfully persisted');
+    assert.strictEqual(redisLocks.size, 0, 'Lock must be released after completion');
+  });
+
+  it('guarantees lock ownership safety: does not delete lock if token was replaced by another worker', async () => {
+    const lockKey = `embedding-lock:${memoryItemId}:gemini-embedding-2:SIMILARITY:v2`;
+    let activeToken = 'worker-b-token';
+
+    const mockRedis = {
+      set: async () => 'OK',
+      eval: async (script: string, numkeys: number, key: string, token: string) => {
+        // Only delete if token matches
+        if (activeToken === token) {
+          activeToken = '';
+          return 1;
+        }
+        return 0;
+      },
+    } as any;
+
+    const mockAiProvider = {
+      modelName: 'gemini-embedding-2',
+      embed: async () => ({
+        embeddings: [sampleVector],
+        model: 'gemini-embedding-2',
+        dimensions: 768,
+      }),
+    };
+
+    const mockAiFactory = { getProvider: () => mockAiProvider } as any;
+    const worker = new EmbeddingProcessor(mockAiFactory, mockRedis);
+
+    (worker as any).memoryRepo = {
+      hasEmbedding: async () => false,
+      upsertEmbedding: async () => {},
+    };
+
+    const job = {
+      data: {
+        requestId: 'req-ownership-001',
+        workspaceId,
+        memoryItemId,
+        text: postText,
+        taskType: 'SIMILARITY',
+        model: 'gemini-embedding-2',
+        pipelineVersion: 'v2',
+      } satisfies EmbeddingJobPayload,
+    } as any;
+
+    await worker.process(job);
+
+    // Because activeToken was simulated as 'worker-b-token', worker A's release eval must NOT delete it!
+    assert.strictEqual(activeToken, 'worker-b-token', 'Worker B token must remain intact');
+  });
 });
+

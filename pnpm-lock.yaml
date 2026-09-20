@@ -8,6 +8,18 @@ importers:
 
   .:
     devDependencies:
+      '@threadpilot/database':
+        specifier: workspace:^
+        version: link:packages/database
+      '@threadpilot/threads-client':
+        specifier: workspace:^
+        version: link:packages/threads-client
+      '@threadpilot/types':
+        specifier: workspace:^
+        version: link:packages/types
+      ioredis:
+        specifier: ^5.4.1
+        version: 5.11.1
       prettier:
         specifier: ^3.3.3
         version: 3.9.8

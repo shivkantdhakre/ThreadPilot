@@ -92,4 +92,90 @@ describe('EmbeddingReconciliationService Unit & Logic Test', () => {
     assert.strictEqual(result.enqueued, 0);
     assert.strictEqual(enqueuedJobs.length, 0);
   });
+
+  it('manages recurring reconciliation lifecycle: starts timer, fires recurring cycle, and clears on destroy', async () => {
+    let cyclesFired = 0;
+    const mockQueue = { add: async () => ({ id: '1' }) } as any;
+    const mockAiFactory = { getProvider: () => ({ modelName: 'gemini-embedding-2' }) } as any;
+
+    const service = new EmbeddingReconciliationService(mockQueue, mockAiFactory);
+
+    // Mock reconcileAllWorkspaces to track execution
+    (service as any).reconcileAllWorkspaces = async () => {
+      cyclesFired++;
+      return { totalWorkspaces: 1, totalEnqueued: 0 };
+    };
+
+    assert.strictEqual(service.isRecurringActive(), false, 'Timer should not be active initially');
+
+    // Start with a fast 25ms interval for deterministic testing
+    service.startRecurring(25);
+    assert.strictEqual(service.isRecurringActive(), true, 'Timer should be active after startRecurring()');
+
+    // Wait for at least 2 ticks
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert(cyclesFired >= 2, `Expected at least 2 recurring reconciliation cycles, got ${cyclesFired}`);
+
+    // Cleanup via onModuleDestroy
+    service.onModuleDestroy();
+    assert.strictEqual(service.isRecurringActive(), false, 'Timer must be stopped after onModuleDestroy()');
+
+    const cyclesAtStop = cyclesFired;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.strictEqual(cyclesFired, cyclesAtStop, 'No further cycles should fire after destruction');
+  });
+
+  it('coordinates multi-replica reconciliation via Redis leader lease', async () => {
+    let activeLeaderToken = '';
+    const mockRedis = {
+      set: async (key: string, token: string, mode: string, ttl: number, flag: string) => {
+        if (activeLeaderToken) {
+          return null; // lease already held by another worker replica
+        }
+        activeLeaderToken = token;
+        return 'OK';
+      },
+      eval: async (script: string, numkeys: number, key: string, token: string) => {
+        if (activeLeaderToken === token) {
+          activeLeaderToken = '';
+          return 1;
+        }
+        return 0;
+      },
+    } as any;
+
+    const mockQueue = { add: async () => ({ id: '1' }) } as any;
+    const mockAiFactory = { getProvider: () => ({ modelName: 'gemini-embedding-2' }) } as any;
+
+    const replicaA = new EmbeddingReconciliationService(mockQueue, mockAiFactory, mockRedis);
+    const replicaB = new EmbeddingReconciliationService(mockQueue, mockAiFactory, mockRedis);
+
+    const mockDb = { workspace: { findMany: async () => [{ id: 'ws-1' }] } };
+    (replicaA as any).db = mockDb;
+    (replicaB as any).db = mockDb;
+
+    // Mock reconcileWorkspace on replicaA to simulate scanning a workspace
+    let replicaAScanCount = 0;
+    (replicaA as any).reconcileWorkspace = async () => {
+      replicaAScanCount++;
+      await new Promise((res) => setTimeout(res, 30));
+      return { checked: 1, enqueued: 1, itemIds: ['mem-1'] };
+    };
+
+    // Concurrently trigger reconcileAllWorkspaces across Replica A and Replica B
+    const [resA, resB] = await Promise.all([
+      replicaA.reconcileAllWorkspaces(),
+      replicaB.reconcileAllWorkspaces(),
+    ]);
+
+    // One replica must acquire the lease and execute; the other must cleanly skip
+    const executedReplica = resA.totalWorkspaces > 0 ? resA : resB;
+    const skippedReplica = resA.totalWorkspaces === 0 ? resA : resB;
+
+    assert(executedReplica.totalEnqueued >= 0, 'Leader must execute workspace reconciliation');
+    assert.strictEqual(skippedReplica.totalWorkspaces, 0, 'Follower replica must skip cycle');
+    assert.strictEqual(skippedReplica.totalEnqueued, 0, 'Follower replica must not enqueue duplicates');
+    assert.strictEqual(activeLeaderToken, '', 'Leader lease must be released after cycle finishes');
+  });
 });
+

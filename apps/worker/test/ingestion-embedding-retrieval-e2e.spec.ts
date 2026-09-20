@@ -317,8 +317,6 @@ describe('Infrastructure-Backed Ingestion -> Embedding -> Retrieval E2E Test (Re
 
     const graphResult = await contentGraph.invoke({
       workspaceId: testWorkspaceId,
-      actorId: testUserId,
-      requestId: randomUUID(),
       topic: 'Vector Databases',
       format: 'TIPS',
       tone: 'FOUNDER',

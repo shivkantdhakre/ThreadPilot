@@ -1,0 +1,18 @@
+{
+  "extends": "../packages/config/tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "baseUrl": "..",
+    "paths": {
+      "@threadpilot/database": ["./packages/database/src/index.ts"],
+      "@threadpilot/threads-client": ["./packages/threads-client/src/index.ts"],
+      "@threadpilot/types": ["./packages/types/src/index.ts"]
+    },
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noEmit": true
+  },
+  "include": ["./**/*"]
+}

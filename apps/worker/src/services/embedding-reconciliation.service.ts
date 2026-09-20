@@ -1,25 +1,31 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Optional, Inject } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import type Redis from 'ioredis';
 import { prisma, MemoryRepository } from '@threadpilot/database';
 import { QUEUES, EmbeddingJobPayload } from '@threadpilot/types';
 import { AIFactoryService } from './ai-factory.service';
+import { REDIS_CLIENT } from '../redis/redis.module';
 import { randomUUID } from 'crypto';
 
 @Injectable()
 export class EmbeddingReconciliationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(EmbeddingReconciliationService.name);
-  private readonly memoryRepo = new MemoryRepository(prisma);
+  private db: any = prisma;
+  private memoryRepo = new MemoryRepository(prisma);
   private intervalRef: NodeJS.Timeout | null = null;
 
   constructor(
     @InjectQueue(QUEUES.EMBEDDING) private readonly embeddingQueue: Queue,
     private readonly aiFactory: AIFactoryService,
+    @Optional() @Inject(REDIS_CLIENT) private readonly redisClient?: Redis,
   ) {}
 
-  onModuleInit() {
-    const intervalMs = Number(process.env.RECONCILIATION_INTERVAL_MS ?? 15 * 60 * 1000);
-    if (intervalMs > 0 && process.env.NODE_ENV !== 'test') {
+  startRecurring(intervalMs = Number(process.env.RECONCILIATION_INTERVAL_MS ?? 15 * 60 * 1000)): void {
+    if (this.intervalRef) {
+      this.stopRecurring();
+    }
+    if (intervalMs > 0) {
       this.logger.log(`Starting automated embedding reconciliation timer (interval: ${intervalMs}ms)`);
       this.intervalRef = setInterval(() => {
         this.reconcileAllWorkspaces().catch((err) => {
@@ -29,11 +35,30 @@ export class EmbeddingReconciliationService implements OnModuleInit, OnModuleDes
     }
   }
 
-  onModuleDestroy() {
+  stopRecurring(): void {
     if (this.intervalRef) {
       clearInterval(this.intervalRef);
       this.intervalRef = null;
     }
+  }
+
+  isRecurringActive(): boolean {
+    return this.intervalRef !== null;
+  }
+
+  onModuleInit() {
+    if (process.env.NODE_ENV !== 'test' || process.env.ENABLE_TEST_RECONCILIATION === 'true') {
+      this.startRecurring();
+    }
+    if (process.env.RECONCILE_ON_STARTUP === 'true') {
+      this.reconcileAllWorkspaces().catch((err) => {
+        this.logger.error({ err }, 'Error running startup reconciliation cycle');
+      });
+    }
+  }
+
+  onModuleDestroy() {
+    this.stopRecurring();
   }
 
   /**
@@ -104,27 +129,63 @@ export class EmbeddingReconciliationService implements OnModuleInit, OnModuleDes
     model?: string;
     pipelineVersion?: string;
   }): Promise<{ totalWorkspaces: number; totalEnqueued: number }> {
-    const workspaces = await prisma.workspace.findMany({
-      select: { id: true },
-    });
+    // Leader lease: ensure only one worker replica runs the global scan cycle at a time
+    const LEASE_KEY = 'reconciliation-run:leader-lease';
+    const LEASE_TTL_MS = 60000;
+    const leaseToken = randomUUID();
+    let leaseAcquired = false;
 
-    let totalEnqueued = 0;
-    for (const ws of workspaces) {
+    if (this.redisClient) {
       try {
-        const res = await this.reconcileWorkspace(
-          ws.id,
-          options?.model,
-          options?.pipelineVersion,
-        );
-        totalEnqueued += res.enqueued;
-      } catch (wsErr) {
-        this.logger.error({ wsErr, workspaceId: ws.id }, 'Reconciliation failed for workspace');
+        const res = await this.redisClient.set(LEASE_KEY, leaseToken, 'PX', LEASE_TTL_MS, 'NX');
+        leaseAcquired = res === 'OK';
+        if (!leaseAcquired) {
+          this.logger.log('Another worker holds reconciliation leader lease; skipping this cycle.');
+          return { totalWorkspaces: 0, totalEnqueued: 0 };
+        }
+      } catch (leaseErr) {
+        this.logger.warn({ leaseErr }, 'Failed to acquire reconciliation leader lease, proceeding anyway');
       }
     }
 
-    return {
-      totalWorkspaces: workspaces.length,
-      totalEnqueued,
-    };
+    try {
+      const workspaces = await this.db.workspace.findMany({
+        select: { id: true },
+      });
+
+      let totalEnqueued = 0;
+      for (const ws of workspaces) {
+        try {
+          const res = await this.reconcileWorkspace(
+            ws.id,
+            options?.model,
+            options?.pipelineVersion,
+          );
+          totalEnqueued += res.enqueued;
+        } catch (wsErr) {
+          this.logger.error({ wsErr, workspaceId: ws.id }, 'Reconciliation failed for workspace');
+        }
+      }
+
+      return {
+        totalWorkspaces: workspaces.length,
+        totalEnqueued,
+      };
+    } finally {
+      if (leaseAcquired && this.redisClient) {
+        await this.redisClient
+          .eval(
+            `if redis.call("GET", KEYS[1]) == ARGV[1] then
+              return redis.call("DEL", KEYS[1])
+            else
+              return 0
+            end`,
+            1,
+            LEASE_KEY,
+            leaseToken,
+          )
+          .catch(() => {});
+      }
+    }
   }
 }

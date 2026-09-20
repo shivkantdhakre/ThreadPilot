@@ -168,6 +168,6 @@ describe('MemoryRepository Provenance and Pipeline Version Isolation', () => {
     assert(serialized.includes(workspaceId));
     assert(serialized.includes('v2'));
     assert(serialized.includes('gemini-embedding-2'));
-    assert(serialized.includes(50));
+    assert(serialized.includes('50'));
   });
 });

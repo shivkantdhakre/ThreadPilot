@@ -168,7 +168,7 @@ async function runAudit() {
     const cookieHeader = res.headers.get('set-cookie');
     if (cookieHeader) {
       const match = cookieHeader.match(/tp_rt=([^;]+)/);
-      if (match) successorRefreshToken = match[1];
+      if (match?.[1]) successorRefreshToken = match[1];
     }
   });
 
