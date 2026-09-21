@@ -7,13 +7,14 @@ export const QUEUES = {
   CONTENT:       'content',
   TOKEN_REFRESH: 'token-refresh',
   EMBEDDING:     'embedding',
+  PUBLISH:       'publish',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
 export type JobStatus = 'PENDING' | 'RUNNING' | 'COMPLETE' | 'FAILED';
 
-export type JobType = 'INGESTION' | 'STYLE' | 'CONTENT' | 'IMPROVE' | 'TOKEN_REFRESH' | 'EMBEDDING';
+export type JobType = 'INGESTION' | 'STYLE' | 'CONTENT' | 'IMPROVE' | 'TOKEN_REFRESH' | 'EMBEDDING' | 'PUBLISH';
 
 export interface ExecutionContext {
   requestId: string;
@@ -84,6 +85,10 @@ export interface EmbeddingJobPayload extends BaseJobPayload {
   taskType: 'DOCUMENT' | 'SIMILARITY';
   model?: string;
   pipelineVersion?: string;
+}
+
+export interface PublishJobPayload extends BaseJobPayload {
+  scheduledPostId: string;
 }
 
 // ─── Job status response ──────────────────────────────────────────────────────

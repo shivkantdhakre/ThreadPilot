@@ -6,7 +6,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "node --experimental-strip-types --test test/oauth-negative-paths.spec.ts test/threads-live-contract.spec.ts",
+    "test": "node --experimental-strip-types --test test/*.spec.ts",
     "test:threads-live": "node --experimental-strip-types --test test/threads-live-contract.spec.ts",
     "lint": "tsc --noEmit"
   },

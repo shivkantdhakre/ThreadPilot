@@ -21,8 +21,8 @@ export class ThreadsTokenService {
       del: (key: string) => Promise<number>;
     },
     private readonly apiBaseUrl: string,
-    private readonly appId: string,
-    private readonly appSecret: string,
+    public readonly appId: string = '',
+    public readonly appSecret: string = '',
   ) {}
 
   /**
@@ -73,26 +73,17 @@ export class ThreadsTokenService {
       where: { socialAccountId },
     });
 
-    const decryptedRefreshToken = token.refreshTokenEncrypted
-      ? this.encryption.decrypt(token.refreshTokenEncrypted)
-      : null;
-
-    if (!decryptedRefreshToken) {
-      throw new Error(`No refresh token available for account ${socialAccountId}`);
+    const currentAccessToken = this.encryption.decrypt(token.accessTokenEncrypted);
+    if (!currentAccessToken) {
+      throw new Error(`No access token available for account ${socialAccountId}`);
     }
 
-    // NOTE: Verify the exact refresh endpoint against current Meta Threads API docs
-    const params = new URLSearchParams({
-      grant_type: 'refresh_token',
-      client_id: this.appId,
-      client_secret: this.appSecret,
-      refresh_token: decryptedRefreshToken,
-    });
+    const refreshUrl = `${this.apiBaseUrl}/refresh_access_token?grant_type=th_refresh_token&access_token=${encodeURIComponent(
+      currentAccessToken,
+    )}`;
 
-    const response = await fetch(`${this.apiBaseUrl}/oauth/access_token`, {
-      method: 'POST',
-      body: params,
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    const response = await fetch(refreshUrl, {
+      method: 'GET',
     });
 
     if (!response.ok) {
@@ -100,7 +91,7 @@ export class ThreadsTokenService {
       throw new Error(`Token refresh failed: ${response.status} ${body}`);
     }
 
-    type RefreshResponse = { access_token: string; expires_in?: number };
+    type RefreshResponse = { access_token: string; token_type?: string; expires_in?: number };
     const refreshed = (await response.json()) as RefreshResponse;
 
     const expiresAt = new Date(

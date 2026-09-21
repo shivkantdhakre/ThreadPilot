@@ -82,6 +82,9 @@ model Workspace {
   agentRuns      AgentRun[]
   auditLogs      AuditLog[]
   aiUsage        AIUsage[]
+  scheduledPosts ScheduledPost[]
+  publishedPosts PublishedPost[]
+  eventOutbox    EventOutbox[]
 
   @@map("workspaces")
 }
@@ -107,6 +110,7 @@ model SocialAccount {
   threadPosts     ThreadPost[]
   externalPosts   ExternalPost[]
   publishedPosts  PublishedPost[]
+  scheduledPosts  ScheduledPost[]
   rateLimits      PlatformRateLimit[]
 
   @@unique([workspaceId, platform, externalId])
@@ -146,7 +150,8 @@ model ThreadPost {
   threadsPostId   String        @map("threads_post_id")
   text            String
   mediaType       String        @default("TEXT")
-  postedAt        DateTime      @map("posted_at")
+  postedAt        DateTime?     @map("posted_at") // Nullable authoritative platform timestamp
+  postedObservedAt DateTime     @default(now()) @map("posted_observed_at") // Local observation timestamp
   isOurs          Boolean       @default(true) @map("is_ours")
   sourceType      String        @default("PUBLISHED")  // PUBLISHED | INGESTED
   externalPostId  String?       @map("external_post_id") @db.Uuid
@@ -360,10 +365,10 @@ model ContentDraft {
   retrievalSnapshotHash String?  @map("retrieval_snapshot_hash")
   editedByUser          Boolean  @default(false) @map("edited_by_user")
 
-  versions      ContentVersion[]
-  scheduledPost ScheduledPost?
-  publishedPost PublishedPost?
-  createdAt     DateTime         @default(now()) @map("created_at")
+  versions       ContentVersion[]
+  scheduledPosts ScheduledPost[]
+  publishedPosts PublishedPost[]
+  createdAt      DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
 
   @@index([workspaceId, status])
@@ -382,7 +387,8 @@ model ContentVersion {
   diffSummary String?      @map("diff_summary")
   createdAt   DateTime     @default(now()) @map("created_at")
 
-  publishedPost PublishedPost?
+  scheduledPosts ScheduledPost[]
+  publishedPosts PublishedPost[]
 
   @@unique([draftId, version])
   @@index([draftId])
@@ -395,46 +401,103 @@ model ContentVersion {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model ScheduledPost {
-  id              String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  workspaceId     String       @map("workspace_id") @db.Uuid
-  draftId         String       @unique @map("draft_id") @db.Uuid
-  draft           ContentDraft @relation(fields: [draftId], references: [id])
+  id                  String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId         String          @map("workspace_id") @db.Uuid
+  workspace           Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId     String          @map("social_account_id") @db.Uuid
+  socialAccount       SocialAccount   @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
 
-  scheduledAt     DateTime     @map("scheduled_at")
-  timezone        String
+  // draftId is NOT unique so drafts can be rescheduled after cancellation or terminal failure
+  draftId             String          @map("draft_id") @db.Uuid
+  draft               ContentDraft    @relation(fields: [draftId], references: [id])
 
-  // SCHEDULED → PROCESSING → PUBLISHED | FAILED_RETRYABLE | FAILED_PERMANENT | CANCELLED | EXPIRED
-  status          String       @default("SCHEDULED")
+  // Draft version immutability pinning with strict FK
+  contentVersionId    String          @map("content_version_id") @db.Uuid
+  contentVersion      ContentVersion  @relation(fields: [contentVersionId], references: [id], onDelete: Restrict)
+  contentSnapshot     Json            @map("content_snapshot")   // { body, hook, cta }
+  contentHash         String          @map("content_hash")       // SHA-256 for duplicate/recovery match
 
-  idempotencyKey  String       @unique @map("idempotency_key")
-  attemptCount    Int          @default(0) @map("attempt_count")
-  lastAttemptAt   DateTime?    @map("last_attempt_at")
-  nextRetryAt     DateTime?    @map("next_retry_at")
-  lastErrorCode   String?      @map("last_error_code")
-  lastErrorMsg    String?      @map("last_error_msg")
-  bullJobId       String?      @map("bull_job_id")
+  scheduledAt         DateTime        @map("scheduled_at")
+  timezone            String
 
-  createdAt       DateTime     @default(now()) @map("created_at")
-  updatedAt       DateTime     @updatedAt @map("updated_at")
+  // FSM: SCHEDULED | CLAIMED | CREATING_CONTAINER | CONTAINER_CREATED | PUBLISHING |
+  //      PUBLISHED | QUOTA_BLOCKED | FAILED_RETRYABLE | FAILED_PERMANENT | AUTH_REQUIRED |
+  //      RECOVERY_REQUIRED | CANCELLED | EXPIRED
+  status              String          @default("SCHEDULED")
 
+  // Application-level idempotency scoped to workspace
+  idempotencyKey      String          @map("idempotency_key")
+  requestFingerprint  String          @map("request_fingerprint")
+
+  // Fencing & worker concurrency arbitration
+  claimedBy           String?         @map("claimed_by")
+  claimedAt           DateTime?       @map("claimed_at")
+  leaseUntil          DateTime?       @map("lease_until")
+  attemptId           String?         @map("attempt_id") @db.Uuid
+  attemptCount        Int             @default(0) @map("attempt_count")
+  lastAttemptAt       DateTime?       @map("last_attempt_at")
+  lastQuotaCheckedAt  DateTime?       @map("last_quota_checked_at")
+
+  // Platform coordination & Ambiguous Publish Checkpoints
+  containerId             String?     @map("container_id")
+  containerCreateAttempts Int         @default(0) @map("container_create_attempts")
+  publishRequestedAt      DateTime?   @map("publish_requested_at")
+  publishAttemptId        String?     @map("publish_attempt_id") @db.Uuid
+  ambiguityDetectedAt     DateTime?   @map("ambiguity_detected_at")
+
+  // Consistent Timestamp Semantics: publishedAt is strictly nullable platform time
+  publishedAt         DateTime?       @map("published_at")
+  publishedObservedAt DateTime?       @map("published_observed_at")
+  nextRetryAt         DateTime?       @map("next_retry_at")
+  lastErrorCode       String?         @map("last_error_code")
+  lastErrorMsg        String?         @map("last_error_msg")
+  bullJobId           String?         @map("bull_job_id")
+
+  dispatchRecord      ScheduledPostDispatch?
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, idempotencyKey], name: "unique_workspace_idempotency_key")
   @@index([workspaceId, status, scheduledAt])
+  @@index([status, scheduledAt])
+  @@index([status, leaseUntil])
+  @@index([status, nextRetryAt])
   @@map("scheduled_posts")
+}
+
+// Outbox Dispatch Record Model for Asynchronous Queue Resilience
+model ScheduledPostDispatch {
+  id              String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  scheduledPostId String        @unique @map("scheduled_post_id") @db.Uuid
+  scheduledPost   ScheduledPost @relation(fields: [scheduledPostId], references: [id], onDelete: Cascade)
+  status          String        @default("PENDING") // PENDING | DISPATCHED | FAILED
+  dispatchedAt    DateTime?     @map("dispatched_at")
+  bullJobId       String?       @map("bull_job_id")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@map("scheduled_post_dispatches")
 }
 
 /// Explicitly records which ContentVersion was published — not just the draft.
 model PublishedPost {
-  id                 String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  workspaceId        String         @map("workspace_id") @db.Uuid
-  socialAccountId    String         @map("social_account_id") @db.Uuid
-  socialAccount      SocialAccount  @relation(fields: [socialAccountId], references: [id])
-  draftId            String         @unique @map("draft_id") @db.Uuid
-  draft              ContentDraft   @relation(fields: [draftId], references: [id])
-  publishedVersionId String         @unique @map("published_version_id") @db.Uuid
-  publishedVersion   ContentVersion @relation(fields: [publishedVersionId], references: [id])
-  threadsPostId      String         @map("threads_post_id")
-  publishedAt        DateTime       @map("published_at")
+  id                  String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId         String         @map("workspace_id") @db.Uuid
+  workspace           Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId     String         @map("social_account_id") @db.Uuid
+  socialAccount       SocialAccount  @relation(fields: [socialAccountId], references: [id])
+  draftId             String         @map("draft_id") @db.Uuid
+  draft               ContentDraft   @relation(fields: [draftId], references: [id])
+  publishedVersionId  String         @map("published_version_id") @db.Uuid
+  publishedVersion    ContentVersion @relation(fields: [publishedVersionId], references: [id])
+  threadsPostId       String         @map("threads_post_id")
+  publishedAt         DateTime?      @map("published_at")
+  publishedObservedAt DateTime       @default(now()) @map("published_observed_at")
 
   @@unique([socialAccountId, threadsPostId])
+  @@unique([draftId, socialAccountId])
+  @@unique([publishedVersionId, socialAccountId])
   @@index([workspaceId])
   @@map("published_posts")
 }
@@ -576,11 +639,48 @@ model Notification {
   type        String
   title       String
   body        String
-  entityType  String?   @map("entity_type")
-  entityId    String?   @map("entity_id")
-  read        Boolean   @default(false)
-  createdAt   DateTime  @default(now()) @map("created_at")
+  entityType     String?   @map("entity_type")
+  entityId       String?   @map("entity_id")
+  idempotencyKey String?   @unique @map("idempotency_key")
+  read           Boolean   @default(false)
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   @@index([workspaceId, read, createdAt])
   @@map("notifications")
+}
+
+// Decoupled Outbox Event Model for Asynchronous Notifications with Lease Token
+model EventOutbox {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  eventType   String    @map("event_type")
+  payload     Json
+  status      String    @default("PENDING") // PENDING | PROCESSING | PROCESSED | FAILED
+  attemptCount Int      @default(0) @map("attempt_count")
+  leaseUntil  DateTime? @map("lease_until")
+  leaseToken  String?   @map("lease_token") @db.Uuid
+  lastError   String?   @map("last_error")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
+  processedAt DateTime? @map("processed_at")
+
+  @@index([status, createdAt])
+  @@index([status, leaseUntil])
+  @@map("event_outbox")
+}
+
+// Migration Quarantine Table for Legacy Ambiguous Records
+model ScheduledPostMigrationQuarantine {
+  id                 String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  scheduledPostId    String    @map("scheduled_post_id") @db.Uuid
+  workspaceId        String    @map("workspace_id") @db.Uuid
+  draftId            String    @map("draft_id") @db.Uuid
+  status             String
+  containerId        String?   @map("container_id")
+  publishRequestedAt DateTime? @map("publish_requested_at")
+  quarantinedAt      DateTime  @default(now()) @map("quarantined_at")
+  reason             String
+
+  @@map("scheduled_posts_migration_quarantine")
 }

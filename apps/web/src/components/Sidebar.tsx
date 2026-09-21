@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   PenSquare,
+  Calendar,
   Sparkles,
   Share2,
   Settings,
@@ -22,6 +23,7 @@ export function Sidebar() {
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Content Studio', href: '/create', icon: PenSquare },
+    { name: 'Publishing Calendar', href: '/schedules', icon: Calendar },
     { name: 'Voice & Profile', href: '/profile', icon: Sparkles },
     { name: 'Accounts', href: '/connect', icon: Share2 },
     { name: 'Settings', href: '/settings', icon: Settings },

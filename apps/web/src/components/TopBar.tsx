@@ -5,6 +5,7 @@ import { Bell, Sparkles, RefreshCw } from 'lucide-react';
 import { apiClient } from '../lib/api-client';
 
 export function TopBar({ title }: { title: string }) {
+  const [isSystemOnline, setIsSystemOnline] = useState<boolean | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
@@ -14,7 +15,20 @@ export function TopBar({ title }: { title: string }) {
         setUnreadCount(res.unreadCount ?? 0);
       } catch {}
     }
+
+    async function checkHealth() {
+      try {
+        const res = await apiClient.get<{ status?: string }>('/health', { skipAuth: true });
+        setIsSystemOnline(res.status === 'ok');
+      } catch {
+        setIsSystemOnline(false);
+      }
+    }
+
     fetchNotifications();
+    checkHealth();
+    const interval = setInterval(checkHealth, 20_000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -24,9 +38,26 @@ export function TopBar({ title }: { title: string }) {
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-400">
-          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-          Worker Active
+        <div
+          className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+            isSystemOnline === null
+              ? 'border-white/10 bg-white/5 text-white/50'
+              : isSystemOnline
+              ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+              : 'border-rose-500/30 bg-rose-500/10 text-rose-400'
+          }`}
+          title={isSystemOnline ? 'Backend services & database active' : 'Backend connection unavailable'}
+        >
+          <span
+            className={`h-2 w-2 rounded-full ${
+              isSystemOnline === null
+                ? 'bg-white/30'
+                : isSystemOnline
+                ? 'bg-emerald-500 animate-pulse'
+                : 'bg-rose-500'
+            }`}
+          />
+          {isSystemOnline === null ? 'Connecting...' : isSystemOnline ? 'System Online' : 'System Offline'}
         </div>
 
         <button

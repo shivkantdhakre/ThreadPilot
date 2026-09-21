@@ -104,6 +104,7 @@ class ApiClient {
       ...options,
       headers,
       credentials: 'include', // sends HttpOnly refresh cookie
+      signal: options.signal ?? (typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(30_000) : null),
     };
 
     const response = await fetch(url, config);

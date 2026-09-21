@@ -19,6 +19,9 @@ export interface ThreadsApiPost {
   timestamp: string;      // ISO 8601
   permalink?: string;
   is_quote_post?: boolean;
+  username?: string;
+  owner?: { id: string };
+  ownerId?: string;
 }
 
 export interface ThreadsApiPostList {

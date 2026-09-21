@@ -28,7 +28,7 @@ export class ThreadsAuthService {
         appId: this.config.get<string>('THREADS_APP_ID', ''),
         appSecret: this.config.get<string>('THREADS_APP_SECRET', ''),
         redirectUri: this.config.get<string>('THREADS_REDIRECT_URI', 'http://localhost:3001/api/v1/threads-auth/callback'),
-        scopes: this.config.get<string>('THREADS_SCOPES', 'threads_basic'),
+        scopes: this.config.get<string>('THREADS_SCOPES', 'threads_basic,threads_content_publish'),
         stateTtlSeconds: Number(this.config.get<number>('THREADS_OAUTH_STATE_TTL_SECONDS', 300)),
       },
     );
@@ -51,6 +51,15 @@ export class ThreadsAuthService {
       const externalId = String(tokens.user_id ?? 'unknown_user_id');
       let username = tokens.username ? String(tokens.username) : 'threads_user';
       let displayName = username;
+
+      const rawScopes = this.config.get<string>(
+        'THREADS_SCOPES',
+        'threads_basic,threads_content_publish',
+      );
+      const parsedScopes = rawScopes
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
 
       // Query Threads Graph API /me to fetch verified username and display name
       try {
@@ -106,7 +115,7 @@ export class ThreadsAuthService {
             socialAccountId: account.id,
             accessTokenEncrypted,
             refreshTokenEncrypted,
-            scopes: [this.config.get<string>('THREADS_SCOPES', 'threads_basic')],
+            scopes: parsedScopes,
             expiresAt,
             issuedAt: new Date(),
             lastRefreshedAt: new Date(),
@@ -114,9 +123,26 @@ export class ThreadsAuthService {
           update: {
             accessTokenEncrypted,
             refreshTokenEncrypted,
+            scopes: parsedScopes,
             expiresAt,
             lastRefreshedAt: new Date(),
             revokedAt: null,
+          },
+        });
+
+        // Unblock any AUTH_REQUIRED schedules for this account now that valid auth is re-established
+        await tx.scheduledPost.updateMany({
+          where: {
+            socialAccountId: account.id,
+            status: 'AUTH_REQUIRED',
+            publishRequestedAt: null,
+            ambiguityDetectedAt: null,
+          },
+          data: {
+            status: 'SCHEDULED',
+            lastErrorCode: null,
+            lastErrorMsg: null,
+            updatedAt: new Date(),
           },
         });
 

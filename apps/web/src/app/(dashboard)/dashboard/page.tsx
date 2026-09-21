@@ -12,14 +12,17 @@ import {
   RefreshCw,
   CheckCircle2,
   FileText,
+  Calendar,
 } from 'lucide-react';
 import { TopBar } from '../../../components/TopBar';
 import { apiClient } from '../../../lib/api-client';
 import { UserProfileDto } from '@threadpilot/types';
+import { renderStatusBadge, formatRelativeTime } from '../../../components/schedules/ScheduleCard';
 
 export default function DashboardPage() {
   const [profile, setProfile] = useState<UserProfileDto | null>(null);
   const [drafts, setDrafts] = useState<any[]>([]);
+  const [schedules, setSchedules] = useState<any[]>([]);
   const [ingestionStatus, setIngestionStatus] = useState<any>(null);
   const [account, setAccount] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -27,17 +30,19 @@ export default function DashboardPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [profRes, draftsRes, ingestRes, accountsRes] = await Promise.allSettled([
+        const [profRes, draftsRes, ingestRes, accountsRes, schedulesRes] = await Promise.allSettled([
           apiClient.get<UserProfileDto>('/profile'),
           apiClient.get<{ data: any[] }>('/content/drafts?limit=5'),
           apiClient.get<any>('/ingestion/status'),
           apiClient.get<{ accounts: any[] }>('/threads-auth/status'),
+          apiClient.get<{ data: any[] }>('/content/schedules?limit=4'),
         ]);
 
         if (profRes.status === 'fulfilled') setProfile(profRes.value);
         if (draftsRes.status === 'fulfilled') setDrafts(draftsRes.value.data ?? []);
         if (ingestRes.status === 'fulfilled') setIngestionStatus(ingestRes.value);
         if (accountsRes.status === 'fulfilled') setAccount(accountsRes.value.accounts?.[0] ?? null);
+        if (schedulesRes.status === 'fulfilled') setSchedules(schedulesRes.value.data ?? []);
       } catch (err) {
         console.error(err);
       } finally {
@@ -157,6 +162,57 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Upcoming Publishing Queue */}
+        <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-6 backdrop-blur-xl">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h3 className="text-base font-bold text-white tracking-tight">Upcoming Publishing Queue</h3>
+              <p className="text-xs text-white/50">Next scheduled posts across connected Threads profiles</p>
+            </div>
+            <Link
+              href="/schedules"
+              className="text-xs font-semibold text-brand-400 hover:text-brand-300 flex items-center gap-1"
+            >
+              Open Calendar <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+
+          {schedules.length === 0 ? (
+            <div className="text-center py-8 border border-dashed border-white/10 rounded-xl">
+              <Calendar className="h-7 w-7 text-white/20 mx-auto mb-2" />
+              <p className="text-xs text-white/50">No scheduled posts in the queue</p>
+              <Link href="/create" className="btn-primary mt-3 text-xs py-1.5 px-3">
+                Schedule a Post
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {schedules.map((s) => (
+                <div
+                  key={s.id}
+                  className="rounded-xl border border-white/5 bg-black/40 p-4 space-y-2 hover:border-white/15 transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    {renderStatusBadge(s.status)}
+                    <span className="text-[11px] font-medium text-white/50">
+                      {formatRelativeTime(s.scheduledAt)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-white/90 line-clamp-2 leading-relaxed font-sans">
+                    {s.contentSnapshot?.body || 'Post content'}
+                  </p>
+                  <div className="flex items-center justify-between pt-1 text-[11px] text-white/40">
+                    <span>@{s.socialAccount?.username || 'account'}</span>
+                    <Link href="/schedules" className="text-brand-300 hover:underline">
+                      Manage &rarr;
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Recent Drafts */}

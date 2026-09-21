@@ -4,14 +4,61 @@
 export type ContentDraftStatus = 'DRAFT' | 'READY' | 'ARCHIVED';
 
 // Publishing state machine — lives on ScheduledPost
-export type PublishingStatus =
+export type ScheduledPostStatus =
   | 'SCHEDULED'
-  | 'PROCESSING'
+  | 'CLAIMED'
+  | 'CREATING_CONTAINER'
+  | 'CONTAINER_CREATED'
+  | 'PUBLISHING'
   | 'PUBLISHED'
+  | 'QUOTA_BLOCKED'
   | 'FAILED_RETRYABLE'
   | 'FAILED_PERMANENT'
+  | 'AUTH_REQUIRED'
+  | 'RECOVERY_REQUIRED'
   | 'CANCELLED'
   | 'EXPIRED';
+
+// Backward compatibility alias
+export type PublishingStatus = ScheduledPostStatus;
+
+export type ScheduledPostDispatchStatus = 'PENDING' | 'DISPATCHED' | 'FAILED';
+export type EventOutboxStatus = 'PENDING' | 'PROCESSING' | 'PROCESSED' | 'FAILED';
+
+export interface ScheduleDraftDto {
+  scheduledAt: string;
+  timezone: string;
+  socialAccountId: string;
+  idempotencyKey?: string;
+}
+
+export interface ResolveScheduleDto {
+  action: 'CONFIRM_PUBLISHED' | 'CONFIRM_NOT_PUBLISHED';
+  resolution?: 'CONFIRM_PUBLISHED' | 'CONFIRM_NOT_PUBLISHED';
+  threadsPostId?: string;
+  confirmUnpublished?: boolean;
+  reason?: string;
+}
+
+export interface ScheduledPostDto {
+  id: string;
+  workspaceId: string;
+  draftId: string;
+  socialAccountId: string;
+  contentVersionId: string;
+  scheduledAt: string;
+  timezone: string;
+  status: ScheduledPostStatus;
+  attemptCount: number;
+  lastAttemptAt: string | null;
+  nextRetryAt: string | null;
+  lastErrorCode: string | null;
+  lastErrorMsg: string | null;
+  publishedAt: string | null;
+  publishedObservedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface ContentDraftDto {
   id: string;

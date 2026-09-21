@@ -5,9 +5,7 @@
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",
-    "start": "node dist/main.js",
-    "test": "node --experimental-strip-types --test test/crash-recovery.spec.ts test/ingestion-interruption.spec.ts test/historical-duplicate-e2e.spec.ts test/embedding-processor.spec.ts test/embedding-reconciliation.spec.ts test/ingestion-embedding-retrieval-e2e.spec.ts",
-    "lint": "tsc --noEmit"
+    "test": "node --experimental-strip-types --test test/publishing-processor.spec.ts test/event-outbox-processor.spec.ts test/crash-recovery.spec.ts test/ingestion-interruption.spec.ts test/historical-duplicate-e2e.spec.ts test/embedding-processor.spec.ts test/embedding-reconciliation.spec.ts test/ingestion-embedding-retrieval-e2e.spec.ts"
   },
 
   "dependencies": {

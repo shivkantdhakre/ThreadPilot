@@ -47,6 +47,7 @@ function parseRedisUrl(urlStr: string) {
       { name: QUEUES.CONTENT },
       { name: QUEUES.TOKEN_REFRESH },
       { name: QUEUES.EMBEDDING },
+      { name: QUEUES.PUBLISH },
     ),
   ],
   controllers: [JobsController],

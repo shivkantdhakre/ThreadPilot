@@ -12,6 +12,11 @@ import { StyleProcessor } from './processors/style.processor';
 import { ContentProcessor } from './processors/content.processor';
 import { TokenRefreshProcessor } from './processors/token-refresh.processor';
 import { EmbeddingProcessor } from './processors/embedding.processor';
+import { PublishingProcessor } from './processors/publishing.processor';
+import { EventOutboxProcessor } from './processors/event-outbox.processor';
+import { PublishingReconciliationService } from './services/publishing-reconciliation.service';
+import { PublishingService } from './services/publishing.service';
+import { prisma, PrismaClient } from '@threadpilot/database';
 
 function parseRedisUrl(urlStr: string) {
   try {
@@ -54,6 +59,7 @@ function parseRedisUrl(urlStr: string) {
       { name: QUEUES.CONTENT },
       { name: QUEUES.TOKEN_REFRESH },
       { name: QUEUES.EMBEDDING },
+      { name: QUEUES.PUBLISH },
     ),
   ],
   providers: [
@@ -65,7 +71,15 @@ function parseRedisUrl(urlStr: string) {
     ContentProcessor,
     TokenRefreshProcessor,
     EmbeddingProcessor,
+    PublishingService,
+    PublishingProcessor,
+    EventOutboxProcessor,
+    PublishingReconciliationService,
+    {
+      provide: PrismaClient,
+      useValue: prisma,
+    },
   ],
-  exports: [EmbeddingReconciliationService],
+  exports: [EmbeddingReconciliationService, PublishingReconciliationService],
 })
 export class WorkerModule {}

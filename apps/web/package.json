@@ -6,7 +6,8 @@
     "build": "next build",
     "dev": "next dev",
     "start": "next start",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test test/calendar-schedules.spec.ts"
   },
   "dependencies": {
     "@threadpilot/types": "workspace:*",

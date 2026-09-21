@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Save, Sparkles, Loader2, Plus, ArrowLeft } from 'lucide-react';
+import { Save, Sparkles, Loader2, Plus, ArrowLeft, Calendar } from 'lucide-react';
 import { apiClient } from '../../lib/api-client';
 import { ThreadsPreview } from './ThreadsPreview';
 import { AIImprovementPanel } from './AIImprovementPanel';
 import { VersionHistory, VersionItem } from './VersionHistory';
+import { ScheduleModal } from '../schedules/ScheduleModal';
 
 export interface DraftDetail {
   id: string;
@@ -29,12 +30,37 @@ export function DraftEditor({ initialDraft, onSaved, onBack }: DraftEditorProps)
   const [cta, setCta] = useState(initialDraft?.currentVersion?.cta ?? '');
   const [topic, setTopic] = useState(initialDraft?.topic ?? '');
   const [isSaving, setIsSaving] = useState(false);
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string>(
     initialDraft?.currentVersion?.id ?? initialDraft?.versions[0]?.id ?? '',
   );
 
   // Auto-detect hook from first sentence if empty
   const detectedHook = hook || body.split(/[.\n?!]/)[0] || '';
+
+  const handleOpenSchedule = async () => {
+    if (!draft) {
+      if (!body.trim()) return;
+      setIsSaving(true);
+      try {
+        const newDraft = await apiClient.post<DraftDetail>('/content/drafts', {
+          body,
+          hook: detectedHook,
+          cta,
+          topic,
+        });
+        setDraft(newDraft);
+        onSaved?.(newDraft);
+        setIsScheduleOpen(true);
+      } catch (err) {
+        console.error('Failed to save draft before scheduling', err);
+      } finally {
+        setIsSaving(false);
+      }
+    } else {
+      setIsScheduleOpen(true);
+    }
+  };
 
   const handleSaveVersion = async () => {
     if (!body.trim()) return;
@@ -154,14 +180,24 @@ export function DraftEditor({ initialDraft, onSaved, onBack }: DraftEditorProps)
               </div>
             </div>
 
-            <button
-              onClick={handleSaveVersion}
-              disabled={isSaving || !body.trim()}
-              className="btn-primary flex items-center gap-2 text-xs py-2 px-3.5"
-            >
-              {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Save Revision
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSaveVersion}
+                disabled={isSaving || !body.trim()}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white hover:bg-white/10 transition-colors flex items-center gap-1.5"
+              >
+                {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                <span>Save</span>
+              </button>
+              <button
+                onClick={handleOpenSchedule}
+                disabled={isSaving || !body.trim()}
+                className="btn-primary flex items-center gap-1.5 text-xs py-2 px-3.5 shadow-lg shadow-brand-500/20"
+              >
+                <Calendar className="h-3.5 w-3.5" />
+                <span>Schedule Post</span>
+              </button>
+            </div>
           </div>
 
           {/* Text Area */}
@@ -204,6 +240,25 @@ export function DraftEditor({ initialDraft, onSaved, onBack }: DraftEditorProps)
           />
         )}
       </div>
+
+      {/* Schedule Modal */}
+      {isScheduleOpen && draft && (
+        <ScheduleModal
+          isOpen={true}
+          onClose={() => setIsScheduleOpen(false)}
+          draftId={draft.id}
+          draftTopic={topic || draft.topic}
+          draftBody={body}
+          draftStatus={draft.status}
+          onScheduled={() => {
+            setIsScheduleOpen(false);
+            onSaved?.({
+              ...draft,
+              status: 'READY',
+            });
+          }}
+        />
+      )}
     </div>
   );
 }
