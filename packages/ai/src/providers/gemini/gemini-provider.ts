@@ -144,17 +144,23 @@ export class GeminiProvider implements AIProvider {
     return this.capabilities;
   }
 
+  private readonly embeddingDimensions?: number | undefined;
+
   constructor(
     apiKey: string,
     modelName: string,
     private readonly maxRetries = 3,
     timeoutMs = 30000,
-    private readonly embeddingDimensions?: number,
+    embeddingDimensions?: number | string | undefined,
     fallbackModels?: string[],
   ) {
     this.client = new GoogleGenAI({ apiKey });
     this.modelName = modelName;
     this.timeoutMs = timeoutMs;
+    this.embeddingDimensions =
+      embeddingDimensions !== undefined && embeddingDimensions !== null
+        ? Number(embeddingDimensions)
+        : undefined;
     this.fallbackModels = fallbackModels ?? [];
   }
 
@@ -301,7 +307,11 @@ export class GeminiProvider implements AIProvider {
 
   async embed(request: EmbeddingRequest): Promise<EmbeddingResponse> {
     const model = this.modelName;
-    const targetDimensions = request.dimensions ?? this.embeddingDimensions;
+    const rawDimensions = request.dimensions ?? this.embeddingDimensions;
+    const targetDimensions =
+      rawDimensions !== undefined && rawDimensions !== null
+        ? Number(rawDimensions)
+        : undefined;
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
@@ -321,7 +331,7 @@ export class GeminiProvider implements AIProvider {
           // gemini-embedding-2 does NOT support taskType in config.
           // Task semantics are handled strictly via formatGeminiEmbeddingInput prefixing.
           const config: Record<string, unknown> = {};
-          if (targetDimensions !== undefined) {
+          if (targetDimensions !== undefined && !isNaN(targetDimensions)) {
             config.outputDimensionality = targetDimensions;
           }
 
@@ -336,7 +346,11 @@ export class GeminiProvider implements AIProvider {
 
           for (const embedding of response.embeddings ?? []) {
             const values = embedding.values ?? [];
-            if (targetDimensions !== undefined && values.length !== targetDimensions) {
+            if (
+              targetDimensions !== undefined &&
+              !isNaN(targetDimensions) &&
+              values.length !== targetDimensions
+            ) {
               throw new Error(
                 `Embedding dimension mismatch: expected ${targetDimensions}, received ${values.length} from model ${model}`,
               );

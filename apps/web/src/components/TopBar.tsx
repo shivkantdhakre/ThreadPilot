@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Bell, Sparkles, RefreshCw } from 'lucide-react';
+import { Bell } from 'lucide-react';
 import { apiClient } from '../lib/api-client';
+import { NotificationDropdown } from './NotificationDropdown';
 
 export function TopBar({ title }: { title: string }) {
   const [isSystemOnline, setIsSystemOnline] = useState<boolean | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   useEffect(() => {
     async function fetchNotifications() {
@@ -60,17 +62,34 @@ export function TopBar({ title }: { title: string }) {
           {isSystemOnline === null ? 'Connecting...' : isSystemOnline ? 'System Online' : 'System Offline'}
         </div>
 
-        <button
-          className="relative rounded-lg border border-white/10 bg-white/5 p-2 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
-          title="Notifications"
-        >
-          <Bell className="h-4 w-4" />
-          {unreadCount > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand-500 text-[10px] font-bold text-white">
-              {unreadCount}
-            </span>
-          )}
-        </button>
+        {/* Notification Bell & Dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => setIsNotificationsOpen((prev) => !prev)}
+            className={`relative rounded-lg border p-2 transition-all ${
+              isNotificationsOpen
+                ? 'border-brand-500/40 bg-brand-500/15 text-white ring-1 ring-brand-500/30 shadow-lg shadow-brand-500/10'
+                : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
+            title="Notifications"
+            aria-label="Toggle notifications menu"
+            aria-expanded={isNotificationsOpen}
+          >
+            <Bell className="h-4 w-4" />
+            {unreadCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-brand-500 text-[10px] font-bold text-white shadow-md shadow-brand-500/40 animate-in zoom-in-50 duration-200">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          <NotificationDropdown
+            isOpen={isNotificationsOpen}
+            onClose={() => setIsNotificationsOpen(false)}
+            unreadCount={unreadCount}
+            onUnreadCountChange={setUnreadCount}
+          />
+        </div>
       </div>
     </header>
   );

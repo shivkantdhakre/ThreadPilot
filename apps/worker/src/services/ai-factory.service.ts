@@ -94,9 +94,9 @@ export class AIFactoryService {
       modelClassification: this.config.get<string>('GEMINI_MODEL_CLASSIFICATION', 'gemini-3.5-flash-lite'),
       modelEmbedding: this.config.get<string>('GEMINI_MODEL_EMBEDDING', 'gemini-embedding-2'),
       modelEmbeddingFallbacks: embeddingFallbacks,
-      embeddingDimensions: this.config.get<number>('GEMINI_EMBEDDING_DIMENSIONS', 768),
-      maxRetries: this.config.get<number>('GEMINI_MAX_RETRIES', 3),
-      timeoutMs: this.config.get<number>('GEMINI_REQUEST_TIMEOUT_MS', 30000),
+      embeddingDimensions: Number(this.config.get('GEMINI_EMBEDDING_DIMENSIONS', 768)) || 768,
+      maxRetries: Number(this.config.get('GEMINI_MAX_RETRIES', 3)) || 3,
+      timeoutMs: Number(this.config.get('GEMINI_REQUEST_TIMEOUT_MS', 30000)) || 30000,
     };
 
     this.router = new ModelRouter(aiConfig);

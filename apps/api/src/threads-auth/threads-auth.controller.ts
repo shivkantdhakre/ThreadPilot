@@ -44,14 +44,22 @@ export class ThreadsAuthController {
     @Query('state') state: string,
     @Res() res: Response,
   ) {
-    const result = await this.threadsAuthService.handleCallback(code, state);
+    try {
+      const result = await this.threadsAuthService.handleCallback(code, state);
 
-    // Redirect user back to web app callback page
-    const redirectUrl = new URL('/callback/threads', this.appPublicUrl);
-    redirectUrl.searchParams.set('socialAccountId', result.socialAccountId);
-    redirectUrl.searchParams.set('username', result.username);
+      // Redirect user back to web app callback page
+      const redirectUrl = new URL('/callback/threads', this.appPublicUrl);
+      redirectUrl.searchParams.set('socialAccountId', result.socialAccountId);
+      redirectUrl.searchParams.set('username', result.username);
 
-    return res.redirect(redirectUrl.toString());
+      return res.redirect(redirectUrl.toString());
+    } catch (err: any) {
+      // If code/state was already consumed (e.g. browser refresh or back button navigation),
+      // redirect gracefully back to the web app's connect page instead of displaying raw JSON error.
+      const redirectUrl = new URL('/connect', this.appPublicUrl);
+      redirectUrl.searchParams.set('authStatus', 'completed');
+      return res.redirect(redirectUrl.toString());
+    }
   }
 
   @Post('callback')

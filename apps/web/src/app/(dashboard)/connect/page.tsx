@@ -16,14 +16,25 @@ import { apiClient } from '../../../lib/api-client';
 
 export default function ConnectPage() {
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [totalIngested, setTotalIngested] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const loadStatus = async () => {
     try {
-      const res = await apiClient.get<{ accounts: any[] }>('/threads-auth/status');
-      setAccounts(res.accounts ?? []);
+      const [authRes, ingestRes] = await Promise.allSettled([
+        apiClient.get<{ accounts: any[] }>('/threads-auth/status'),
+        apiClient.get<{ totalIngested?: number }>('/ingestion/status'),
+      ]);
+
+      if (authRes.status === 'fulfilled') {
+        setAccounts(authRes.value.accounts ?? []);
+      }
+      if (ingestRes.status === 'fulfilled') {
+        setTotalIngested(ingestRes.value.totalIngested ?? 0);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -60,13 +71,43 @@ export default function ConnectPage() {
 
   const handleSyncIngestion = async (accountId: string) => {
     setSyncingId(accountId);
+    const prevCount = totalIngested ?? 0;
+    setSyncMessage('Connecting to Threads API to import latest posts...');
     try {
       await apiClient.post('/ingestion/start', { socialAccountId: accountId, isInitial: false });
-      alert('Ingestion job dispatched! Posts are being synchronized.');
+
+      // Poll ingestion status to update post count in real time
+      let attempts = 0;
+      const interval = setInterval(async () => {
+        attempts++;
+        try {
+          const res = await apiClient.get<{ totalIngested?: number; latestJob?: { status: string; progressMessage?: string } }>('/ingestion/status');
+          if (res.totalIngested !== undefined) {
+            setTotalIngested(res.totalIngested);
+          }
+          if (res.latestJob?.status === 'COMPLETE' || attempts >= 6) {
+            clearInterval(interval);
+            setSyncingId(null);
+            const currentTotal = res.totalIngested ?? prevCount;
+            if (currentTotal > prevCount) {
+              setSyncMessage(`Sync complete! Imported ${currentTotal - prevCount} new posts (${currentTotal} total posts indexed).`);
+            } else {
+              setSyncMessage(`Sync complete! All ${currentTotal} posts are up-to-date with Meta Threads API.`);
+            }
+            setTimeout(() => setSyncMessage(null), 6000);
+          }
+        } catch {
+          if (attempts >= 6) {
+            clearInterval(interval);
+            setSyncingId(null);
+            setSyncMessage(null);
+          }
+        }
+      }, 2000);
     } catch (err: any) {
       alert(err.message);
-    } finally {
       setSyncingId(null);
+      setSyncMessage(null);
     }
   };
 
@@ -121,43 +162,65 @@ export default function ConnectPage() {
               {accounts.map((acc) => (
                 <div
                   key={acc.id}
-                  className="rounded-xl border border-white/10 bg-black/40 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                  className="rounded-xl border border-white/10 bg-black/40 p-5 space-y-4"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-tr from-pink-500 to-purple-600 font-bold text-white text-sm">
-                      {acc.username.slice(0, 1).toUpperCase()}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-white">@{acc.username}</span>
-                        <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/20">
-                          <CheckCircle2 className="h-3 w-3" /> Connected
-                        </span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-tr from-pink-500 to-purple-600 font-bold text-white text-sm shadow-md">
+                        {acc.username.slice(0, 1).toUpperCase()}
                       </div>
-                      <p className="text-xs text-white/40 mt-0.5">
-                        Linked on {new Date(acc.connectedAt).toLocaleDateString()}
-                      </p>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-white">@{acc.username}</span>
+                          <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/20">
+                            <CheckCircle2 className="h-3 w-3" /> Connected
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-white/40 mt-1">
+                          <span>Linked on {new Date(acc.connectedAt).toLocaleDateString()}</span>
+                          <span>•</span>
+                          <span className="text-brand-300 font-medium bg-brand-500/10 border border-brand-500/20 rounded px-1.5 py-0.5 text-[11px]">
+                            {totalIngested !== null ? `${totalIngested} Posts Synced` : 'Checking sync...'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleSyncIngestion(acc.id)}
+                        disabled={syncingId === acc.id}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw
+                          className={`h-3 w-3 ${syncingId === acc.id ? 'animate-spin text-brand-400' : ''}`}
+                        />
+                        <span>{syncingId === acc.id ? 'Syncing...' : 'Sync Posts'}</span>
+                      </button>
+                      <button
+                        onClick={() => handleDisconnect(acc.id)}
+                        className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/20 flex items-center gap-1.5 transition-colors"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        <span>Disconnect</span>
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleSyncIngestion(acc.id)}
-                      disabled={syncingId === acc.id}
-                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 flex items-center gap-1.5 transition-colors"
-                    >
-                      <RefreshCw
-                        className={`h-3 w-3 ${syncingId === acc.id ? 'animate-spin' : ''}`}
-                      />
-                      <span>Sync Posts</span>
-                    </button>
-                    <button
-                      onClick={() => handleDisconnect(acc.id)}
-                      className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/20 flex items-center gap-1.5 transition-colors"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                      <span>Disconnect</span>
-                    </button>
+                  {syncMessage && (
+                    <div className="rounded-lg border border-brand-500/30 bg-brand-500/10 p-3 text-xs text-brand-200 flex items-center gap-2.5">
+                      {syncingId === acc.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-brand-400 shrink-0" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                      )}
+                      <span>{syncMessage}</span>
+                    </div>
+                  )}
+
+                  <div className="border-t border-white/5 pt-3 flex items-center justify-between text-[11px] text-white/40">
+                    <span>Platform: Meta Threads Graph API</span>
+                    <span>Note: Newly created posts on Threads can take 2–5 minutes to propagate to Meta&apos;s API.</span>
                   </div>
                 </div>
               ))}
