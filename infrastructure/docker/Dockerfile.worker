@@ -3,6 +3,7 @@ ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable pnpm
 
+# ── deps stage ─────────────────────────────────────────────────────────────────
 FROM base AS deps
 WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -13,21 +14,28 @@ COPY packages/database/package.json ./packages/database/
 COPY packages/ai/package.json ./packages/ai/
 COPY packages/threads-client/package.json ./packages/threads-client/
 COPY packages/agents/package.json ./packages/agents/
+COPY prompts/package.json ./prompts/package.json
 COPY apps/worker/package.json ./apps/worker/
 RUN pnpm install --frozen-lockfile
 
+# ── build stage ────────────────────────────────────────────────────────────────
 FROM deps AS build
 WORKDIR /app
 COPY . .
 RUN pnpm --filter=@threadpilot/database db:generate
-RUN pnpm --filter=@threadpilot/worker build
+# Build all monorepo dependencies first (types, observability, database, threads-client, ai, prompts, agents), then worker
+RUN pnpm --filter=@threadpilot/worker... build
 
+# ── production stage ───────────────────────────────────────────────────────────
 FROM base AS production
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages ./packages
+COPY --from=build /app/prompts ./prompts
 COPY --from=build /app/apps/worker/dist ./apps/worker/dist
-COPY --from=build /app/packages/database/node_modules/.prisma ./packages/database/node_modules/.prisma
+COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
 EXPOSE 3002
 CMD ["node", "apps/worker/dist/main.js"]

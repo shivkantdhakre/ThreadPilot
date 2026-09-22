@@ -22,16 +22,18 @@ FROM deps AS build
 WORKDIR /app
 COPY . .
 RUN pnpm --filter=@threadpilot/database db:generate
-RUN pnpm --filter=@threadpilot/api build
+# Build all monorepo dependencies first (types, observability, database, threads-client), then api
+RUN pnpm --filter=@threadpilot/api... build
 
 # ── production stage ───────────────────────────────────────────────────────────
 FROM base AS production
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages ./packages
 COPY --from=build /app/apps/api/dist ./apps/api/dist
-COPY --from=build /app/packages/database/node_modules/.prisma ./packages/database/node_modules/.prisma
-COPY packages/database/prisma ./packages/database/prisma
+COPY --from=build /app/apps/api/package.json ./apps/api/package.json
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
 EXPOSE 3001
 CMD ["node", "apps/api/dist/main.js"]
