@@ -199,7 +199,7 @@ async function checkConnectivity() {
   }
 
   // Redis connectivity check
-  const redisUrl = process.env.REDIS_URL_LOCAL ?? process.env.REDIS_URL;
+  const redisUrl = process.env.REDIS_URL;
   if (!redisUrl) {
     fail('REDIS_URL', 'REDIS_URL is not set');
   } else {
