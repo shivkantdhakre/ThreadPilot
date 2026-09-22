@@ -1,0 +1,36 @@
+services:
+  # ─── 1. Worker (Warm Standby: STOPPED until explicit promotion) ─────────
+  # In Phase A/B, this container remains STOPPED.
+  # Activated only during worker promotion via:
+  # docker compose -f infrastructure/docker/docker-compose.prod.yml --profile worker up -d worker
+  worker:
+    image: threadpilot-worker:latest
+    build:
+      context: ../../
+      dockerfile: infrastructure/docker/Dockerfile.worker
+    env_file: ../../.env.production
+    restart: unless-stopped
+    profiles:
+      - worker
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+  # ─── 2. Ingress Caddy (Standby for Phase C) ────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    profiles:
+      - caddy
+
+volumes:
+  caddy_data:
+  caddy_config:

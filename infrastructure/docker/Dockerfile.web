@@ -5,13 +5,22 @@ RUN corepack enable pnpm
 
 FROM base AS deps
 WORKDIR /app
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages/types/package.json ./packages/types/
+COPY packages/config/package.json ./packages/config/
 COPY apps/web/package.json ./apps/web/
-COPY package.json pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile --filter=@threadpilot/web
+RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
 WORKDIR /app
+COPY packages/types ./packages/types
+COPY packages/config ./packages/config
 COPY apps/web ./apps/web
+
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV DOCKER_BUILD=true
+
 RUN pnpm --filter=@threadpilot/web build
 
 FROM base AS production

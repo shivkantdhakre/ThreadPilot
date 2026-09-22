@@ -4,20 +4,20 @@ ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable pnpm
 
 # ── migrate stage ──────────────────────────────────────────────────────────────
-# This container runs prisma migrate deploy then the vector column migration.
-# It exits when done. api and worker wait for: condition: service_completed_successfully
+# This container runs prisma migrate deploy against DATABASE_URL_UNPOOLED / DATABASE_URL.
+# It exits with code 0 when complete.
 FROM base AS migrate
 WORKDIR /app
-COPY package.json pnpm-workspace.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/config/package.json ./packages/config/
 COPY packages/database/package.json ./packages/database/
 RUN pnpm install --frozen-lockfile --filter=@threadpilot/database
 
+COPY packages/config ./packages/config
 COPY packages/database ./packages/database
 
 RUN pnpm --filter=@threadpilot/database db:generate
 
-# Script runs both prisma migrate deploy and the vector column SQL
 COPY infrastructure/docker/scripts/migrate.sh /migrate.sh
 RUN chmod +x /migrate.sh
 

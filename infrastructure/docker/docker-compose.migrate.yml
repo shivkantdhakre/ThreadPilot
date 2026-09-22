@@ -1,0 +1,8 @@
+services:
+  migrate:
+    image: threadpilot-migrate:latest
+    build:
+      context: ../../
+      dockerfile: infrastructure/docker/Dockerfile.migrate
+    env_file: ../../.env.production
+    restart: "no"

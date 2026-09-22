@@ -18,6 +18,8 @@
     "@threadpilot/database": "workspace:^",
     "@threadpilot/threads-client": "workspace:^",
     "@threadpilot/types": "workspace:^",
+    "bullmq": "^5.40.0",
+    "dotenv": "^16.4.7",
     "ioredis": "^5.4.1",
     "prettier": "^3.3.3",
     "turbo": "^2.5.3",

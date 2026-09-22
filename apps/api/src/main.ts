@@ -27,9 +27,28 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  // CORS — tighten in production
+  // CORS — normalized for split-subdomain production and multiple origins
+  const rawOrigins =
+    process.env['CORS_ORIGIN'] ??
+    process.env['APP_PUBLIC_URL'] ??
+    'http://localhost:3000';
+  const allowedOrigins = rawOrigins
+    .split(',')
+    .map((o) => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+
   app.enableCors({
-    origin: process.env['APP_PUBLIC_URL'] ?? 'http://localhost:3000',
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
+      if (!origin) return callback(null, true);
+      const normalized = origin.replace(/\/+$/, '');
+      if (allowedOrigins.includes(normalized)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
     credentials: true,
   });
 

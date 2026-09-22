@@ -1,0 +1,6 @@
+[Unit]
+Description=ThreadPilot Backup Failure Alert Handler (%i)
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo "ALERT: Systemd unit %i failed. Check journalctl -u %i for details." >> /var/log/threadpilot/backup.log'
