@@ -85,12 +85,18 @@ if (!corsOrigin) {
   }
 }
 
-// 5. Shared Cookie Domain
-const cookieDomain = process.env.JWT_REFRESH_COOKIE_DOMAIN;
-if (!cookieDomain) {
-  fail('JWT_REFRESH_COOKIE_DOMAIN', 'Must be set for split-subdomain authentication');
+// 5. Shared Cookie Domain (Required for custom split subdomains, optional for free provider subdomains)
+const cookieDomain = (process.env.JWT_REFRESH_COOKIE_DOMAIN || '').trim();
+if (!cookieDomain || cookieDomain === 'none' || cookieDomain === 'unset') {
+  warn(
+    'JWT_REFRESH_COOKIE_DOMAIN',
+    'Unset (host-only cookies; expected when using separate free provider subdomains like *.vercel.app and *.onrender.com)'
+  );
 } else if (!cookieDomain.startsWith('.')) {
-  fail('JWT_REFRESH_COOKIE_DOMAIN', `Must start with a leading dot for wildcard subdomains (e.g. '.yourdomain.com'). Got '${cookieDomain}'`);
+  fail(
+    'JWT_REFRESH_COOKIE_DOMAIN',
+    `Must start with a leading dot for wildcard subdomains (e.g. '.yourdomain.com'). Got '${cookieDomain}'`
+  );
 } else if (cookieDomain.includes(':') || cookieDomain.includes('http')) {
   fail('JWT_REFRESH_COOKIE_DOMAIN', `Invalid cookie domain format: '${cookieDomain}'`);
 } else {

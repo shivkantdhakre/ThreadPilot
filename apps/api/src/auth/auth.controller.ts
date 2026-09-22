@@ -111,20 +111,28 @@ export class AuthController {
   }
 
   private setRefreshTokenCookie(res: Response, token: string): void {
+    const rawSameSite = this.config.get<string>('COOKIE_SAME_SITE', this.isProduction ? 'none' : 'lax');
+    const sameSite: 'none' | 'lax' | 'strict' =
+      rawSameSite === 'none' || rawSameSite === 'strict' ? rawSameSite : 'lax';
+
     res.cookie(this.cookieName, token, {
       httpOnly: true,
-      secure: this.isProduction,
-      sameSite: 'lax',
+      secure: this.isProduction || sameSite === 'none',
+      sameSite,
       path: '/',
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
   }
 
   private clearRefreshTokenCookie(res: Response): void {
+    const rawSameSite = this.config.get<string>('COOKIE_SAME_SITE', this.isProduction ? 'none' : 'lax');
+    const sameSite: 'none' | 'lax' | 'strict' =
+      rawSameSite === 'none' || rawSameSite === 'strict' ? rawSameSite : 'lax';
+
     res.clearCookie(this.cookieName, {
       httpOnly: true,
-      secure: this.isProduction,
-      sameSite: 'lax',
+      secure: this.isProduction || sameSite === 'none',
+      sameSite,
       path: '/',
     });
   }
