@@ -26,6 +26,7 @@ function parseRedisUrl(urlStr: string) {
       port: u.port ? parseInt(u.port, 10) : 6379,
       password: u.password || undefined,
       username: u.username || undefined,
+      tls: u.protocol === 'rediss:' ? {} : undefined,
     };
   } catch {
     return { host: 'localhost', port: 6379 };
