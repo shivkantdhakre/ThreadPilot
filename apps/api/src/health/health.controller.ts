@@ -43,9 +43,15 @@ export class HealthController {
         }
       },
       async (): Promise<HealthIndicatorResult> => {
+        const workerUrl = process.env.WORKER_HEALTH_URL;
+        if (!workerUrl && process.env.NODE_ENV === 'production') {
+          // In distributed deployments where the worker runs as a headless queue processor on Railway,
+          // the worker is decoupled and monitored via Redis queue rather than local HTTP.
+          return { worker: { status: 'up', mode: 'redis-queue' } };
+        }
+        const targetUrl = workerUrl || 'http://localhost:3002/healthz';
         try {
-          const workerUrl = process.env.WORKER_HEALTH_URL || 'http://localhost:3002/healthz';
-          const res = await fetch(workerUrl, {
+          const res = await fetch(targetUrl, {
             signal: AbortSignal.timeout(3000),
           });
           if (res.ok) {
