@@ -18,20 +18,7 @@ import { PublishingReconciliationService } from './services/publishing-reconcili
 import { PublishingService } from './services/publishing.service';
 import { prisma, PrismaClient } from '@threadpilot/database';
 
-function parseRedisUrl(urlStr: string) {
-  try {
-    const u = new URL(urlStr);
-    return {
-      host: u.hostname || 'localhost',
-      port: u.port ? parseInt(u.port, 10) : 6379,
-      password: u.password || undefined,
-      username: u.username || undefined,
-      tls: u.protocol === 'rediss:' ? {} : undefined,
-    };
-  } catch {
-    return { host: 'localhost', port: 6379 };
-  }
-}
+import { resolveResilientRedisUrl, parseRedisUrl } from './redis/redis-helper';
 
 @Module({
   imports: [
@@ -44,11 +31,8 @@ function parseRedisUrl(urlStr: string) {
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => {
-        const redisUrl =
-          config.get<string>('REDIS_URL_LOCAL') ??
-          config.get<string>('REDIS_URL') ??
-          'redis://localhost:6379';
+      useFactory: async (config: ConfigService) => {
+        const redisUrl = await resolveResilientRedisUrl(config);
         return {
           connection: parseRedisUrl(redisUrl),
         };

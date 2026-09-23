@@ -160,12 +160,12 @@ export function formatRelativeTime(dateStr: string): string {
   const now = Date.now();
   const diffMs = target - now;
   const isFuture = diffMs > 0;
-  const absDiffSec = Math.floor(Math.abs(diffMs) / 1000);
+  const absDiffSec = Math.round(Math.abs(diffMs) / 1000);
 
   if (absDiffSec < 60) return isFuture ? 'In less than a minute' : 'Just now';
-  const mins = Math.floor(absDiffSec / 60);
+  const mins = Math.round(absDiffSec / 60);
   if (mins < 60) return isFuture ? `In ${mins}m` : `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
+  const hours = Math.round(mins / 60);
   if (hours < 24) return isFuture ? `In ${hours}h` : `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return isFuture ? `In ${days}d` : `${days}d ago`;

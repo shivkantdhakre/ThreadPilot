@@ -112,6 +112,31 @@ describe('ScheduleCard Timezone Display & Formatting Suite', () => {
     assert.strictEqual(kolkataResult.timeFormatted, '04:30 AM');
   });
 
+  it('handles DST boundary transitions accurately (EST to EDT)', () => {
+    // America/New_York winter (EST, UTC-5): 18:00 UTC = 13:00 (01:00 PM)
+    const winterUtc = '2026-01-15T18:00:00.000Z';
+    const winterResult = formatScheduleCardDateTime(winterUtc, 'America/New_York');
+    assert.strictEqual(winterResult.timeFormatted, '01:00 PM');
+    assert.strictEqual(winterResult.dateFormatted, 'Jan 15, 2026');
+
+    // America/New_York summer (EDT, UTC-4): 18:00 UTC = 14:00 (02:00 PM)
+    const summerUtc = '2026-07-15T18:00:00.000Z';
+    const summerResult = formatScheduleCardDateTime(summerUtc, 'America/New_York');
+    assert.strictEqual(summerResult.timeFormatted, '02:00 PM');
+    assert.strictEqual(summerResult.dateFormatted, 'Jul 15, 2026');
+
+    // DST spring transition boundary (March 8, 2026)
+    // 06:59:00 UTC is 01:59 AM EST (UTC-5)
+    const preTransition = '2026-03-08T06:59:00.000Z';
+    const preResult = formatScheduleCardDateTime(preTransition, 'America/New_York');
+    assert.strictEqual(preResult.timeFormatted, '01:59 AM');
+
+    // 07:01:00 UTC is 03:01 AM EDT (UTC-4) - clock skipped 2:00-2:59
+    const postTransition = '2026-03-08T07:01:00.000Z';
+    const postResult = formatScheduleCardDateTime(postTransition, 'America/New_York');
+    assert.strictEqual(postResult.timeFormatted, '03:01 AM');
+  });
+
   it('gracefully falls back when timezone string is invalid', () => {
     const postScheduledAt = '2026-09-23T18:00:00.000Z';
     const invalidTimezone = 'Invalid/Non_Existent_TZ';
