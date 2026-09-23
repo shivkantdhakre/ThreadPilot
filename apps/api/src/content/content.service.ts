@@ -60,11 +60,17 @@ export class ContentService {
     const encryption = new TokenEncryptionService(encKey, encVersion);
 
     const redisAdapter = {
-      set: async (key: string, value: string, options: { nx: boolean; ex: number }) => {
-        const res = await this.redis.set(key, value, 'EX', options.ex, 'NX');
-        return res;
+      set: async (key: string, value: string, options: { nx?: boolean; ex?: number }) => {
+        if (options.nx) {
+          return this.redis.set(key, value, 'EX', options.ex ?? 30, 'NX');
+        }
+        if (options.ex) {
+          return this.redis.set(key, value, 'EX', options.ex);
+        }
+        return this.redis.set(key, value);
       },
       del: (key: string) => this.redis.del(key),
+      get: (key: string) => this.redis.get(key),
     };
 
     const apiBaseUrl = this.config.get<string>('THREADS_API_BASE_URL', 'https://graph.threads.net/v1.0');
@@ -325,14 +331,80 @@ export class ContentService {
   async deleteDraft(workspaceId: string, id: string) {
     const draft = await this.db.contentDraft.findFirst({
       where: { id, workspaceId },
+      include: {
+        scheduledPosts: true,
+        publishedPosts: true,
+      },
     });
 
     if (!draft) {
       throw new NotFoundException(`Draft ${id} not found`);
     }
 
-    await this.db.contentDraft.delete({
-      where: { id },
+    if (
+      draft.publishedPosts.length > 0 ||
+      draft.scheduledPosts.some((sp) => sp.status === 'PUBLISHED')
+    ) {
+      throw new ConflictException(
+        'Cannot delete draft that has already been published. Please archive it instead.',
+      );
+    }
+
+    const activeStatuses = [
+      'SCHEDULED',
+      'CLAIMED',
+      'CREATING_CONTAINER',
+      'CONTAINER_CREATED',
+      'PUBLISHING',
+      'QUOTA_BLOCKED',
+      'FAILED_RETRYABLE',
+      'RECOVERY_REQUIRED',
+    ];
+    const hasActiveSchedule = draft.scheduledPosts.some((sp) =>
+      activeStatuses.includes(sp.status),
+    );
+    if (hasActiveSchedule) {
+      throw new ConflictException(
+        'Cannot delete draft with active or pending scheduled posts. Please cancel or resolve scheduled posts first.',
+      );
+    }
+
+    const scheduleIds = draft.scheduledPosts.map((sp) => sp.id);
+
+    // Clean up any remaining BullMQ jobs for terminal schedules
+    if (this.publishQueue && scheduleIds.length > 0) {
+      for (const spId of scheduleIds) {
+        const jobIdsToRemove = [
+          `publish-${spId}`,
+          ...Array.from({ length: 6 }, (_, i) => `publish-${spId}-retry-${i}`),
+          ...Array.from({ length: 6 }, (_, i) => `publish-${spId}-reclaim-${i}`),
+        ];
+        for (const jid of jobIdsToRemove) {
+          try {
+            const job = await this.publishQueue.getJob(jid);
+            if (job) await job.remove();
+          } catch {
+            // Non-blocking cleanup
+          }
+        }
+      }
+    }
+
+    await this.db.$transaction(async (tx: any) => {
+      if (scheduleIds.length > 0) {
+        await tx.scheduledPostDispatch.deleteMany({
+          where: { scheduledPostId: { in: scheduleIds } },
+        });
+        await tx.scheduledPost.deleteMany({
+          where: { id: { in: scheduleIds } },
+        });
+      }
+      await tx.contentVersion.deleteMany({
+        where: { draftId: id },
+      });
+      await tx.contentDraft.delete({
+        where: { id },
+      });
     });
 
     return { success: true };

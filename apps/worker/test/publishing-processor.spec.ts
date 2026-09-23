@@ -53,6 +53,46 @@ describe('PublishingProcessor Unit & Invariant Tests', () => {
       assert.strictEqual(resAbort.code, 'NETWORK_TIMEOUT');
     });
 
+    it('classifies missing OAuth token conditions as AUTH_REQUIRED', () => {
+      // 1. Prisma P2025 error on OAuthToken
+      const prismaP2025 = new Error('No OAuthToken found');
+      (prismaP2025 as any).code = 'P2025';
+      (prismaP2025 as any).meta = { modelName: 'OAuthToken' };
+      const resPrisma = classifyPublishError(prismaP2025);
+      assert.strictEqual(resPrisma.type, 'AUTH_REQUIRED');
+      assert.strictEqual(resPrisma.code, 'AUTH_REQUIRED');
+
+      // 2. Explicit No OAuth token error
+      const noTokenErr = new Error('No OAuth token found for account acc-123');
+      const resNoToken = classifyPublishError(noTokenErr);
+      assert.strictEqual(resNoToken.type, 'AUTH_REQUIRED');
+
+      // 3. Social account or OAuth token not found
+      const socialAccErr = new Error('Social account or OAuth token not found');
+      const resSocial = classifyPublishError(socialAccErr);
+      assert.strictEqual(resSocial.type, 'AUTH_REQUIRED');
+
+      // 4. Revoked token
+      const revokedErr = new Error('Token for account acc-123 has been revoked');
+      const resRevoked = classifyPublishError(revokedErr);
+      assert.strictEqual(resRevoked.type, 'AUTH_REQUIRED');
+
+      // 5. Expired token / refresh failure
+      const expiredErr = new Error('Token refresh failed: 400 Bad Request');
+      const resExpired = classifyPublishError(expiredErr);
+      assert.strictEqual(resExpired.type, 'AUTH_REQUIRED');
+    });
+
+    it('does NOT classify unrelated Prisma P2025 errors as AUTH_REQUIRED', () => {
+      const unrelatedP2025 = new Error('No ScheduledPost record was found');
+      (unrelatedP2025 as any).code = 'P2025';
+      (unrelatedP2025 as any).meta = { modelName: 'ScheduledPost' };
+
+      const res = classifyPublishError(unrelatedP2025);
+      assert.strictEqual(res.type, 'RETRYABLE', 'Unrelated Prisma error should be RETRYABLE');
+      assert.strictEqual(res.code, 'INTERNAL_ERROR', 'Unrelated Prisma error should be INTERNAL_ERROR');
+    });
+
     it('classifies unknown exceptions as RETRYABLE INTERNAL_ERROR', () => {
       const err = new Error('Database connection lost');
       const res = classifyPublishError(err);

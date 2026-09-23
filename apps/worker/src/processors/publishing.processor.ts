@@ -46,14 +46,32 @@ export function classifyPublishError(err: any): ErrorClassification {
     }
   }
   const msg = err?.message || '';
-  if (
+
+  // Specific check for missing or invalid OAuth token (including Prisma P2025 specifically for OAuthToken)
+  const isPrismaMissingOAuthToken =
+    err?.code === 'P2025' &&
+    (err?.meta?.modelName === 'OAuthToken' ||
+      err?.message?.includes('OAuthToken') ||
+      err?.message?.includes('oAuthToken'));
+
+  const isMissingOrInvalidToken =
+    isPrismaMissingOAuthToken ||
+    msg.includes('No OAuth token') ||
+    msg.includes('OAuth token not found') ||
+    msg.includes('Social account or OAuth token not found') ||
     msg.includes('revoked') ||
     msg.includes('expired') ||
     msg.includes('Token refresh failed') ||
-    msg.includes('No access token')
-  ) {
-    return { type: 'AUTH_REQUIRED', code: 'AUTH_REQUIRED', message: msg };
+    msg.includes('No access token');
+
+  if (isMissingOrInvalidToken) {
+    return {
+      type: 'AUTH_REQUIRED',
+      code: 'AUTH_REQUIRED',
+      message: msg || 'OAuth token missing or invalid',
+    };
   }
+
   if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
     return { type: 'RETRYABLE', code: 'NETWORK_TIMEOUT', message: 'Request timed out' };
   }

@@ -4,7 +4,7 @@ import assert from 'node:assert';
 process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://dummy:dummy@localhost:5432/dummy';
 
 import { ContentService } from '../dist/content/content.service.js';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 
 describe('ContentService Phase 2 Scheduling & Resolution Tests', () => {
   function createService(overrides: { db?: any; publishQueue?: any; redis?: any; config?: any } = {}) {
@@ -293,4 +293,189 @@ describe('ContentService Phase 2 Scheduling & Resolution Tests', () => {
       );
     });
   });
+
+  describe('deleteDraft Safety & Cascade Tests', () => {
+    it('throws NotFoundException when deleting non-existent draft', async () => {
+      const mockDb: any = {
+        contentDraft: {
+          findFirst: async () => null,
+        },
+      };
+      const service = createService({ db: mockDb });
+      await assert.rejects(
+        () => service.deleteDraft('ws-1', 'non-existent'),
+        (err: any) => {
+          assert.ok(err instanceof NotFoundException);
+          assert.ok(err.message.includes('Draft non-existent not found'));
+          return true;
+        },
+      );
+    });
+
+    it('throws ConflictException when draft has already been published', async () => {
+      const mockDb: any = {
+        contentDraft: {
+          findFirst: async () => ({
+            id: 'draft-pub',
+            workspaceId: 'ws-1',
+            scheduledPosts: [],
+            publishedPosts: [{ id: 'pub-1' }],
+          }),
+        },
+      };
+      const service = createService({ db: mockDb });
+      await assert.rejects(
+        () => service.deleteDraft('ws-1', 'draft-pub'),
+        (err: any) => {
+          assert.ok(err instanceof ConflictException);
+          assert.ok(err.message.includes('already been published'));
+          return true;
+        },
+      );
+    });
+
+    it('throws ConflictException when draft has active scheduled posts', async () => {
+      const mockDb: any = {
+        contentDraft: {
+          findFirst: async () => ({
+            id: 'draft-sched',
+            workspaceId: 'ws-1',
+            scheduledPosts: [{ id: 'sched-1', status: 'SCHEDULED' }],
+            publishedPosts: [],
+          }),
+        },
+      };
+      const service = createService({ db: mockDb });
+      await assert.rejects(
+        () => service.deleteDraft('ws-1', 'draft-sched'),
+        (err: any) => {
+          assert.ok(err instanceof ConflictException);
+          assert.ok(err.message.includes('active or pending scheduled posts'));
+          return true;
+        },
+      );
+    });
+
+    it('throws ConflictException when draft has schedule with status PUBLISHED', async () => {
+      const mockDb: any = {
+        contentDraft: {
+          findFirst: async () => ({
+            id: 'draft-pub-sched',
+            workspaceId: 'ws-1',
+            scheduledPosts: [{ id: 'sched-pub', status: 'PUBLISHED' }],
+            publishedPosts: [],
+          }),
+        },
+      };
+      const service = createService({ db: mockDb });
+      await assert.rejects(
+        () => service.deleteDraft('ws-1', 'draft-pub-sched'),
+        (err: any) => {
+          assert.ok(err instanceof ConflictException);
+          assert.ok(err.message.includes('already been published'));
+          return true;
+        },
+      );
+    });
+
+    it('successfully deletes draft with no schedules', async () => {
+      let deletedVersions = false;
+      let deletedDraft = false;
+
+      const mockTx: any = {
+        contentVersion: {
+          deleteMany: async () => {
+            deletedVersions = true;
+          },
+        },
+        contentDraft: {
+          delete: async () => {
+            deletedDraft = true;
+          },
+        },
+      };
+
+      const mockDb: any = {
+        contentDraft: {
+          findFirst: async () => ({
+            id: 'draft-clean',
+            workspaceId: 'ws-1',
+            scheduledPosts: [],
+            publishedPosts: [],
+          }),
+        },
+        $transaction: async (fn: any) => fn(mockTx),
+      };
+
+      const service = createService({ db: mockDb });
+      const result = await service.deleteDraft('ws-1', 'draft-clean');
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(deletedVersions, true);
+      assert.strictEqual(deletedDraft, true);
+    });
+
+    it('successfully deletes draft and cascades terminal schedules in a transaction with BullMQ cleanup', async () => {
+      let deletedDispatches = false;
+      let deletedSchedules = false;
+      let deletedVersions = false;
+      let deletedDraft = false;
+      const removedJobs: string[] = [];
+
+      const mockPublishQueue: any = {
+        getJob: async (jid: string) => ({
+          remove: async () => {
+            removedJobs.push(jid);
+          },
+        }),
+      };
+
+      const mockTx: any = {
+        scheduledPostDispatch: {
+          deleteMany: async () => {
+            deletedDispatches = true;
+          },
+        },
+        scheduledPost: {
+          deleteMany: async () => {
+            deletedSchedules = true;
+          },
+        },
+        contentVersion: {
+          deleteMany: async () => {
+            deletedVersions = true;
+          },
+        },
+        contentDraft: {
+          delete: async () => {
+            deletedDraft = true;
+          },
+        },
+      };
+
+      const mockDb: any = {
+        contentDraft: {
+          findFirst: async () => ({
+            id: 'draft-term',
+            workspaceId: 'ws-1',
+            scheduledPosts: [{ id: 'sched-cancelled', status: 'CANCELLED' }],
+            publishedPosts: [],
+          }),
+        },
+        $transaction: async (fn: any) => fn(mockTx),
+      };
+
+      const service = createService({ db: mockDb, publishQueue: mockPublishQueue });
+      const result = await service.deleteDraft('ws-1', 'draft-term');
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(deletedDispatches, true);
+      assert.strictEqual(deletedSchedules, true);
+      assert.strictEqual(deletedVersions, true);
+      assert.strictEqual(deletedDraft, true);
+      assert.ok(removedJobs.length > 0, 'Expected BullMQ jobs to be cleaned up');
+      assert.ok(removedJobs.includes('publish-sched-cancelled'));
+    });
+  });
 });
+

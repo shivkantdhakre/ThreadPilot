@@ -14,6 +14,7 @@ import {
 } from '@threadpilot/threads-client';
 import { JobProgressService } from '../services/job-progress.service';
 import { AIFactoryService } from '../services/ai-factory.service';
+import { PublishingService } from '../services/publishing.service';
 import { randomUUID } from 'crypto';
 
 @Processor(QUEUES.INGESTION)
@@ -29,6 +30,7 @@ export class IngestionProcessor extends WorkerHost {
     @InjectQueue(QUEUES.STYLE) private readonly styleQueue: Queue,
     @InjectQueue(QUEUES.EMBEDDING) private readonly embeddingQueue: Queue,
     private readonly aiFactory: AIFactoryService,
+    @Optional() private readonly publishingService?: PublishingService,
   ) {
     super();
     const encKey = this.config.get<string>('TOKEN_ENCRYPTION_KEY', 'CHANGE_ME_32_BYTE_BASE64_KEY');
@@ -61,16 +63,21 @@ export class IngestionProcessor extends WorkerHost {
     });
 
     try {
-      const socialAccount = await prisma.socialAccount.findFirst({
-        where: { id: socialAccountId, workspaceId },
-        include: { oauthToken: true },
-      });
+      let accessToken: string;
+      if (this.publishingService?.tokenService) {
+        accessToken = await this.publishingService.tokenService.getValidToken(socialAccountId);
+      } else {
+        const socialAccount = await prisma.socialAccount.findFirst({
+          where: { id: socialAccountId, workspaceId },
+          include: { oauthToken: true },
+        });
 
-      if (!socialAccount || !socialAccount.oauthToken) {
-        throw new Error('Social account or OAuth token not found');
+        if (!socialAccount || !socialAccount.oauthToken) {
+          throw new Error('Social account or OAuth token not found');
+        }
+
+        accessToken = this.encryptionService.decrypt(socialAccount.oauthToken.accessTokenEncrypted);
       }
-
-      const accessToken = this.encryptionService.decrypt(socialAccount.oauthToken.accessTokenEncrypted);
 
       await this.progressService.update(requestId, {
         status: 'RUNNING',
@@ -87,8 +94,12 @@ export class IngestionProcessor extends WorkerHost {
         let postList;
         try {
           postList = await this.threadsApiClient.getUserPosts(accessToken, currentCursor, fetchLimit);
-        } catch (apiErr) {
-          this.logger.warn({ apiErr }, 'Failed to fetch posts from Threads API (may be sandbox or dev mode)');
+        } catch (apiErr: any) {
+          const errMsg = apiErr?.message || String(apiErr);
+          this.logger.error({ apiErr }, `Failed to fetch posts from Threads API: ${errMsg}`);
+          if (totalIngested === 0) {
+            throw new Error(`Failed to fetch posts from Threads API: ${errMsg}`);
+          }
           break;
         }
 

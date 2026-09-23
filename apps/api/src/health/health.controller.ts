@@ -74,4 +74,18 @@ export class HealthController {
       },
     ]);
   }
+
+  @Get('version')
+  version() {
+    return {
+      version: '1.0.0',
+      commitSha:
+        process.env['RENDER_GIT_COMMIT'] ||
+        process.env['VERCEL_GIT_COMMIT_SHA'] ||
+        process.env['GIT_COMMIT_SHA'] ||
+        '3bba917',
+      buildTimestamp: process.env['BUILD_TIMESTAMP'] || new Date().toISOString(),
+      environment: process.env['NODE_ENV'] || 'development',
+    };
+  }
 }

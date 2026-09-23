@@ -145,15 +145,32 @@ export function ScheduleCard({ post, onResolveClick, onCancelClick }: ScheduleCa
   const isPublished = post.status === 'PUBLISHED';
 
   const scheduledDate = new Date(post.scheduledAt);
-  const dateFormatted = scheduledDate.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-  const timeFormatted = scheduledDate.toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  let dateFormatted: string;
+  let timeFormatted: string;
+
+  try {
+    dateFormatted = scheduledDate.toLocaleDateString(undefined, {
+      timeZone: post.timezone,
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    timeFormatted = scheduledDate.toLocaleTimeString(undefined, {
+      timeZone: post.timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    dateFormatted = scheduledDate.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    timeFormatted = scheduledDate.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
 
   const relativeTime = formatRelativeTime(post.scheduledAt);
   const bodyText = post.contentSnapshot?.body || '';

@@ -24,11 +24,17 @@ export class PublishingService {
     this.encryptionService = new TokenEncryptionService(encKey, encVersion);
 
     const redisAdapter = {
-      set: async (key: string, value: string, options: { nx: boolean; ex: number }) => {
-        const res = await this.redis.set(key, value, 'EX', options.ex, 'NX');
-        return res;
+      set: async (key: string, value: string, options: { nx?: boolean; ex?: number }) => {
+        if (options.nx) {
+          return this.redis.set(key, value, 'EX', options.ex ?? 30, 'NX');
+        }
+        if (options.ex) {
+          return this.redis.set(key, value, 'EX', options.ex);
+        }
+        return this.redis.set(key, value);
       },
       del: (key: string) => this.redis.del(key),
+      get: (key: string) => this.redis.get(key),
     };
 
     const apiBaseUrl = this.config.get<string>('THREADS_API_BASE_URL', 'https://graph.threads.net/v1.0');

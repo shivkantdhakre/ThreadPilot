@@ -1,11 +1,15 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
 import { prisma } from '@threadpilot/database';
+import type { PrismaClient } from '@threadpilot/database';
 import { JobDispatcherService } from '../jobs/job-dispatcher.service';
 import { randomUUID } from 'crypto';
 
 @Injectable()
 export class IngestionService {
-  constructor(private readonly jobDispatcher: JobDispatcherService) {}
+  constructor(
+    private readonly jobDispatcher: JobDispatcherService,
+    @Optional() private readonly db: PrismaClient = prisma,
+  ) {}
 
   async startIngestion(
     workspaceId: string,
@@ -18,7 +22,7 @@ export class IngestionService {
   ) {
     let socialAccountId = options?.socialAccountId;
     if (!socialAccountId) {
-      const activeAccount = await prisma.socialAccount.findFirst({
+      const activeAccount = await this.db.socialAccount.findFirst({
         where: { workspaceId, isConnected: true },
       });
       if (!activeAccount) {
@@ -42,7 +46,7 @@ export class IngestionService {
   }
 
   async getLatestStatus(workspaceId: string) {
-    const latestJob = await prisma.jobRecord.findFirst({
+    const latestJob = await this.db.jobRecord.findFirst({
       where: {
         workspaceId,
         type: 'INGESTION',
@@ -50,7 +54,7 @@ export class IngestionService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const totalIngested = await prisma.threadPost.count({
+    const totalIngested = await this.db.threadPost.count({
       where: {
         socialAccount: { workspaceId },
         sourceType: 'INGESTED',
@@ -77,8 +81,8 @@ export class IngestionService {
     };
 
     const [total, posts] = await Promise.all([
-      prisma.threadPost.count({ where }),
-      prisma.threadPost.findMany({
+      this.db.threadPost.count({ where }),
+      this.db.threadPost.findMany({
         where,
         orderBy: { postedAt: 'desc' },
         skip,
