@@ -6,7 +6,7 @@
     "build": "nest build",
     "dev": "nest start --watch",
     "start": "node dist/main.js",
-    "test": "node --experimental-strip-types --test test/cross-tenant-isolation.spec.ts test/content-service.spec.ts test/ingestion-service.spec.ts test/health-controller.spec.ts",
+    "test": "node --experimental-strip-types --test test/cross-tenant-isolation.spec.ts test/content-service.spec.ts test/ingestion-service.spec.ts test/health-controller.spec.ts test/redis-helper.spec.ts",
     "lint": "tsc --noEmit"
   },
 
