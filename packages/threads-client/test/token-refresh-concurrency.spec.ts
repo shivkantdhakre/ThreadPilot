@@ -116,6 +116,142 @@ describe('ThreadsTokenService Concurrency & Token Refresh Invariant Tests', () =
     }
   });
 
+  it('2 concurrent callers: exactly 1 Meta refresh call, both callers receive identical refreshed token', async () => {
+    const oldTokenPlain = 'old-threads-access-token-2-callers';
+    const newTokenPlain = 'refreshed-threads-access-token-2-callers';
+
+    let currentDbToken = {
+      socialAccountId,
+      accessTokenEncrypted: encryption.encrypt(oldTokenPlain),
+      expiresAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+      revokedAt: null,
+      lastRefreshedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+    };
+
+    const mockDb: any = {
+      oAuthToken: {
+        findUnique: async () => ({ ...currentDbToken }),
+        findUniqueOrThrow: async () => ({ ...currentDbToken }),
+        update: async ({ data }: any) => {
+          currentDbToken = { ...currentDbToken, ...data };
+          return currentDbToken;
+        },
+      },
+    };
+
+    const mockRedis = createMockRedis();
+    let metaRefreshCallCount = 0;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/refresh_access_token')) {
+        metaRefreshCallCount++;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return new Response(
+          JSON.stringify({
+            access_token: newTokenPlain,
+            token_type: 'bearer',
+            expires_in: 60 * 24 * 60 * 60,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return originalFetch(input);
+    }) as any;
+
+    try {
+      const tokenService = new ThreadsTokenService(
+        mockDb,
+        encryption,
+        mockRedis,
+        'https://graph.threads.net/v1.0',
+      );
+
+      const results = await Promise.all([
+        tokenService.getValidToken(socialAccountId),
+        tokenService.getValidToken(socialAccountId),
+      ]);
+
+      assert.strictEqual(metaRefreshCallCount, 1, 'Expected exactly 1 Meta refresh call for 2 callers');
+      assert.strictEqual(results.length, 2);
+      assert.strictEqual(results[0], newTokenPlain);
+      assert.strictEqual(results[1], newTokenPlain);
+      const lock = await mockRedis.get(`token-refresh:${socialAccountId}`);
+      assert.strictEqual(lock, null, 'Lock was not released');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('high-contention callers (50 concurrent): exactly 1 Meta refresh call, all 50 callers receive identical fresh token', async () => {
+    const oldTokenPlain = 'old-threads-access-token-50-callers';
+    const newTokenPlain = 'refreshed-threads-access-token-50-callers';
+
+    let currentDbToken = {
+      socialAccountId,
+      accessTokenEncrypted: encryption.encrypt(oldTokenPlain),
+      expiresAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+      revokedAt: null,
+      lastRefreshedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+    };
+
+    const mockDb: any = {
+      oAuthToken: {
+        findUnique: async () => ({ ...currentDbToken }),
+        findUniqueOrThrow: async () => ({ ...currentDbToken }),
+        update: async ({ data }: any) => {
+          currentDbToken = { ...currentDbToken, ...data };
+          return currentDbToken;
+        },
+      },
+    };
+
+    const mockRedis = createMockRedis();
+    let metaRefreshCallCount = 0;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/refresh_access_token')) {
+        metaRefreshCallCount++;
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        return new Response(
+          JSON.stringify({
+            access_token: newTokenPlain,
+            token_type: 'bearer',
+            expires_in: 60 * 24 * 60 * 60,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return originalFetch(input);
+    }) as any;
+
+    try {
+      const tokenService = new ThreadsTokenService(
+        mockDb,
+        encryption,
+        mockRedis,
+        'https://graph.threads.net/v1.0',
+      );
+
+      const promises = Array.from({ length: 50 }, () =>
+        tokenService.getValidToken(socialAccountId),
+      );
+
+      const results = await Promise.all(promises);
+
+      assert.strictEqual(metaRefreshCallCount, 1, 'Expected exactly 1 Meta refresh call for 50 callers');
+      assert.strictEqual(results.length, 50);
+      for (const token of results) {
+        assert.strictEqual(token, newTokenPlain, 'A caller received stale or mismatched token');
+      }
+      const lock = await mockRedis.get(`token-refresh:${socialAccountId}`);
+      assert.strictEqual(lock, null, 'Lock was not released');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('refresh fails: all concurrent callers receive failure, lock is released, and subsequent call can retry', async () => {
     const oldTokenPlain = 'old-failing-token-123';
 
