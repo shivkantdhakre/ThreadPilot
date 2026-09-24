@@ -103,33 +103,32 @@ export default function SchedulesPage() {
       setSelectedDraftForSchedule(readyDrafts[0]);
       setIsScheduleModalOpen(true);
     } else {
-      // If no drafts exist, navigate to create
       window.location.href = '/create';
     }
   };
 
   return (
-    <div>
+    <div className="min-h-screen bg-ink-900">
       <TopBar title="Publishing Calendar & Schedules" />
 
-      <div className="p-8 max-w-7xl mx-auto space-y-6">
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-6">
         {/* Top Header & View Controls */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white">Publishing Pipeline</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-white font-display">Publishing Pipeline</h1>
             <p className="text-xs text-white/50 mt-1">
               Automated multi-account Threads publishing with fail-safe recovery & quota arbitration.
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {/* View Mode Toggle */}
-            <div className="flex rounded-xl border border-white/10 bg-slate-900 p-1">
+            <div className="flex rounded-xl border border-white/10 bg-ink-850 p-1">
               <button
                 onClick={() => setViewMode('CALENDAR')}
-                className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
                   viewMode === 'CALENDAR'
-                    ? 'bg-brand-500 text-white shadow-sm'
+                    ? 'bg-coral-500 text-white shadow-glow'
                     : 'text-white/60 hover:text-white'
                 }`}
               >
@@ -138,9 +137,9 @@ export default function SchedulesPage() {
               </button>
               <button
                 onClick={() => setViewMode('LIST')}
-                className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
                   viewMode === 'LIST'
-                    ? 'bg-brand-500 text-white shadow-sm'
+                    ? 'bg-coral-500 text-white shadow-glow'
                     : 'text-white/60 hover:text-white'
                 }`}
               >
@@ -154,12 +153,12 @@ export default function SchedulesPage() {
               onClick={() => setAutoRefresh(!autoRefresh)}
               className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all ${
                 autoRefresh
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                  ? 'border-lime-500/30 bg-lime-500/10 text-lime-300 hover:bg-lime-500/20'
                   : 'border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/70'
               }`}
               title={autoRefresh ? 'Live Sync Active: Click to pause polling' : 'Live Sync Paused: Click to resume polling'}
             >
-              <span className={`h-2 w-2 rounded-full ${autoRefresh ? 'bg-emerald-400 animate-pulse' : 'bg-white/30'}`} />
+              <span className={`h-2 w-2 rounded-full ${autoRefresh ? 'bg-lime-400 animate-pulse' : 'bg-white/30'}`} />
               <span>{autoRefresh ? 'Live Sync' : 'Paused'}</span>
             </button>
 
@@ -167,7 +166,7 @@ export default function SchedulesPage() {
             <button
               onClick={() => fetchSchedules()}
               disabled={isLoading}
-              className="rounded-xl border border-white/10 bg-white/5 p-2 text-white/60 hover:bg-white/10 hover:text-white transition-colors"
+              className="rounded-xl border border-white/10 bg-ink-850 p-2 text-white/60 hover:border-white/20 hover:text-white transition-colors"
               title="Refresh schedules"
             >
               <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -176,7 +175,7 @@ export default function SchedulesPage() {
             {/* New Schedule Button */}
             <Link
               href="/create"
-              className="btn-primary flex items-center gap-2 text-xs py-2 px-3.5 shadow-lg shadow-brand-500/20"
+              className="btn-primary flex items-center gap-2 text-xs py-2 px-4 shadow-glow"
             >
               <Plus className="h-4 w-4" />
               <span>Draft & Schedule</span>
@@ -186,47 +185,47 @@ export default function SchedulesPage() {
 
         {/* Metrics Summary Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="rounded-2xl border border-blue-500/20 bg-blue-950/20 p-4 backdrop-blur-xl flex items-center justify-between">
+          <div className="glass-card p-5 rounded-2xl border border-cyan-500/20 bg-ink-850/80 flex items-center justify-between">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-blue-300/70">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-cyan-300">
                 Upcoming Queue
               </div>
-              <div className="text-2xl font-black text-white mt-0.5">{upcomingCount}</div>
+              <div className="text-2xl font-black text-white mt-1 font-display">{upcomingCount}</div>
             </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/20 text-blue-400">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
               <Clock className="h-5 w-5" />
             </div>
           </div>
 
-          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-950/20 p-4 backdrop-blur-xl flex items-center justify-between">
+          <div className="glass-card p-5 rounded-2xl border border-lime-500/20 bg-ink-850/80 flex items-center justify-between">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-300/70">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-lime-300">
                 Successfully Published
               </div>
-              <div className="text-2xl font-black text-white mt-0.5">{publishedCount}</div>
+              <div className="text-2xl font-black text-white mt-1 font-display">{publishedCount}</div>
             </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-lime-500/10 border border-lime-500/20 text-lime-400">
               <CheckCircle2 className="h-5 w-5" />
             </div>
           </div>
 
           <div
-            className={`rounded-2xl border p-4 backdrop-blur-xl flex items-center justify-between transition-all ${
+            className={`glass-card p-5 rounded-2xl border flex items-center justify-between transition-all ${
               attentionCount > 0
-                ? 'border-purple-500/40 bg-purple-950/30 shadow-lg shadow-purple-950/40'
-                : 'border-white/10 bg-slate-900/60'
+                ? 'border-violet-500/40 bg-violet-950/20 shadow-glow-violet'
+                : 'border-white/[0.08] bg-ink-850/80'
             }`}
           >
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-purple-300/70">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-violet-300">
                 Attention Required
               </div>
-              <div className="text-2xl font-black text-white mt-0.5">{attentionCount}</div>
+              <div className="text-2xl font-black text-white mt-1 font-display">{attentionCount}</div>
             </div>
             <div
-              className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+              className={`flex h-11 w-11 items-center justify-center rounded-2xl ${
                 attentionCount > 0
-                  ? 'bg-purple-500/30 text-purple-300 animate-pulse'
+                  ? 'bg-violet-500/20 border border-violet-500/30 text-violet-300 animate-pulse'
                   : 'bg-white/5 text-white/40'
               }`}
             >
@@ -253,14 +252,14 @@ export default function SchedulesPage() {
         ) : (
           <div className="space-y-4">
             {/* List Controls: Tabs & Search */}
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
               {/* Filter Tabs */}
               <div className="flex flex-wrap gap-2 text-xs font-semibold">
                 <button
                   onClick={() => setActiveFilter('ALL')}
-                  className={`rounded-lg px-3 py-1.5 transition-colors ${
+                  className={`rounded-xl px-3 py-1.5 transition-colors ${
                     activeFilter === 'ALL'
-                      ? 'bg-white/15 text-white'
+                      ? 'bg-white/15 text-white font-bold'
                       : 'text-white/50 hover:bg-white/5 hover:text-white'
                   }`}
                 >
@@ -268,9 +267,9 @@ export default function SchedulesPage() {
                 </button>
                 <button
                   onClick={() => setActiveFilter('UPCOMING')}
-                  className={`rounded-lg px-3 py-1.5 transition-colors ${
+                  className={`rounded-xl px-3 py-1.5 transition-colors ${
                     activeFilter === 'UPCOMING'
-                      ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold'
                       : 'text-white/50 hover:bg-white/5 hover:text-white'
                   }`}
                 >
@@ -278,9 +277,9 @@ export default function SchedulesPage() {
                 </button>
                 <button
                   onClick={() => setActiveFilter('PUBLISHED')}
-                  className={`rounded-lg px-3 py-1.5 transition-colors ${
+                  className={`rounded-xl px-3 py-1.5 transition-colors ${
                     activeFilter === 'PUBLISHED'
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      ? 'bg-lime-500/20 text-lime-300 border border-lime-500/30 font-bold'
                       : 'text-white/50 hover:bg-white/5 hover:text-white'
                   }`}
                 >
@@ -288,9 +287,9 @@ export default function SchedulesPage() {
                 </button>
                 <button
                   onClick={() => setActiveFilter('ATTENTION')}
-                  className={`rounded-lg px-3 py-1.5 transition-colors ${
+                  className={`rounded-xl px-3 py-1.5 transition-colors ${
                     activeFilter === 'ATTENTION'
-                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                      ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40 font-bold'
                       : 'text-white/50 hover:bg-white/5 hover:text-white'
                   }`}
                 >
@@ -298,9 +297,9 @@ export default function SchedulesPage() {
                 </button>
                 <button
                   onClick={() => setActiveFilter('CANCELLED')}
-                  className={`rounded-lg px-3 py-1.5 transition-colors ${
+                  className={`rounded-xl px-3 py-1.5 transition-colors ${
                     activeFilter === 'CANCELLED'
-                      ? 'bg-white/10 text-white'
+                      ? 'bg-white/10 text-white font-bold'
                       : 'text-white/50 hover:bg-white/5 hover:text-white'
                   }`}
                 >
@@ -310,13 +309,13 @@ export default function SchedulesPage() {
 
               {/* Search Bar */}
               <div className="relative">
-                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-white/30" />
+                <Search className="absolute left-3.5 top-3 h-3.5 w-3.5 text-white/30" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search posts or accounts..."
-                  className="rounded-xl border border-white/10 bg-slate-900/80 pl-9 pr-3.5 py-1.5 text-xs text-white placeholder:text-white/30 focus:border-brand-500 focus:outline-none w-64"
+                  className="input-base pl-9 py-2 text-xs w-64"
                 />
               </div>
             </div>
@@ -324,13 +323,15 @@ export default function SchedulesPage() {
             {/* List Cards */}
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-16 text-white/40 space-y-3">
-                <Loader2 className="h-6 w-6 animate-spin text-brand-400" />
-                <span className="text-xs">Loading publishing queue...</span>
+                <Loader2 className="h-6 w-6 animate-spin text-coral-500" />
+                <span className="text-xs font-medium">Loading publishing queue...</span>
               </div>
             ) : filteredPosts.length === 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-12 text-center space-y-3">
-                <CalendarIcon className="h-8 w-8 mx-auto text-white/20" />
-                <h3 className="text-sm font-semibold text-white">No schedules found</h3>
+              <div className="rounded-3xl border border-white/[0.08] bg-ink-850 p-12 text-center space-y-3 shadow-card-elevated">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/30 mx-auto">
+                  <CalendarIcon className="h-6 w-6" />
+                </div>
+                <h3 className="text-sm font-bold text-white">No schedules found</h3>
                 <p className="text-xs text-white/50 max-w-sm mx-auto">
                   {searchQuery
                     ? 'No posts matched your current search filters.'
@@ -338,7 +339,7 @@ export default function SchedulesPage() {
                 </p>
                 <Link
                   href="/create"
-                  className="inline-flex items-center gap-2 btn-primary text-xs py-2 px-3 mt-2"
+                  className="btn-primary text-xs py-2 px-4 mt-2 inline-flex items-center gap-1.5"
                 >
                   <PenSquare className="h-3.5 w-3.5" />
                   <span>Go to Content Studio</span>

@@ -125,10 +125,10 @@ export default function ProfilePage() {
   };
 
   return (
-    <div>
-      <TopBar title="Personal Voice & Profile" />
+    <div className="min-h-screen bg-ink-900">
+      <TopBar title="Voice & Profile" />
 
-      <div className="p-8 max-w-7xl mx-auto space-y-8">
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-8">
         {/* Style Fingerprint Card */}
         <VoiceStyleCard
           features={profile?.styleFeatures ?? null}
@@ -141,12 +141,14 @@ export default function ProfilePage() {
         />
 
         {/* Identity & Strategic Positioning Section */}
-        <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-6 backdrop-blur-xl">
-          <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
-            <div className="flex items-center gap-2">
-              <User className="h-5 w-5 text-brand-400" />
+        <div className="rounded-3xl border border-white/[0.08] bg-[#111116] p-6 sm:p-8 backdrop-blur-xl shadow-card-elevated">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-white/[0.08] pb-5 mb-6 gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-coral-500/10 border border-coral-500/20 text-coral-400">
+                <User className="h-5 w-5" />
+              </div>
               <div>
-                <h3 className="text-base font-bold text-white tracking-tight">
+                <h3 className="text-base sm:text-lg font-bold text-white tracking-tight font-display">
                   Identity & Personal Positioning
                 </h3>
                 <p className="text-xs text-white/50">
@@ -158,16 +160,16 @@ export default function ProfilePage() {
             <button
               onClick={handleSaveProfile}
               disabled={isSaving}
-              className="btn-primary flex items-center gap-2 text-xs py-2 px-4"
+              className="btn-primary flex items-center gap-2 text-xs py-2 px-5 shadow-glow"
             >
               {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Save Profile
+              <span>Save Profile</span>
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
-              <label className="block text-xs font-medium text-white/70 mb-1.5">
+              <label className="block text-xs font-semibold text-white/70 mb-1.5">
                 Profession / Title
               </label>
               <input
@@ -180,7 +182,7 @@ export default function ProfilePage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-white/70 mb-1.5">
+              <label className="block text-xs font-semibold text-white/70 mb-1.5">
                 Expertise & Niche Areas (comma separated)
               </label>
               <input
@@ -193,7 +195,7 @@ export default function ProfilePage() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-xs font-medium text-white/70 mb-1.5">
+              <label className="block text-xs font-semibold text-white/70 mb-1.5">
                 Personal Bio & Story
               </label>
               <textarea
@@ -206,7 +208,7 @@ export default function ProfilePage() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-xs font-medium text-white/70 mb-1.5">
+              <label className="block text-xs font-semibold text-white/70 mb-1.5">
                 Strategic Positioning & Voice Thesis
               </label>
               <textarea
@@ -221,11 +223,13 @@ export default function ProfilePage() {
         </div>
 
         {/* Content Topics & Filters */}
-        <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-6 backdrop-blur-xl">
-          <div className="flex items-center gap-2 border-b border-white/10 pb-4 mb-6">
-            <Sliders className="h-5 w-5 text-indigo-400" />
+        <div className="rounded-3xl border border-white/[0.08] bg-[#111116] p-6 sm:p-8 backdrop-blur-xl shadow-card-elevated">
+          <div className="flex items-center gap-3 border-b border-white/[0.08] pb-5 mb-6">
+            <div className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400">
+              <Sliders className="h-5 w-5" />
+            </div>
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">
+              <h3 className="text-base sm:text-lg font-bold text-white tracking-tight font-display">
                 Topics & Negative Constraints
               </h3>
               <p className="text-xs text-white/50">Guide what the AI explores and what it must avoid</p>
@@ -234,7 +238,7 @@ export default function ProfilePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
-              <label className="block text-xs font-medium text-emerald-400 mb-1.5">
+              <label className="block text-xs font-semibold text-lime-400 mb-1.5">
                 Preferred Topics (comma separated)
               </label>
               <input
@@ -247,7 +251,7 @@ export default function ProfilePage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-rose-400 mb-1.5">
+              <label className="block text-xs font-semibold text-rose-400 mb-1.5">
                 Excluded Topics & Forbidden Themes
               </label>
               <input

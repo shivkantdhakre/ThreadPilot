@@ -3,8 +3,9 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AtSign, Loader2, ArrowRight, Lock, Mail, Building } from 'lucide-react';
+import { Loader2, ArrowRight, Lock, Mail, Building } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
+import Logo from '../../../components/ui/Logo';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -32,19 +33,25 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-6 bg-radial-gradient">
-      <div className="w-full max-w-md">
+    <div className="relative flex min-h-screen items-center justify-center p-6 bg-ink-900 overflow-hidden">
+      {/* Ambient background glows */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[550px] h-[550px] bg-coral-500/10 rounded-full blur-[140px]" />
+        <div className="absolute -bottom-20 left-10 w-[400px] h-[400px] bg-cyan-500/10 rounded-full blur-[140px]" />
+      </div>
+
+      <div className="relative z-10 w-full max-w-md">
         {/* Brand Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-500 shadow-xl shadow-brand-500/25 mb-4">
-            <AtSign className="h-6 w-6 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Create your Workspace</h1>
-          <p className="text-sm text-white/50 mt-1">Start growing on Threads with personal AI agent automation</p>
+        <div className="text-center mb-8 flex flex-col items-center">
+          <Link href="/" className="mb-4 inline-block hover:opacity-95 transition-opacity">
+            <Logo size="lg" />
+          </Link>
+          <h1 className="text-2xl font-bold text-white tracking-tight font-display">Create your workspace</h1>
+          <p className="text-xs text-white/50 mt-1">Start growing on Threads with personal AI agent automation</p>
         </div>
 
         {/* Card */}
-        <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-8 shadow-2xl backdrop-blur-xl">
+        <div className="rounded-3xl border border-white/[0.08] bg-[#111116]/90 p-8 shadow-card-elevated backdrop-blur-2xl">
           {error && (
             <div className="mb-5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">
               {error}
@@ -53,39 +60,39 @@ export default function RegisterPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-white/70 mb-1.5">Workspace Name</label>
+              <label className="block text-xs font-semibold text-white/70 mb-1.5">Workspace Name</label>
               <div className="relative">
-                <Building className="absolute left-3 top-2.5 h-4 w-4 text-white/30" />
+                <Building className="absolute left-3.5 top-3 h-4 w-4 text-white/30" />
                 <input
                   type="text"
                   required
                   value={workspaceName}
                   onChange={(e) => setWorkspaceName(e.target.value)}
                   placeholder="My Brand or Personal"
-                  className="input-base pl-9"
+                  className="input-base pl-10"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-white/70 mb-1.5">Email Address</label>
+              <label className="block text-xs font-semibold text-white/70 mb-1.5">Email Address</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-white/30" />
+                <Mail className="absolute left-3.5 top-3 h-4 w-4 text-white/30" />
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="founder@example.com"
-                  className="input-base pl-9"
+                  className="input-base pl-10"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-white/70 mb-1.5">Password</label>
+              <label className="block text-xs font-semibold text-white/70 mb-1.5">Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-2.5 h-4 w-4 text-white/30" />
+                <Lock className="absolute left-3.5 top-3 h-4 w-4 text-white/30" />
                 <input
                   type="password"
                   required
@@ -93,7 +100,7 @@ export default function RegisterPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="At least 8 characters"
-                  className="input-base pl-9"
+                  className="input-base pl-10"
                 />
               </div>
             </div>
@@ -101,7 +108,7 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="btn-primary w-full py-2.5 mt-2 flex items-center justify-center gap-2"
+              className="btn-primary w-full py-3 mt-3 flex items-center justify-center gap-2"
             >
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -116,7 +123,7 @@ export default function RegisterPage() {
 
           <div className="mt-6 text-center text-xs text-white/40">
             Already have an account?{' '}
-            <Link href="/login" className="font-semibold text-brand-400 hover:text-brand-300">
+            <Link href="/login" className="font-semibold text-coral-400 hover:text-coral-300 transition-colors">
               Sign in
             </Link>
           </div>

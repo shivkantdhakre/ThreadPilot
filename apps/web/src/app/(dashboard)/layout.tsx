@@ -22,10 +22,10 @@ export default function DashboardLayout({
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950">
+      <div className="flex min-h-screen items-center justify-center bg-ink-900">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-brand-400" />
-          <p className="text-xs text-white/40">Loading ThreadPilot...</p>
+          <Loader2 className="h-8 w-8 animate-spin text-coral-500" />
+          <p className="text-xs text-white/40 font-medium">Initializing workspace...</p>
         </div>
       </div>
     );
@@ -36,7 +36,7 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-ink-900 text-foreground selection:bg-coral-500 selection:text-white">
       <Sidebar />
       <div className="pl-64 flex flex-col min-h-screen">
         <main className="flex-1 pb-16">{children}</main>

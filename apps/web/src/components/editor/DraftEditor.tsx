@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Save, Sparkles, Loader2, Plus, ArrowLeft, Calendar } from 'lucide-react';
+import { Save, Sparkles, Loader2, Plus, ArrowLeft, Calendar, FileCheck } from 'lucide-react';
 import { apiClient } from '../../lib/api-client';
 import { ThreadsPreview } from './ThreadsPreview';
 import { AIImprovementPanel } from './AIImprovementPanel';
@@ -157,42 +157,42 @@ export function DraftEditor({ initialDraft, onSaved, onBack }: DraftEditorProps)
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       {/* Left Column: Editor & Controls */}
       <div className="lg:col-span-7 space-y-6">
-        <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-6 backdrop-blur-xl">
+        <div className="rounded-3xl border border-white/[0.08] bg-[#111116] p-6 sm:p-7 shadow-card-elevated backdrop-blur-xl">
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-4">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-white/[0.08] pb-5 mb-5 gap-4">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
               {onBack && (
                 <button
                   onClick={onBack}
-                  className="rounded-lg border border-white/10 p-1.5 text-white/50 hover:bg-white/5 hover:text-white"
+                  className="rounded-xl border border-white/10 p-2 text-white/50 hover:bg-white/5 hover:text-white transition-colors"
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </button>
               )}
-              <div>
+              <div className="flex-1 min-w-0">
                 <input
                   type="text"
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
                   placeholder="Post topic or hook summary..."
-                  className="bg-transparent text-base font-bold text-white placeholder:text-white/30 focus:outline-none"
+                  className="w-full bg-transparent text-base sm:text-lg font-bold text-white placeholder:text-white/30 focus:outline-none font-display tracking-tight"
                 />
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5 shrink-0">
               <button
                 onClick={handleSaveVersion}
                 disabled={isSaving || !body.trim()}
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white hover:bg-white/10 transition-colors flex items-center gap-1.5"
+                className="btn-secondary text-xs py-2 px-3.5 flex items-center gap-1.5"
               >
                 {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                <span>Save</span>
+                <span>Save Revision</span>
               </button>
               <button
                 onClick={handleOpenSchedule}
                 disabled={isSaving || !body.trim()}
-                className="btn-primary flex items-center gap-1.5 text-xs py-2 px-3.5 shadow-lg shadow-brand-500/20"
+                className="btn-primary flex items-center gap-1.5 text-xs py-2 px-4 shadow-glow"
               >
                 <Calendar className="h-3.5 w-3.5" />
                 <span>Schedule Post</span>
@@ -206,15 +206,15 @@ export function DraftEditor({ initialDraft, onSaved, onBack }: DraftEditorProps)
               value={body}
               onChange={(e) => setBody(e.target.value)}
               placeholder="Compose your Threads post here (up to 500 characters)..."
-              rows={8}
-              className="w-full resize-y rounded-xl border border-white/10 bg-black/40 p-4 text-sm leading-relaxed text-white placeholder:text-white/30 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 font-sans"
+              rows={9}
+              className="w-full resize-y rounded-2xl border border-white/[0.08] bg-ink-950 p-4 sm:p-5 text-sm leading-relaxed text-white placeholder:text-white/35 focus:border-coral-500/80 focus:outline-none focus:ring-2 focus:ring-coral-500/20 font-sans"
             />
 
             {/* Quick hook tag */}
             {detectedHook && (
-              <div className="mt-2 flex items-center gap-2 text-xs text-white/50">
-                <span className="font-semibold text-brand-300">Detected Hook:</span>
-                <span className="truncate italic text-white/70">"{detectedHook}"</span>
+              <div className="mt-3 flex items-center gap-2 text-xs text-white/50 bg-ink-900/60 p-2.5 rounded-xl border border-white/[0.05]">
+                <span className="font-bold text-coral-400">Detected Hook:</span>
+                <span className="truncate italic text-white/80">"{detectedHook}"</span>
               </div>
             )}
           </div>

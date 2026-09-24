@@ -13,6 +13,9 @@ import {
   CheckCircle2,
   FileText,
   Calendar,
+  Layers,
+  Activity,
+  Plus,
 } from 'lucide-react';
 import { TopBar } from '../../../components/TopBar';
 import { apiClient } from '../../../lib/api-client';
@@ -53,30 +56,39 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div>
+    <div className="min-h-screen bg-ink-900">
       <TopBar title="Overview Dashboard" />
 
-      <div className="p-8 max-w-7xl mx-auto space-y-8">
-        {/* Welcome Banner */}
-        <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-r from-brand-900/40 via-slate-900/60 to-purple-900/30 p-8 backdrop-blur-xl">
-          <div className="relative z-10 max-w-2xl">
-            <h2 className="text-2xl font-bold text-white tracking-tight mb-2">
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-8">
+        {/* Welcome Editorial Banner */}
+        <div className="relative overflow-hidden rounded-3xl border border-white/[0.09] bg-gradient-to-br from-ink-800 via-[#13131A] to-ink-850 p-8 sm:p-10 shadow-card-elevated backdrop-blur-2xl">
+          <div className="absolute top-0 right-0 -mt-10 -mr-10 h-64 w-64 rounded-full bg-coral-500/10 blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-1/3 -mb-10 h-48 w-48 rounded-full bg-violet-600/10 blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 max-w-3xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-coral-500/30 bg-coral-500/10 px-3 py-1 text-xs font-semibold text-coral-400 mb-4">
+              <Activity className="h-3.5 w-3.5" />
+              <span>Workspace Engine Active</span>
+            </div>
+
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight font-display mb-3">
               Ready to create authentic Threads content?
             </h2>
-            <p className="text-sm text-white/70 leading-relaxed mb-6">
+            <p className="text-sm sm:text-base text-white/65 leading-relaxed mb-6 font-normal">
               ThreadPilot reproduces your personal writing cadence, hook styles, and formatting
               tendencies while evaluating each post against strict 500-character platform constraints.
             </p>
+
             <div className="flex flex-wrap items-center gap-3">
-              <Link href="/create" className="btn-primary flex items-center gap-2 text-xs py-2.5 px-4">
+              <Link href="/create" className="btn-primary text-xs py-2.5 px-5 flex items-center gap-2">
                 <PenSquare className="h-4 w-4" />
                 <span>Open Content Studio</span>
               </Link>
               <Link
                 href="/profile"
-                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-xs font-medium text-white hover:bg-white/10 flex items-center gap-2 transition-colors"
+                className="btn-secondary text-xs py-2.5 px-5 flex items-center gap-2"
               >
-                <Sparkles className="h-4 w-4 text-brand-300" />
+                <Sparkles className="h-4 w-4 text-violet-400" />
                 <span>View Style Profile</span>
               </Link>
             </div>
@@ -86,27 +98,29 @@ export default function DashboardPage() {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {/* Threads Account Card */}
-          <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-6 backdrop-blur-xl">
+          <div className="glass-card p-6 rounded-2xl border border-white/[0.08] relative group">
             <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-semibold uppercase tracking-wider text-white/40">
+              <span className="text-xs font-bold uppercase tracking-wider text-white/40">
                 Connected Profile
               </span>
-              <Share2 className="h-4 w-4 text-brand-400" />
+              <div className="p-2 rounded-xl bg-coral-500/10 border border-coral-500/20 text-coral-400">
+                <Share2 className="h-4 w-4" />
+              </div>
             </div>
             {account ? (
               <div>
-                <div className="text-lg font-bold text-white">@{account.username}</div>
-                <div className="flex items-center gap-2 text-xs text-emerald-400 mt-1">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  Active Token Linked
+                <div className="text-xl font-extrabold text-white font-display">@{account.username}</div>
+                <div className="flex items-center gap-2 text-xs text-lime-400 mt-2 font-medium">
+                  <span className="h-2 w-2 rounded-full bg-lime-400 animate-pulse" />
+                  Active Token Linked (AES Encrypted)
                 </div>
               </div>
             ) : (
               <div>
-                <div className="text-sm font-medium text-white/70">No account linked</div>
+                <div className="text-sm font-semibold text-white/70">No account linked</div>
                 <Link
                   href="/connect"
-                  className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-400 hover:text-brand-300"
+                  className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-coral-400 hover:text-coral-300 transition-colors"
                 >
                   Connect Threads <ArrowRight className="h-3 w-3" />
                 </Link>
@@ -115,29 +129,31 @@ export default function DashboardPage() {
           </div>
 
           {/* Style Profile Card */}
-          <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-6 backdrop-blur-xl">
+          <div className="glass-card p-6 rounded-2xl border border-white/[0.08] relative group">
             <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-semibold uppercase tracking-wider text-white/40">
+              <span className="text-xs font-bold uppercase tracking-wider text-white/40">
                 Voice Fingerprint
               </span>
-              <Sparkles className="h-4 w-4 text-purple-400" />
+              <div className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400">
+                <Sparkles className="h-4 w-4" />
+              </div>
             </div>
             {profile?.styleFeatures ? (
               <div>
-                <div className="text-lg font-bold text-white">
-                  Version {profile.profileVersion}
+                <div className="text-xl font-extrabold text-white font-display">
+                  Profile v{profile.profileVersion}
                 </div>
-                <div className="text-xs text-white/50 mt-1">
+                <div className="text-xs text-white/55 mt-2 font-mono">
                   Avg {Math.round(profile.styleFeatures.avgPostLengthChars)} chars •{' '}
                   {Math.round(profile.styleFeatures.firstPersonFrequency * 100)}% 1st-person
                 </div>
               </div>
             ) : (
               <div>
-                <div className="text-sm font-medium text-white/70">Voice untyped</div>
+                <div className="text-sm font-semibold text-white/70">Voice untyped</div>
                 <Link
                   href="/profile"
-                  className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-400 hover:text-brand-300"
+                  className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-violet-400 hover:text-violet-300 transition-colors"
                 >
                   Train style from posts <ArrowRight className="h-3 w-3" />
                 </Link>
@@ -146,44 +162,52 @@ export default function DashboardPage() {
           </div>
 
           {/* Ingested History */}
-          <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-6 backdrop-blur-xl">
+          <div className="glass-card p-6 rounded-2xl border border-white/[0.08] relative group">
             <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-semibold uppercase tracking-wider text-white/40">
+              <span className="text-xs font-bold uppercase tracking-wider text-white/40">
                 Historical Memory
               </span>
-              <TrendingUp className="h-4 w-4 text-emerald-400" />
+              <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                <TrendingUp className="h-4 w-4" />
+              </div>
             </div>
             <div>
-              <div className="text-lg font-bold text-white">
-                {ingestionStatus?.totalIngested ?? 0} Posts
+              <div className="text-xl font-extrabold text-white font-display">
+                {ingestionStatus?.totalIngested ?? 0} Posts Ingested
               </div>
-              <div className="text-xs text-white/50 mt-1">
-                Ingested for RAG & style few-shot memory
+              <div className="text-xs text-white/55 mt-2 font-mono">
+                Indexed for RAG & few-shot context
               </div>
             </div>
           </div>
         </div>
 
         {/* Upcoming Publishing Queue */}
-        <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-6 backdrop-blur-xl">
-          <div className="flex items-center justify-between mb-5">
+        <div className="rounded-3xl border border-white/[0.08] bg-ink-850 p-6 sm:p-7 shadow-card-elevated backdrop-blur-xl">
+          <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">Upcoming Publishing Queue</h3>
-              <p className="text-xs text-white/50">Next scheduled posts across connected Threads profiles</p>
+              <h3 className="text-base font-bold text-white tracking-tight font-display">Upcoming Publishing Queue</h3>
+              <p className="text-xs text-white/50 mt-0.5">Automated schedules across connected Threads profiles</p>
             </div>
             <Link
               href="/schedules"
-              className="text-xs font-semibold text-brand-400 hover:text-brand-300 flex items-center gap-1"
+              className="text-xs font-semibold text-coral-400 hover:text-coral-300 flex items-center gap-1 transition-colors"
             >
-              Open Calendar <ArrowRight className="h-3 w-3" />
+              Open Calendar <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
 
           {schedules.length === 0 ? (
-            <div className="text-center py-8 border border-dashed border-white/10 rounded-xl">
-              <Calendar className="h-7 w-7 text-white/20 mx-auto mb-2" />
-              <p className="text-xs text-white/50">No scheduled posts in the queue</p>
-              <Link href="/create" className="btn-primary mt-3 text-xs py-1.5 px-3">
+            <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl bg-ink-900/50">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/30 mx-auto mb-3">
+                <Calendar className="h-6 w-6" />
+              </div>
+              <p className="text-sm font-semibold text-white/80">No scheduled posts in the queue</p>
+              <p className="text-xs text-white/40 mt-1 max-w-sm mx-auto">
+                Create and schedule content in the studio to enable autonomous dispatch.
+              </p>
+              <Link href="/create" className="btn-primary mt-4 text-xs py-2 px-4 inline-flex items-center gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
                 Schedule a Post
               </Link>
             </div>
@@ -192,20 +216,20 @@ export default function DashboardPage() {
               {schedules.map((s) => (
                 <div
                   key={s.id}
-                  className="rounded-xl border border-white/5 bg-black/40 p-4 space-y-2 hover:border-white/15 transition-all"
+                  className="rounded-2xl border border-white/[0.06] bg-ink-900/80 p-5 space-y-3 hover:border-white/15 transition-all"
                 >
                   <div className="flex items-center justify-between">
                     {renderStatusBadge(s.status)}
-                    <span className="text-[11px] font-medium text-white/50">
+                    <span className="text-[11px] font-mono font-medium text-white/50">
                       {formatRelativeTime(s.scheduledAt)}
                     </span>
                   </div>
-                  <p className="text-xs text-white/90 line-clamp-2 leading-relaxed font-sans">
+                  <p className="text-xs sm:text-sm text-white/90 line-clamp-2 leading-relaxed">
                     {s.contentSnapshot?.body || 'Post content'}
                   </p>
-                  <div className="flex items-center justify-between pt-1 text-[11px] text-white/40">
-                    <span>@{s.socialAccount?.username || 'account'}</span>
-                    <Link href="/schedules" className="text-brand-300 hover:underline">
+                  <div className="flex items-center justify-between pt-2 border-t border-white/[0.05] text-[11px] text-white/40">
+                    <span className="font-semibold text-white/60">@{s.socialAccount?.username || 'account'}</span>
+                    <Link href="/schedules" className="text-coral-400 hover:text-coral-300 font-semibold transition-colors">
                       Manage &rarr;
                     </Link>
                   </div>
@@ -216,47 +240,53 @@ export default function DashboardPage() {
         </div>
 
         {/* Recent Drafts */}
-        <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-6 backdrop-blur-xl">
-          <div className="flex items-center justify-between mb-5">
+        <div className="rounded-3xl border border-white/[0.08] bg-ink-850 p-6 sm:p-7 shadow-card-elevated backdrop-blur-xl">
+          <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">Recent Content Drafts</h3>
-              <p className="text-xs text-white/50">Drafts generated by AI or edited manually</p>
+              <h3 className="text-base font-bold text-white tracking-tight font-display">Recent Content Drafts</h3>
+              <p className="text-xs text-white/50 mt-0.5">AI-synthesized and edited drafts in progress</p>
             </div>
             <Link
               href="/create"
-              className="text-xs font-semibold text-brand-400 hover:text-brand-300 flex items-center gap-1"
+              className="text-xs font-semibold text-coral-400 hover:text-coral-300 flex items-center gap-1 transition-colors"
             >
-              View Studio <ArrowRight className="h-3 w-3" />
+              View Studio <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
 
           {drafts.length === 0 ? (
-            <div className="text-center py-10 border border-dashed border-white/10 rounded-xl">
-              <FileText className="h-8 w-8 text-white/30 mx-auto mb-2" />
-              <p className="text-xs text-white/50">No drafts created yet</p>
-              <Link href="/create" className="btn-primary mt-3 text-xs py-1.5 px-3">
+            <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl bg-ink-900/50">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/30 mx-auto mb-3">
+                <FileText className="h-6 w-6" />
+              </div>
+              <p className="text-sm font-semibold text-white/80">No drafts created yet</p>
+              <p className="text-xs text-white/40 mt-1 max-w-sm mx-auto">
+                Draft your first thread using your personalized voice archetype.
+              </p>
+              <Link href="/create" className="btn-primary mt-4 text-xs py-2 px-4 inline-flex items-center gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
                 Create First Draft
               </Link>
             </div>
           ) : (
-            <div className="divide-y divide-white/5">
+            <div className="divide-y divide-white/[0.06]">
               {drafts.map((d) => (
-                <div key={d.id} className="py-3 flex items-center justify-between">
-                  <div className="pr-4 truncate">
-                    <p className="text-sm font-medium text-white truncate">
+                <div key={d.id} className="py-4 flex items-center justify-between hover:bg-white/[0.02] px-2 rounded-xl transition-colors">
+                  <div className="pr-4 truncate flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">
                       {d.currentVersion?.hook || d.currentVersion?.body || d.topic || 'Untitled Draft'}
                     </p>
-                    <div className="flex items-center gap-3 text-[11px] text-white/40 mt-0.5">
+                    <div className="flex items-center gap-3 text-[11px] text-white/40 mt-1 font-mono">
                       <span>v{d.currentVersion?.version ?? 1}</span>
                       <span>•</span>
                       <span>{new Date(d.updatedAt).toLocaleDateString()}</span>
                       <span>•</span>
-                      <span className="text-brand-300">{d.generatedBy ?? 'AI'}</span>
+                      <span className="text-coral-400 font-semibold">{d.generatedBy ?? 'AI'}</span>
                     </div>
                   </div>
                   <Link
                     href={`/create?draftId=${d.id}`}
-                    className="rounded-lg border border-white/10 px-3 py-1 text-xs text-white/70 hover:bg-white/5 hover:text-white transition-colors whitespace-nowrap"
+                    className="btn-secondary text-xs py-1.5 px-3.5 whitespace-nowrap"
                   >
                     Edit Draft
                   </Link>

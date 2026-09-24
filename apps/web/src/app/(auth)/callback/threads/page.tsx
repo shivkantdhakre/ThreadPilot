@@ -59,31 +59,31 @@ function ThreadsCallbackContent() {
   }, [searchParams, router]);
 
   return (
-    <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-900/80 p-8 text-center backdrop-blur-xl">
+    <div className="w-full max-w-sm rounded-3xl border border-white/[0.08] bg-[#111116]/90 p-8 text-center backdrop-blur-2xl shadow-card-elevated">
       {status === 'processing' && (
         <>
-          <Loader2 className="h-10 w-10 animate-spin text-brand-400 mx-auto mb-4" />
-          <h2 className="text-base font-bold text-white mb-2">Connecting to Threads</h2>
+          <Loader2 className="h-10 w-10 animate-spin text-coral-500 mx-auto mb-4" />
+          <h2 className="text-base font-bold text-white mb-2 font-display">Connecting to Threads</h2>
           <p className="text-xs text-white/50">{message}</p>
         </>
       )}
 
       {status === 'success' && (
         <>
-          <CheckCircle2 className="h-10 w-10 text-emerald-400 mx-auto mb-4" />
-          <h2 className="text-base font-bold text-white mb-2">Account Linked!</h2>
-          <p className="text-xs text-emerald-300">{message}</p>
+          <CheckCircle2 className="h-10 w-10 text-lime-400 mx-auto mb-4" />
+          <h2 className="text-base font-bold text-white mb-2 font-display">Account Linked!</h2>
+          <p className="text-xs text-lime-300 font-medium">{message}</p>
         </>
       )}
 
       {status === 'error' && (
         <>
           <AlertCircle className="h-10 w-10 text-rose-400 mx-auto mb-4" />
-          <h2 className="text-base font-bold text-white mb-2">Connection Failed</h2>
+          <h2 className="text-base font-bold text-white mb-2 font-display">Connection Failed</h2>
           <p className="text-xs text-rose-300 mb-4">{message}</p>
           <button
             onClick={() => router.push('/connect')}
-            className="btn-primary w-full py-2 text-xs"
+            className="btn-primary w-full py-2.5 text-xs"
           >
             Back to Accounts
           </button>
@@ -95,11 +95,11 @@ function ThreadsCallbackContent() {
 
 export default function ThreadsCallbackPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center p-6 bg-slate-950">
+    <div className="flex min-h-screen items-center justify-center p-6 bg-ink-900">
       <Suspense
         fallback={
           <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-brand-400 mx-auto mb-3" />
+            <Loader2 className="h-8 w-8 animate-spin text-coral-500 mx-auto mb-3" />
             <p className="text-xs text-white/50">Processing authorization...</p>
           </div>
         }

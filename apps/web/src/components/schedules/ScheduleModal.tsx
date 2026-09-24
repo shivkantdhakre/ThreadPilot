@@ -68,7 +68,7 @@ export function ScheduleModal({
       setTimezone('UTC');
     }
 
-    // Default datetime: If initialDate clicked, avoid 00:00:00 midnight past-time trip
+    // Default datetime
     const now = new Date();
     let baseDate: Date;
     if (initialDate) {
@@ -78,19 +78,15 @@ export function ScheduleModal({
         baseDate.getMonth() === now.getMonth() &&
         baseDate.getDate() === now.getDate();
       if (isToday) {
-        // Default to 1 hour from now, rounded to the next 15-min mark
         const futureMs = now.getTime() + 60 * 60 * 1000;
         baseDate = new Date(Math.ceil(futureMs / (15 * 60 * 1000)) * (15 * 60 * 1000));
       } else {
-        // If clicking a future day on the calendar, default to 10:00 AM
         baseDate.setHours(10, 0, 0, 0);
       }
     } else {
-      // Default datetime: Tomorrow at 10:00 AM
       baseDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
       baseDate.setHours(10, 0, 0, 0);
     }
-    // Format for datetime-local input: YYYY-MM-DDTHH:mm
     const year = baseDate.getFullYear();
     const month = String(baseDate.getMonth() + 1).padStart(2, '0');
     const day = String(baseDate.getDate()).padStart(2, '0');
@@ -163,12 +159,10 @@ export function ScheduleModal({
 
     setIsSubmitting(true);
     try {
-      // 1. If draft is currently 'DRAFT', promote it to 'READY' so scheduling passes validation
       if (draftStatus === 'DRAFT') {
         await apiClient.patch(`/content/drafts/${draftId}`, { status: 'READY' });
       }
 
-      // 2. Submit Schedule with explicit ISO UTC timestamp representing the target wall-clock time
       const scheduledPost = await apiClient.post(`/content/drafts/${draftId}/schedule`, {
         scheduledAt: scheduledIso,
         timezone,
@@ -190,15 +184,15 @@ export function ScheduleModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-xl overflow-hidden rounded-2xl border border-white/10 bg-slate-900 shadow-2xl">
+      <div className="relative w-full max-w-xl overflow-hidden rounded-3xl border border-white/[0.09] bg-[#111116] shadow-card-elevated">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 px-6 py-4 bg-white/[0.02]">
+        <div className="flex items-center justify-between border-b border-white/[0.08] px-6 py-5 bg-ink-850/60">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 shadow-md shadow-brand-500/20">
-              <Calendar className="h-5 w-5 text-white" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-coral-500/10 border border-coral-500/20 text-coral-400 shadow-glow">
+              <Calendar className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">Schedule Post</h3>
+              <h3 className="text-base font-bold text-white tracking-tight font-display">Schedule Post</h3>
               <p className="text-xs text-white/50">
                 {draftTopic ? `Topic: ${draftTopic}` : 'Queue post for automated publishing'}
               </p>
@@ -206,7 +200,7 @@ export function ScheduleModal({
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-white/40 hover:bg-white/5 hover:text-white transition-colors"
+            className="rounded-xl p-2 text-white/40 hover:bg-white/5 hover:text-white transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
@@ -215,33 +209,33 @@ export function ScheduleModal({
         {/* Content Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {errorMsg && (
-            <div className="flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-xs text-rose-300">
+            <div className="flex items-start gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-xs text-rose-300 font-medium">
               <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
               <div className="flex-1">{errorMsg}</div>
             </div>
           )}
 
           {successMsg && (
-            <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-300">
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+            <div className="flex items-center gap-3 rounded-2xl border border-lime-500/30 bg-lime-500/10 p-3.5 text-xs text-lime-300 font-medium">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-lime-400" />
               <div>{successMsg}</div>
             </div>
           )}
 
           {/* Social Account Selector */}
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-white/60 mb-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">
               Target Threads Account
             </label>
             {isLoadingAccounts ? (
               <div className="flex items-center gap-2 text-xs text-white/40 py-2">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-400" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-coral-500" />
                 <span>Loading accounts...</span>
               </div>
             ) : accounts.length === 0 ? (
-              <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-300 flex items-center justify-between">
+              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-300 flex items-center justify-between">
                 <span>No connected Threads account found.</span>
-                <a href="/connect" className="underline font-semibold hover:text-white">
+                <a href="/connect" className="underline font-bold hover:text-white">
                   Connect now &rarr;
                 </a>
               </div>
@@ -249,10 +243,10 @@ export function ScheduleModal({
               <select
                 value={selectedAccountId}
                 onChange={(e) => setSelectedAccountId(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-black/40 px-3.5 py-2.5 text-sm text-white focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                className="input-base text-xs"
               >
                 {accounts.map((acc) => (
-                  <option key={acc.id} value={acc.id} className="bg-slate-900 text-white">
+                  <option key={acc.id} value={acc.id} className="bg-ink-850 text-white">
                     @{acc.username} {acc.displayName ? `(${acc.displayName})` : ''}
                   </option>
                 ))}
@@ -262,14 +256,14 @@ export function ScheduleModal({
 
           {/* Date & Time Picker */}
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-white/60 mb-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">
               Publication Date & Time
             </label>
             <input
               type="datetime-local"
               value={scheduledDateTime}
               onChange={(e) => setScheduledDateTime(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-black/40 px-3.5 py-2.5 text-sm text-white focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="input-base text-xs font-mono"
             />
 
             {/* Presets */}
@@ -277,28 +271,28 @@ export function ScheduleModal({
               <button
                 type="button"
                 onClick={() => handleApplyPreset(60)}
-                className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs text-white/70 hover:bg-white/[0.08] hover:text-white transition-colors"
+                className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/[0.08] hover:text-white transition-colors"
               >
                 +1 Hour
               </button>
               <button
                 type="button"
                 onClick={() => handleApplyPreset(24 * 60, 9)}
-                className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs text-white/70 hover:bg-white/[0.08] hover:text-white transition-colors"
+                className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/[0.08] hover:text-white transition-colors"
               >
                 Tomorrow 9:00 AM
               </button>
               <button
                 type="button"
                 onClick={() => handleApplyPreset(24 * 60, 18)}
-                className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs text-white/70 hover:bg-white/[0.08] hover:text-white transition-colors"
+                className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/[0.08] hover:text-white transition-colors"
               >
                 Tomorrow 6:00 PM
               </button>
               <button
                 type="button"
                 onClick={() => handleApplyPreset(48 * 60, 10)}
-                className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs text-white/70 hover:bg-white/[0.08] hover:text-white transition-colors"
+                className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/[0.08] hover:text-white transition-colors"
               >
                 In 2 Days
               </button>
@@ -308,30 +302,30 @@ export function ScheduleModal({
           {/* Timezone */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold uppercase tracking-wider text-white/60">
+              <label className="text-xs font-bold uppercase tracking-wider text-white/60">
                 Timezone
               </label>
-              <span className="text-[11px] text-brand-300 font-mono">IANA Standard</span>
+              <span className="badge-neutral text-[10px] font-mono">IANA Standard</span>
             </div>
             <input
               type="text"
               value={timezone}
               onChange={(e) => setTimezone(e.target.value)}
               placeholder="e.g. America/New_York or Asia/Kolkata"
-              className="w-full rounded-xl border border-white/10 bg-black/40 px-3.5 py-2 text-xs text-white/80 focus:border-brand-500 focus:outline-none"
+              className="input-base text-xs font-mono"
             />
           </div>
 
           {/* Canonical Outbound Text Preview */}
-          <div className="rounded-xl border border-white/10 bg-black/50 p-3.5 space-y-2">
+          <div className="rounded-2xl border border-white/[0.07] bg-ink-950 p-4 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-white/60">Outbound Post Preview</span>
+              <span className="font-bold text-white/60">Outbound Post Preview</span>
               <span
-                className={`font-mono text-[11px] ${
-                  charCount > 500 ? 'text-rose-400 font-bold' : 'text-white/40'
+                className={`font-mono text-[11px] font-bold ${
+                  charCount > 500 ? 'text-rose-400' : 'text-white/40'
                 }`}
               >
-                {charCount}/500 chars
+                {charCount} / 500 chars
               </span>
             </div>
             <p className="text-xs text-white/90 leading-relaxed font-sans line-clamp-4 whitespace-pre-wrap">
@@ -340,18 +334,18 @@ export function ScheduleModal({
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-2 border-t border-white/10">
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/[0.08]">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-white hover:bg-white/10 transition-colors"
+              className="btn-secondary text-xs py-2 px-4"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting || accounts.length === 0 || !canonicalBody}
-              className="btn-primary flex items-center gap-2 text-xs py-2 px-4 shadow-lg shadow-brand-500/20 disabled:opacity-50"
+              className="btn-primary flex items-center gap-2 text-xs py-2 px-5 shadow-glow disabled:opacity-50"
             >
               {isSubmitting ? (
                 <>

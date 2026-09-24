@@ -1,8 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
   PenSquare,
@@ -12,13 +13,16 @@ import {
   Settings,
   LogOut,
   ChevronDown,
-  AtSign,
+  Check,
+  PlusCircle,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import Logo from './ui/Logo';
 
 export function Sidebar() {
   const pathname = usePathname();
   const { user, workspace, workspaces, switchWorkspace, logout } = useAuth();
+  const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -30,51 +34,61 @@ export function Sidebar() {
   ];
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-white/10 bg-slate-950/80 backdrop-blur-xl">
-      {/* Brand */}
-      <div className="flex h-16 items-center gap-3 border-b border-white/10 px-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 shadow-md shadow-brand-500/20">
-          <AtSign className="h-5 w-5 text-white" />
-        </div>
-        <div>
-          <span className="text-base font-bold tracking-tight text-white">ThreadPilot</span>
-          <span className="ml-1.5 rounded bg-brand-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-brand-300">
-            v1.0
-          </span>
-        </div>
+    <aside className="fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-white/[0.08] bg-[#0E0E13]/95 backdrop-blur-2xl">
+      {/* Brand Header */}
+      <div className="flex h-16 items-center border-b border-white/[0.08] px-6">
+        <Link href="/dashboard" className="flex items-center">
+          <Logo size="md" />
+        </Link>
       </div>
 
       {/* Workspace Selector */}
-      <div className="border-b border-white/10 px-4 py-3">
-        <div className="group relative">
-          <button className="flex w-full items-center justify-between rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-left text-xs transition-colors hover:bg-white/[0.06]">
-            <div className="truncate">
-              <div className="text-[10px] uppercase tracking-wider text-white/40">Workspace</div>
-              <div className="font-semibold text-white/90 truncate">{workspace?.name ?? 'Personal'}</div>
+      <div className="border-b border-white/[0.08] px-4 py-3">
+        <div className="relative">
+          <button
+            onClick={() => setIsWorkspaceMenuOpen((prev) => !prev)}
+            className="flex w-full items-center justify-between rounded-xl border border-white/[0.06] bg-ink-850/80 px-3.5 py-2.5 text-left text-xs transition-all hover:border-white/15 hover:bg-ink-800"
+          >
+            <div className="truncate pr-2">
+              <div className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">Workspace</div>
+              <div className="font-semibold text-white/95 truncate text-xs">{workspace?.name ?? 'Personal'}</div>
             </div>
-            <ChevronDown className="h-3.5 w-3.5 text-white/40" />
+            <ChevronDown className={`h-3.5 w-3.5 text-white/40 transition-transform duration-200 ${isWorkspaceMenuOpen ? 'rotate-180' : ''}`} />
           </button>
-          {workspaces.length > 1 && (
-            <div className="absolute left-0 right-0 top-full mt-1 hidden rounded-lg border border-white/10 bg-slate-900 p-1 shadow-xl group-hover:block z-50">
-              {workspaces.map((w) => (
-                <button
-                  key={w.id}
-                  onClick={() => switchWorkspace(w.id)}
-                  className={`w-full rounded px-2.5 py-1.5 text-left text-xs transition-colors ${
-                    w.id === workspace?.id
-                      ? 'bg-brand-500/20 text-brand-300 font-medium'
-                      : 'text-white/70 hover:bg-white/5 hover:text-white'
-                  }`}
-                >
-                  {w.name}
-                </button>
-              ))}
-            </div>
-          )}
+
+          <AnimatePresence>
+            {isWorkspaceMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.15 }}
+                className="absolute left-0 right-0 top-full mt-1.5 rounded-xl border border-white/10 bg-ink-800 p-1.5 shadow-2xl z-50 backdrop-blur-xl"
+              >
+                {workspaces.map((w) => (
+                  <button
+                    key={w.id}
+                    onClick={() => {
+                      switchWorkspace(w.id);
+                      setIsWorkspaceMenuOpen(false);
+                    }}
+                    className={`flex items-center justify-between w-full rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
+                      w.id === workspace?.id
+                        ? 'bg-coral-500/15 text-coral-300 font-semibold'
+                        : 'text-white/70 hover:bg-white/5 hover:text-white'
+                    }`}
+                  >
+                    <span className="truncate">{w.name}</span>
+                    {w.id === workspace?.id && <Check className="h-3 w-3 text-coral-400 shrink-0" />}
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
-      {/* Navigation */}
+      {/* Navigation Links */}
       <nav className="flex-1 space-y-1 px-3 py-4">
         {navigation.map((item) => {
           const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname?.startsWith(item.href));
@@ -82,33 +96,40 @@ export function Sidebar() {
             <Link
               key={item.name}
               href={item.href as any}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 ${
+              className={`group relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-150 ${
                 isActive
-                  ? 'bg-brand-500/15 text-brand-300 shadow-inner border border-brand-500/20'
-                  : 'text-white/60 hover:bg-white/5 hover:text-white'
+                  ? 'bg-coral-500/15 text-coral-400 font-semibold border border-coral-500/25 shadow-sm'
+                  : 'text-white/60 hover:bg-white/[0.04] hover:text-white'
               }`}
             >
-              <item.icon className={`h-4 w-4 ${isActive ? 'text-brand-400' : 'text-white/40'}`} />
-              {item.name}
+              <item.icon
+                className={`h-4 w-4 transition-colors ${
+                  isActive ? 'text-coral-400' : 'text-white/40 group-hover:text-white/80'
+                }`}
+              />
+              <span className="truncate">{item.name}</span>
+              {isActive && (
+                <div className="absolute right-2.5 h-1.5 w-1.5 rounded-full bg-coral-400 shadow-glow" />
+              )}
             </Link>
           );
         })}
       </nav>
 
-      {/* User info & logout */}
-      <div className="border-t border-white/10 p-3">
-        <div className="flex items-center justify-between rounded-lg bg-white/[0.02] p-2.5">
+      {/* User profile & logout */}
+      <div className="border-t border-white/[0.08] p-3">
+        <div className="flex items-center justify-between rounded-xl bg-ink-850/80 border border-white/[0.06] p-2.5">
           <div className="truncate pr-2">
-            <div className="text-xs font-medium text-white/90 truncate">{user?.email}</div>
-            <div className="text-[10px] text-emerald-400 flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Online
+            <div className="text-xs font-semibold text-white/90 truncate">{user?.email}</div>
+            <div className="text-[10px] text-lime-400 flex items-center gap-1.5 mt-0.5 font-medium">
+              <span className="h-1.5 w-1.5 rounded-full bg-lime-400 animate-pulse" />
+              Active Session
             </div>
           </div>
           <button
             onClick={logout}
             title="Log out"
-            className="rounded-md p-1.5 text-white/40 hover:bg-white/10 hover:text-white transition-colors"
+            className="rounded-lg p-2 text-white/40 hover:bg-white/10 hover:text-coral-400 transition-colors"
           >
             <LogOut className="h-4 w-4" />
           </button>
