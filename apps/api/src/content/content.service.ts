@@ -1029,16 +1029,45 @@ export class ContentService {
 
   async listSchedules(
     workspaceId: string,
-    options?: { status?: string; page?: number; limit?: number },
+    options?: { status?: string; page?: number; limit?: number; order?: 'asc' | 'desc' },
   ): Promise<{ data: any[]; meta: { total: number; page: number; limit: number; hasMore: boolean } }> {
     const page = options?.page && options.page > 0 ? options.page : 1;
     const limit = options?.limit && options.limit > 0 ? options.limit : 20;
     const skip = (page - 1) * limit;
 
+    let statusFilter: any = undefined;
+    if (options?.status) {
+      const statusUpper = options.status.toUpperCase();
+      if (statusUpper === 'UPCOMING') {
+        statusFilter = {
+          in: ['SCHEDULED', 'CLAIMED', 'CREATING_CONTAINER', 'CONTAINER_CREATED', 'PUBLISHING'],
+        };
+      } else if (statusUpper === 'ATTENTION') {
+        statusFilter = {
+          in: ['RECOVERY_REQUIRED', 'QUOTA_BLOCKED', 'FAILED_RETRYABLE', 'AUTH_REQUIRED'],
+        };
+      } else if (options.status.includes(',')) {
+        statusFilter = {
+          in: options.status.split(',').map((s) => s.trim().toUpperCase()),
+        };
+      } else {
+        statusFilter = options.status;
+      }
+    }
+
     const where = {
       workspaceId,
-      ...(options?.status ? { status: options.status } : {}),
+      ...(statusFilter !== undefined ? { status: statusFilter } : {}),
     };
+
+    // Sort order: if explicitly passed, use it. Otherwise:
+    // UPCOMING/SCHEDULED sorts ascending (soonest first).
+    // Historical/all sorts descending (most recent first).
+    const sortOrder: 'asc' | 'desc' =
+      options?.order ||
+      (options?.status && ['UPCOMING', 'SCHEDULED'].includes(options.status.toUpperCase())
+        ? 'asc'
+        : 'desc');
 
     const [total, items] = await Promise.all([
       this.db.scheduledPost.count({ where }),
@@ -1064,7 +1093,7 @@ export class ContentService {
             },
           },
         },
-        orderBy: { scheduledAt: 'asc' },
+        orderBy: { scheduledAt: sortOrder },
         skip,
         take: limit,
       }),

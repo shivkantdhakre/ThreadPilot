@@ -22,37 +22,104 @@ import { apiClient } from '../../../lib/api-client';
 import { UserProfileDto } from '@threadpilot/types';
 import { renderStatusBadge, formatRelativeTime } from '../../../components/schedules/ScheduleCard';
 
+const UPCOMING_STATUSES = [
+  'SCHEDULED',
+  'CLAIMED',
+  'CREATING_CONTAINER',
+  'CONTAINER_CREATED',
+  'PUBLISHING',
+  'RECOVERY_REQUIRED',
+  'QUOTA_BLOCKED',
+  'FAILED_RETRYABLE',
+  'AUTH_REQUIRED',
+];
+
 export default function DashboardPage() {
   const [profile, setProfile] = useState<UserProfileDto | null>(null);
   const [drafts, setDrafts] = useState<any[]>([]);
-  const [schedules, setSchedules] = useState<any[]>([]);
+  const [upcomingSchedules, setUpcomingSchedules] = useState<any[]>([]);
+  const [recentPublished, setRecentPublished] = useState<any[]>([]);
+  const [queueTab, setQueueTab] = useState<'UPCOMING' | 'PUBLISHED'>('UPCOMING');
   const [ingestionStatus, setIngestionStatus] = useState<any>(null);
   const [account, setAccount] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const loadData = async (silent = false) => {
+    if (!silent) setIsRefreshing(true);
+    try {
+      const [profRes, draftsRes, ingestRes, accountsRes] = await Promise.allSettled([
+        apiClient.get<UserProfileDto>('/profile'),
+        apiClient.get<{ data: any[] }>('/content/drafts?limit=5'),
+        apiClient.get<any>('/ingestion/status'),
+        apiClient.get<{ accounts: any[] }>('/threads-auth/status'),
+      ]);
+
+      if (profRes.status === 'fulfilled') setProfile(profRes.value);
+      if (draftsRes.status === 'fulfilled') setDrafts(draftsRes.value.data ?? []);
+      if (ingestRes.status === 'fulfilled') setIngestionStatus(ingestRes.value);
+      if (accountsRes.status === 'fulfilled') setAccount(accountsRes.value.accounts?.[0] ?? null);
+
+      // Multi-strategy schedule resolution:
+      // Try direct UPCOMING query first, then fetch recent list to populate published tab and provide fallback
+      let upcoming: any[] = [];
+      let published: any[] = [];
+
+      try {
+        const directRes = await apiClient.get<{ data: any[] }>('/content/schedules?status=UPCOMING&limit=10&order=asc');
+        const directData = directRes.data || [];
+        upcoming = directData.filter((s) => UPCOMING_STATUSES.includes(s.status));
+      } catch {
+        // Fallback handles this
+      }
+
+      try {
+        const recentRes = await apiClient.get<{ data: any[] }>('/content/schedules?limit=50&order=desc');
+        const recentData = recentRes.data || [];
+
+        // If direct UPCOMING returned 0 (e.g. backend version without status=UPCOMING), extract upcoming from recentData
+        if (upcoming.length === 0) {
+          upcoming = recentData
+            .filter((s) => UPCOMING_STATUSES.includes(s.status))
+            .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+        }
+
+        published = recentData
+          .filter((s) => s.status === 'PUBLISHED')
+          .sort((a, b) => new Date(b.publishedAt || b.scheduledAt).getTime() - new Date(a.publishedAt || a.scheduledAt).getTime())
+          .slice(0, 4);
+      } catch (err) {
+        console.error('Failed to load recent schedules', err);
+      }
+
+      setUpcomingSchedules(upcoming.slice(0, 4));
+      setRecentPublished(published);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        const [profRes, draftsRes, ingestRes, accountsRes, schedulesRes] = await Promise.allSettled([
-          apiClient.get<UserProfileDto>('/profile'),
-          apiClient.get<{ data: any[] }>('/content/drafts?limit=5'),
-          apiClient.get<any>('/ingestion/status'),
-          apiClient.get<{ accounts: any[] }>('/threads-auth/status'),
-          apiClient.get<{ data: any[] }>('/content/schedules?limit=4'),
-        ]);
+    loadData(false);
 
-        if (profRes.status === 'fulfilled') setProfile(profRes.value);
-        if (draftsRes.status === 'fulfilled') setDrafts(draftsRes.value.data ?? []);
-        if (ingestRes.status === 'fulfilled') setIngestionStatus(ingestRes.value);
-        if (accountsRes.status === 'fulfilled') setAccount(accountsRes.value.accounts?.[0] ?? null);
-        if (schedulesRes.status === 'fulfilled') setSchedules(schedulesRes.value.data ?? []);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    loadData();
+    // Auto-refresh when user returns to this tab
+    const handleFocus = () => {
+      loadData(true);
+    };
+    window.addEventListener('focus', handleFocus);
+
+    // Auto-polling interval every 15s to keep publishing queue in sync
+    const timer = setInterval(() => {
+      loadData(true);
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(timer);
+    };
   }, []);
 
   return (
@@ -182,60 +249,142 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Upcoming Publishing Queue */}
+        {/* Publishing Queue Section */}
         <div className="rounded-3xl border border-white/[0.08] bg-ink-850 p-6 sm:p-7 shadow-card-elevated backdrop-blur-xl">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight font-display">Upcoming Publishing Queue</h3>
-              <p className="text-xs text-white/50 mt-0.5">Automated schedules across connected Threads profiles</p>
-            </div>
-            <Link
-              href="/schedules"
-              className="text-xs font-semibold text-coral-400 hover:text-coral-300 flex items-center gap-1 transition-colors"
-            >
-              Open Calendar <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-
-          {schedules.length === 0 ? (
-            <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl bg-ink-900/50">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/30 mx-auto mb-3">
-                <Calendar className="h-6 w-6" />
+              <div className="flex flex-wrap items-center gap-3">
+                <h3 className="text-base font-bold text-white tracking-tight font-display">
+                  Publishing Queue
+                </h3>
+                <div className="flex items-center gap-1 p-1 rounded-xl bg-ink-900 border border-white/[0.08]">
+                  <button
+                    onClick={() => setQueueTab('UPCOMING')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                      queueTab === 'UPCOMING'
+                        ? 'bg-coral-500/20 text-coral-400 border border-coral-500/30 shadow-sm'
+                        : 'text-white/40 hover:text-white/70'
+                    }`}
+                  >
+                    Upcoming ({upcomingSchedules.length})
+                  </button>
+                  <button
+                    onClick={() => setQueueTab('PUBLISHED')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                      queueTab === 'PUBLISHED'
+                        ? 'bg-lime-500/20 text-lime-400 border border-lime-500/30 shadow-sm'
+                        : 'text-white/40 hover:text-white/70'
+                    }`}
+                  >
+                    Published ({recentPublished.length})
+                  </button>
+                </div>
               </div>
-              <p className="text-sm font-semibold text-white/80">No scheduled posts in the queue</p>
-              <p className="text-xs text-white/40 mt-1 max-w-sm mx-auto">
-                Create and schedule content in the studio to enable autonomous dispatch.
+              <p className="text-xs text-white/50 mt-1">
+                {queueTab === 'UPCOMING'
+                  ? 'Active automated schedules awaiting platform dispatch'
+                  : 'Successfully published posts across connected Threads profiles'}
               </p>
-              <Link href="/create" className="btn-primary mt-4 text-xs py-2 px-4 inline-flex items-center gap-1.5">
-                <Plus className="h-3.5 w-3.5" />
-                Schedule a Post
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => loadData(false)}
+                disabled={isRefreshing}
+                className="p-2 rounded-xl border border-white/10 bg-white/5 text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                title="Refresh Queue"
+                aria-label="Refresh Queue"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin text-coral-400' : ''}`} />
+              </button>
+              <Link
+                href="/schedules"
+                className="text-xs font-semibold text-coral-400 hover:text-coral-300 flex items-center gap-1 transition-colors px-3 py-2 rounded-xl border border-coral-500/20 bg-coral-500/10 hover:bg-coral-500/20"
+              >
+                <span>Open Calendar</span>
+                <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {schedules.map((s) => (
-                <div
-                  key={s.id}
-                  className="rounded-2xl border border-white/[0.06] bg-ink-900/80 p-5 space-y-3 hover:border-white/15 transition-all"
-                >
-                  <div className="flex items-center justify-between">
-                    {renderStatusBadge(s.status)}
-                    <span className="text-[11px] font-mono font-medium text-white/50">
-                      {formatRelativeTime(s.scheduledAt)}
-                    </span>
-                  </div>
-                  <p className="text-xs sm:text-sm text-white/90 line-clamp-2 leading-relaxed">
-                    {s.contentSnapshot?.body || 'Post content'}
-                  </p>
-                  <div className="flex items-center justify-between pt-2 border-t border-white/[0.05] text-[11px] text-white/40">
-                    <span className="font-semibold text-white/60">@{s.socialAccount?.username || 'account'}</span>
-                    <Link href="/schedules" className="text-coral-400 hover:text-coral-300 font-semibold transition-colors">
-                      Manage &rarr;
-                    </Link>
-                  </div>
+          </div>
+
+          {queueTab === 'UPCOMING' ? (
+            upcomingSchedules.length === 0 ? (
+              <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl bg-ink-900/50">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/30 mx-auto mb-3">
+                  <Calendar className="h-6 w-6" />
                 </div>
-              ))}
-            </div>
+                <p className="text-sm font-semibold text-white/80">No scheduled posts in the queue</p>
+                <p className="text-xs text-white/40 mt-1 max-w-sm mx-auto">
+                  Create and schedule content in the studio to enable autonomous dispatch.
+                </p>
+                <Link href="/create" className="btn-primary mt-4 text-xs py-2 px-4 inline-flex items-center gap-1.5">
+                  <Plus className="h-3.5 w-3.5" />
+                  Schedule a Post
+                </Link>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {upcomingSchedules.map((s) => (
+                  <div
+                    key={s.id}
+                    className="rounded-2xl border border-white/[0.06] bg-ink-900/80 p-5 space-y-3 hover:border-white/15 transition-all"
+                  >
+                    <div className="flex items-center justify-between">
+                      {renderStatusBadge(s.status)}
+                      <span className="text-[11px] font-mono font-medium text-white/50">
+                        {formatRelativeTime(s.scheduledAt)}
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-white/90 line-clamp-2 leading-relaxed">
+                      {s.contentSnapshot?.body || 'Post content'}
+                    </p>
+                    <div className="flex items-center justify-between pt-2 border-t border-white/[0.05] text-[11px] text-white/40">
+                      <span className="font-semibold text-white/60">@{s.socialAccount?.username || 'account'}</span>
+                      <Link href="/schedules" className="text-coral-400 hover:text-coral-300 font-semibold transition-colors">
+                        Manage &rarr;
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : (
+            recentPublished.length === 0 ? (
+              <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl bg-ink-900/50">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/30 mx-auto mb-3">
+                  <CheckCircle2 className="h-6 w-6" />
+                </div>
+                <p className="text-sm font-semibold text-white/80">No published posts yet</p>
+                <p className="text-xs text-white/40 mt-1 max-w-sm mx-auto">
+                  Posts will appear here as soon as they are published to Threads.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {recentPublished.map((s) => (
+                  <div
+                    key={s.id}
+                    className="rounded-2xl border border-white/[0.06] bg-ink-900/80 p-5 space-y-3 hover:border-white/15 transition-all"
+                  >
+                    <div className="flex items-center justify-between">
+                      {renderStatusBadge(s.status)}
+                      <span className="text-[11px] font-mono font-medium text-white/50">
+                        {formatRelativeTime(s.publishedAt || s.scheduledAt)}
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-white/90 line-clamp-2 leading-relaxed">
+                      {s.contentSnapshot?.body || 'Post content'}
+                    </p>
+                    <div className="flex items-center justify-between pt-2 border-t border-white/[0.05] text-[11px] text-white/40">
+                      <span className="font-semibold text-white/60">@{s.socialAccount?.username || 'account'}</span>
+                      <Link href="/schedules" className="text-coral-400 hover:text-coral-300 font-semibold transition-colors">
+                        View in Calendar &rarr;
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
           )}
         </div>
 

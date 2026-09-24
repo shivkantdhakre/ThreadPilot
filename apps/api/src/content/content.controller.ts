@@ -150,9 +150,11 @@ export class ContentController {
     @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('order') order?: 'asc' | 'desc',
   ): Promise<{ data: any[]; meta: { total: number; page: number; limit: number; hasMore: boolean } }> {
     return this.contentService.listSchedules(workspaceId, {
       ...(status ? { status } : {}),
+      ...(order ? { order } : {}),
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 20,
     });
