@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { apiClient } from '../../../../lib/api-client';
 
+import { ThreadPilotLoader } from '../../../../components/ui/ThreadPilotLoader';
+
 function ThreadsCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -59,35 +61,43 @@ function ThreadsCallbackContent() {
   }, [searchParams, router]);
 
   return (
-    <div className="w-full max-w-sm rounded-3xl border border-white/[0.08] bg-[#111116]/90 p-8 text-center backdrop-blur-2xl shadow-card-elevated">
+    <div className="w-full max-w-sm card-base p-8 text-center shadow-card space-y-4">
       {status === 'processing' && (
-        <>
-          <Loader2 className="h-10 w-10 animate-spin text-coral-500 mx-auto mb-4" />
-          <h2 className="text-base font-bold text-white mb-2 font-display">Connecting to Threads</h2>
-          <p className="text-xs text-white/50">{message}</p>
-        </>
+        <div className="py-4 space-y-4">
+          <div className="flex justify-center">
+            <ThreadPilotLoader size="md" message="Exchanging credentials..." />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-text-primary font-display">Connecting to Threads</h2>
+            <p className="text-xs text-text-secondary mt-1">{message}</p>
+          </div>
+        </div>
       )}
 
       {status === 'success' && (
-        <>
-          <CheckCircle2 className="h-10 w-10 text-lime-400 mx-auto mb-4" />
-          <h2 className="text-base font-bold text-white mb-2 font-display">Account Linked!</h2>
-          <p className="text-xs text-lime-300 font-medium">{message}</p>
-        </>
+        <div className="py-4 space-y-3">
+          <CheckCircle2 className="h-10 w-10 text-lime-600 mx-auto" />
+          <h2 className="text-base font-bold text-text-primary font-display">Account Linked!</h2>
+          <p className="text-xs text-emerald-700 font-medium bg-emerald-50 py-1.5 px-3 rounded-lg border border-emerald-200">
+            {message}
+          </p>
+        </div>
       )}
 
       {status === 'error' && (
-        <>
-          <AlertCircle className="h-10 w-10 text-rose-400 mx-auto mb-4" />
-          <h2 className="text-base font-bold text-white mb-2 font-display">Connection Failed</h2>
-          <p className="text-xs text-rose-300 mb-4">{message}</p>
+        <div className="py-4 space-y-3">
+          <AlertCircle className="h-10 w-10 text-rose-500 mx-auto" />
+          <h2 className="text-base font-bold text-text-primary font-display">Connection Failed</h2>
+          <p className="text-xs text-rose-700 bg-rose-50 py-2 px-3 rounded-lg border border-rose-200">
+            {message}
+          </p>
           <button
             onClick={() => router.push('/connect')}
-            className="btn-primary w-full py-2.5 text-xs"
+            className="btn-primary w-full py-2.5 text-xs mt-2"
           >
             Back to Accounts
           </button>
-        </>
+        </div>
       )}
     </div>
   );
@@ -95,12 +105,11 @@ function ThreadsCallbackContent() {
 
 export default function ThreadsCallbackPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center p-6 bg-ink-900">
+    <div className="flex min-h-screen items-center justify-center p-6 bg-warm-white">
       <Suspense
         fallback={
           <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-coral-500 mx-auto mb-3" />
-            <p className="text-xs text-white/50">Processing authorization...</p>
+            <ThreadPilotLoader size="md" message="Processing authorization..." />
           </div>
         }
       >

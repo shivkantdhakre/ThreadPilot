@@ -14,17 +14,17 @@ import { voiceData } from '../../data/threadpilot/voice';
 
 export const PersonalVoiceSection: React.FC = () => {
   return (
-    <section id="voice" className="relative z-10 bg-ivory py-24 px-6 border-b border-black/[0.06]">
+    <section id="voice" className="relative z-10 bg-warm-white py-24 px-6 border-b border-canvas-border">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center max-w-2xl mx-auto mb-16">
           <span className="inline-block text-xs font-bold uppercase tracking-wider text-violet-700 bg-violet-500/10 px-3 py-1 rounded-full border border-violet-500/20 mb-3">
             {voiceData.eyebrow}
           </span>
-          <h2 className="text-3xl sm:text-5xl font-extrabold text-[#151515] tracking-tight font-display mb-4">
+          <h2 className="text-3xl sm:text-5xl font-extrabold text-text-primary tracking-tight font-display mb-4">
             {voiceData.headline}
           </h2>
-          <p className="text-base text-[#525252] leading-relaxed">
+          <p className="text-base text-text-secondary leading-relaxed">
             {voiceData.subtext}
           </p>
         </div>
@@ -32,64 +32,64 @@ export const PersonalVoiceSection: React.FC = () => {
         {/* 3-Panel Visual Composition */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-12">
           {/* Panel 1: Ingested Posts Feed */}
-          <div className="rounded-3xl border border-black/[0.06] bg-white p-6 shadow-sm flex flex-col justify-between">
+          <div className="rounded-3xl border border-canvas-border bg-white p-6 shadow-subtle flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between pb-3 mb-4 border-b border-black/[0.06]">
-                <h3 className="text-sm font-bold text-[#151515]">Your Ingested Posts</h3>
-                <span className="text-[11px] font-mono text-[#737373]">Via Meta API</span>
+              <div className="flex items-center justify-between pb-3 mb-4 border-b border-canvas-border">
+                <h3 className="text-sm font-bold text-text-primary">Your Ingested Posts</h3>
+                <span className="text-[11px] font-mono text-text-muted">Via Meta API</span>
               </div>
               <div className="space-y-3">
                 {voiceData.existingPosts.map((post, idx) => (
                   <div
                     key={idx}
-                    className="p-3 rounded-xl border border-black/[0.05] bg-ivory/60 hover:bg-ivory transition-colors"
+                    className="p-3 rounded-xl border border-canvas-border/80 bg-paper/60 hover:bg-paper transition-colors"
                   >
-                    <div className="flex items-center justify-between text-[10px] text-[#737373] mb-1 font-mono">
+                    <div className="flex items-center justify-between text-[10px] text-text-muted mb-1 font-mono">
                       <span>Post #{idx + 1}</span>
-                      <span className="bg-black/5 px-2 py-0.5 rounded text-[#151515] font-semibold">{post.tag}</span>
+                      <span className="bg-canvas-neutral px-2 py-0.5 rounded text-text-primary font-semibold">{post.tag}</span>
                     </div>
-                    <p className="text-xs font-semibold text-[#151515] line-clamp-1">{post.title}</p>
-                    <p className="text-[10px] text-[#737373] mt-1">{post.stats}</p>
+                    <p className="text-xs font-semibold text-text-primary line-clamp-1">{post.title}</p>
+                    <p className="text-[10px] text-text-muted mt-1">{post.stats}</p>
                   </div>
                 ))}
               </div>
             </div>
             <div className="pt-4 text-center">
-              <span className="text-xs text-[#737373]">Analyzed continuously for stylistic markers</span>
+              <span className="text-xs text-text-muted">Analyzed continuously for stylistic markers</span>
             </div>
           </div>
 
           {/* Panel 2: Pattern Analysis Breakdown */}
-          <div className="rounded-3xl border border-black/[0.06] bg-white p-6 shadow-sm flex flex-col justify-between">
+          <div className="rounded-3xl border border-canvas-border bg-white p-6 shadow-subtle flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between pb-3 mb-4 border-b border-black/[0.06]">
-                <h3 className="text-sm font-bold text-[#151515]">Pattern Extraction</h3>
+              <div className="flex items-center justify-between pb-3 mb-4 border-b border-canvas-border">
+                <h3 className="text-sm font-bold text-text-primary">Pattern Extraction</h3>
                 <span className="text-[11px] font-mono text-emerald-600 font-semibold">Active</span>
               </div>
               <div className="space-y-3">
                 {voiceData.patternAnalysis.map((item) => (
                   <div
                     key={item.title}
-                    className="p-3 rounded-xl border border-black/[0.05] bg-ivory/60"
+                    className="p-3 rounded-xl border border-canvas-border/80 bg-paper/60"
                   >
                     <div className="text-[11px] font-bold text-coral-600 mb-0.5 uppercase tracking-wide">
                       {item.title}
                     </div>
-                    <div className="text-xs font-semibold text-[#151515]">{item.value}</div>
+                    <div className="text-xs font-semibold text-text-primary">{item.value}</div>
                   </div>
                 ))}
               </div>
             </div>
             <div className="pt-4 text-center">
-              <span className="text-xs text-[#737373]">Zero generic templates • 100% personalized</span>
+              <span className="text-xs text-text-muted">Zero generic templates • 100% personalized</span>
             </div>
           </div>
 
           {/* Panel 3: Style Fingerprint Radar Visualization */}
-          <div className="rounded-3xl border border-black/[0.06] bg-white p-6 shadow-sm flex flex-col justify-between">
+          <div className="rounded-3xl border border-canvas-border bg-white p-6 shadow-subtle flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between pb-3 mb-4 border-b border-black/[0.06]">
-                <h3 className="text-sm font-bold text-[#151515]">Style Fingerprint</h3>
+              <div className="flex items-center justify-between pb-3 mb-4 border-b border-canvas-border">
+                <h3 className="text-sm font-bold text-text-primary">Style Fingerprint</h3>
                 <span className="text-[11px] font-mono text-violet-600 font-semibold">Vector Profile</span>
               </div>
 
@@ -126,18 +126,18 @@ export const PersonalVoiceSection: React.FC = () => {
               </div>
 
               {/* Radar Metric Legend */}
-              <div className="grid grid-cols-2 gap-2 text-[11px] font-medium text-[#525252]">
+              <div className="grid grid-cols-2 gap-2 text-[11px] font-medium text-text-secondary">
                 {voiceData.radarMetrics.map((m) => (
-                  <div key={m.label} className="flex items-center justify-between p-1.5 rounded-lg bg-ivory/80">
+                  <div key={m.label} className="flex items-center justify-between p-1.5 rounded-lg bg-paper">
                     <span>{m.label}</span>
-                    <span className="font-mono font-bold text-[#151515]">{m.score}%</span>
+                    <span className="font-mono font-bold text-text-primary">{m.score}%</span>
                   </div>
                 ))}
               </div>
             </div>
 
             <div className="pt-4 text-center">
-              <span className="text-xs italic text-[#737373]">"Your voice, amplified."</span>
+              <span className="text-xs italic text-text-muted">"Your voice, amplified."</span>
             </div>
           </div>
         </div>

@@ -1,7 +1,19 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Sparkles, Zap, Minimize2, UserCheck, Scissors, Loader2, CheckCircle2 } from 'lucide-react';
+import {
+  Sparkles,
+  Zap,
+  Minimize2,
+  UserCheck,
+  Scissors,
+  Loader2,
+  CheckCircle2,
+  FileCheck,
+  Send,
+  Maximize2,
+  PenTool,
+} from 'lucide-react';
 import { useJobProgress } from '../../hooks/useJobProgress';
 
 interface AIImprovementPanelProps {
@@ -13,31 +25,51 @@ interface AIImprovementPanelProps {
 const PRESETS = [
   {
     id: 'improve_hook',
-    label: 'Strengthen Hook',
-    description: 'Punchier opening line that stops the feed',
+    label: 'Improve Hook',
+    description: 'Punchier first line that commands attention in feed',
+    instruction: 'Strengthen the hook: make the opening sentence irresistible, punchy, and under 14 words.',
     icon: Zap,
-    color: 'from-coral-500/15 to-coral-500/5 text-coral-400 border-coral-500/30 hover:border-coral-500/60',
+    color: 'border-coral-200 bg-coral-50/60 hover:border-coral-400 text-coral-700',
   },
   {
     id: 'make_concise',
-    label: 'Maximize Punch',
-    description: 'Trim excess words & maximize cadence',
+    label: 'Make Concise',
+    description: 'Cut filler words & sharpen rhythm',
+    instruction: 'Make this post concise and eliminate filler words while keeping the core thesis strong.',
     icon: Minimize2,
-    color: 'from-cyan-500/15 to-cyan-500/5 text-cyan-300 border-cyan-500/30 hover:border-cyan-500/60',
+    color: 'border-cyan-200 bg-cyan-50/60 hover:border-cyan-400 text-cyan-800',
   },
   {
-    id: 'make_personal',
-    label: 'Authentic Voice',
-    description: 'Add personalized founder narrative inflection',
+    id: 'personal_voice',
+    label: 'Personal Voice',
+    description: 'Infuse unique tone & founder cadence',
+    instruction: 'Infuse authentic personal voice and founder tone matching my style profile.',
     icon: UserCheck,
-    color: 'from-violet-500/15 to-violet-500/5 text-violet-300 border-violet-500/30 hover:border-violet-500/60',
+    color: 'border-violet-200 bg-violet-50/60 hover:border-violet-400 text-violet-700',
   },
   {
-    id: 'remove_fluff',
+    id: 'de_jargonize',
     label: 'De-Jargonize',
-    description: 'Strip buzzwords and generic corporate filler',
+    description: 'Replace buzzwords with plain clarity',
+    instruction: 'De-jargonize: strip buzzwords and explain concepts in clear, direct English.',
     icon: Scissors,
-    color: 'from-lime-500/15 to-lime-500/5 text-lime-400 border-lime-500/30 hover:border-lime-500/60',
+    color: 'border-lime-200 bg-lime-50/60 hover:border-lime-400 text-lime-800',
+  },
+  {
+    id: 'add_specificity',
+    label: 'Add Specificity',
+    description: 'Ground claims in concrete details',
+    instruction: 'Add concrete details, practical steps, or vivid specificity to the core argument.',
+    icon: PenTool,
+    color: 'border-canvas-border bg-soft-gray/80 hover:border-canvas-border-muted text-text-primary',
+  },
+  {
+    id: 'generate_variation',
+    label: 'Variation',
+    description: 'Alternative creative angle for same idea',
+    instruction: 'Generate an alternative variation of this post exploring a different angle or contrast.',
+    icon: Maximize2,
+    color: 'border-canvas-border bg-soft-gray/80 hover:border-canvas-border-muted text-text-primary',
   },
 ];
 
@@ -72,38 +104,43 @@ export function AIImprovementPanel({
       const timer = setTimeout(() => {
         onJobComplete();
         setActiveRequestId(null);
-      }, 1200);
+      }, 1000);
       return () => clearTimeout(timer);
     }
   }, [isComplete, onJobComplete]);
 
   return (
-    <div className="rounded-3xl border border-white/[0.08] bg-[#111116] p-6 shadow-card-elevated backdrop-blur-xl">
-      <div className="mb-4 flex items-center justify-between">
+    <div className="card-paper p-5 sm:p-6 space-y-4">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-coral-400" />
-          <h3 className="text-sm font-bold text-white tracking-tight font-display">
-            AI Voice Refiner
-          </h3>
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-600">
+            <Sparkles className="h-3.5 w-3.5" />
+          </div>
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-text-primary font-display">
+              Contextual AI Actions
+            </h3>
+            <p className="text-[11px] text-text-muted">Apply instant refinements matching your style profile</p>
+          </div>
         </div>
-        <span className="badge-coral text-[10px]">
+        <span className="badge-violet text-[10px]">
           Personal Vector Active
         </span>
       </div>
 
       {/* Progress Box (when active) */}
       {isRunning && (
-        <div className="mb-5 rounded-2xl border border-coral-500/30 bg-coral-500/10 p-4 animate-fade-in">
-          <div className="flex items-center justify-between mb-2 text-xs">
-            <span className="font-semibold text-coral-200 flex items-center gap-2">
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-coral-400" />
-              {progressMessage || 'Refining content according to voice model...'}
+        <div className="rounded-xl border border-coral-200 bg-coral-50 p-4 animate-fade-in space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-semibold text-coral-800 flex items-center gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-coral-600" />
+              {progressMessage || 'Synthesizing voice adjustments...'}
             </span>
-            <span className="font-mono text-coral-300 font-bold">{progress}%</span>
+            <span className="font-mono text-coral-700 font-bold">{progress}%</span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-ink-950">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-coral-100">
             <div
-              className="h-full bg-gradient-to-r from-coral-500 to-electric-orange transition-all duration-300"
+              className="h-full bg-coral-500 transition-all duration-300 rounded-full"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -111,67 +148,72 @@ export function AIImprovementPanel({
       )}
 
       {isComplete && (
-        <div className="mb-5 flex items-center gap-2 rounded-2xl border border-lime-500/30 bg-lime-500/10 p-3.5 text-xs text-lime-300 font-medium animate-fade-in">
-          <CheckCircle2 className="h-4 w-4 text-lime-400 shrink-0" />
-          <span>New revision generated and archived in Version History!</span>
+        <div className="rounded-xl border border-lime-200 bg-lime-50 p-3 text-xs text-lime-800 flex items-center gap-2 font-medium">
+          <CheckCircle2 className="h-4 w-4 text-lime-600 shrink-0" />
+          <span>Post refined! New version added to revision timeline.</span>
         </div>
       )}
 
       {isFailed && (
-        <div className="mb-5 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-xs text-rose-300 font-medium">
-          {error || 'Improvement failed. Please try again.'}
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+          Refinement job failed: {error || 'Unknown error occurred'}
         </div>
       )}
 
-      {/* Quick Presets */}
-      <div className="grid grid-cols-2 gap-3 mb-5">
-        {PRESETS.map((preset) => {
-          const Icon = preset.icon;
+      {/* Quick Action Pills Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+        {PRESETS.map((p) => {
+          const Icon = p.icon;
           return (
             <button
-              key={preset.id}
-              onClick={() => handleTrigger(preset.id)}
+              key={p.id}
+              type="button"
               disabled={disabled || isRunning || isSubmitting}
-              className={`flex flex-col items-start rounded-2xl border bg-gradient-to-br p-3.5 text-left transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:pointer-events-none ${preset.color}`}
+              onClick={() => handleTrigger(p.instruction)}
+              className={`rounded-xl border p-2.5 text-left transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${p.color}`}
             >
-              <div className="flex items-center gap-2 font-bold text-xs mb-1">
-                <Icon className="h-3.5 w-3.5" />
-                {preset.label}
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="text-xs font-bold truncate">{p.label}</span>
               </div>
-              <span className="text-[11px] text-white/55 leading-tight">
-                {preset.description}
-              </span>
+              <p className="text-[10px] text-text-secondary line-clamp-1">
+                {p.description}
+              </p>
             </button>
           );
         })}
       </div>
 
-      {/* Custom Instruction Form */}
-      <div className="space-y-2">
-        <label className="text-xs font-semibold text-white/70">Custom Editing Direction</label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={customInstruction}
-            onChange={(e) => setCustomInstruction(e.target.value)}
-            placeholder="e.g. 'Format this as a 3-bullet insight with sharp punchline'..."
-            disabled={disabled || isRunning || isSubmitting}
-            className="input-base text-xs"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && customInstruction.trim()) {
-                handleTrigger(customInstruction);
-              }
-            }}
-          />
-          <button
-            onClick={() => handleTrigger(customInstruction)}
-            disabled={disabled || !customInstruction.trim() || isRunning || isSubmitting}
-            className="btn-primary whitespace-nowrap px-4 text-xs font-semibold"
-          >
-            {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Refine'}
-          </button>
-        </div>
+      {/* Targeted Custom Directive */}
+      <div className="pt-2 border-t border-canvas-border flex items-center gap-2">
+        <input
+          type="text"
+          disabled={disabled || isRunning || isSubmitting}
+          value={customInstruction}
+          onChange={(e) => setCustomInstruction(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              handleTrigger(customInstruction);
+              setCustomInstruction('');
+            }
+          }}
+          placeholder="Or type a custom refinement (e.g. 'Make it more contrarian')..."
+          className="input-base text-xs py-2"
+        />
+        <button
+          type="button"
+          disabled={disabled || isRunning || !customInstruction.trim()}
+          onClick={() => {
+            handleTrigger(customInstruction);
+            setCustomInstruction('');
+          }}
+          className="btn-primary text-xs py-2 px-3 shrink-0"
+        >
+          <Send className="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   );
 }
+
+export default AIImprovementPanel;

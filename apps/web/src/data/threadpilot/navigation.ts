@@ -10,6 +10,7 @@ export const navigationItems: NavItem[] = [
   { label: 'Intelligence', href: '#intelligence' },
   { label: 'Analytics', href: '#analytics' },
   { label: 'Pricing', href: '#pricing' },
+  { label: 'Docs', href: '#features' },
 ];
 
 export const navActions = {

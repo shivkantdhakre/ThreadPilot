@@ -13,11 +13,13 @@ import {
   ArrowRight,
   Calendar,
   Layers,
+  ChevronDown,
 } from 'lucide-react';
 import { TopBar } from '../../../components/TopBar';
 import { DraftEditor, DraftDetail } from '../../../components/editor/DraftEditor';
 import { apiClient } from '../../../lib/api-client';
 import { useJobProgress } from '../../../hooks/useJobProgress';
+import { ThreadPilotLoader } from '../../../components/ui/ThreadPilotLoader';
 
 function CreatePageContent() {
   const searchParams = useSearchParams();
@@ -107,13 +109,16 @@ function CreatePageContent() {
   };
 
   return (
-    <div className="min-h-screen bg-ink-900">
-      <TopBar title="Content Studio" />
+    <div className="min-h-screen bg-warm-white">
+      <TopBar
+        title="Content Studio"
+        subtitle="Compose and refine Threads content under platform bounds"
+      />
 
       <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-6">
         {/* Studio Actions Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="card-paper p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={() => {
                 setActiveDraft(null);
@@ -121,34 +126,34 @@ function CreatePageContent() {
               className="btn-secondary text-xs py-2 px-3.5 flex items-center gap-2"
             >
               <Plus className="h-3.5 w-3.5" />
-              <span>Blank Draft</span>
+              <span>Blank Canvas</span>
             </button>
 
             <button
               onClick={() => setShowGenerateModal(true)}
-              className="btn-primary text-xs py-2 px-4 flex items-center gap-2 shadow-glow"
+              className="btn-primary text-xs py-2 px-4 flex items-center gap-2 shadow-subtle"
             >
-              <Sparkles className="h-3.5 w-3.5 text-white" />
-              <span>Generate with Personal AI</span>
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>Synthesize with AI</span>
             </button>
 
             <Link
               href="/schedules"
               className="btn-secondary text-xs py-2 px-3.5 flex items-center gap-2"
             >
-              <Calendar className="h-3.5 w-3.5 text-coral-400" />
-              <span>Publishing Calendar</span>
+              <Calendar className="h-3.5 w-3.5 text-coral-600" />
+              <span>Calendar</span>
             </Link>
           </div>
 
           {/* Quick Drafts Selector */}
           {draftsList.length > 0 && (
-            <div className="flex items-center gap-2 text-xs text-white/50">
-              <span className="font-semibold text-white/60">Saved drafts:</span>
+            <div className="flex items-center gap-2 text-xs text-text-muted">
+              <span className="font-semibold text-text-secondary">Saved drafts:</span>
               <select
                 value={activeDraft?.id ?? ''}
                 onChange={(e) => handleSelectDraft(e.target.value)}
-                className="rounded-xl border border-white/[0.08] bg-ink-850 px-3 py-2 text-xs text-white focus:outline-none focus:border-coral-500/80 max-w-[220px] truncate"
+                className="rounded-xl border border-canvas-border bg-white px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-coral-500 max-w-[220px] truncate shadow-subtle"
               >
                 <option value="" disabled>
                   Select a draft...
@@ -176,24 +181,24 @@ function CreatePageContent() {
 
       {/* AI Generation Modal */}
       {showGenerateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-fade-in">
-          <div className="w-full max-w-lg rounded-3xl border border-white/[0.09] bg-[#111116] p-7 shadow-card-elevated">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-4 mb-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-text-primary/40 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg rounded-2xl border border-canvas-border bg-white p-6 sm:p-7 shadow-dropdown">
+            <div className="flex items-center justify-between border-b border-canvas-border pb-4 mb-5">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-coral-500/10 border border-coral-500/20 text-coral-400">
+                <div className="p-2 rounded-xl bg-violet-50 border border-violet-200 text-violet-600">
                   <Sparkles className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white tracking-tight font-display">
-                    Generate with Authentic Voice
+                  <h3 className="text-base font-bold text-text-primary tracking-tight font-display">
+                    Generate with Personal Voice
                   </h3>
-                  <p className="text-xs text-white/40">Grounded in your 8-dimensional style profile</p>
+                  <p className="text-xs text-text-muted">Calibrated to your calibrated 8-dimensional writing model</p>
                 </div>
               </div>
               <button
                 onClick={() => !isRunning && setShowGenerateModal(false)}
                 disabled={isRunning}
-                className="text-white/40 hover:text-white disabled:opacity-30 p-1 rounded-lg hover:bg-white/5 transition-colors"
+                className="text-text-muted hover:text-text-primary disabled:opacity-30 p-1.5 rounded-lg hover:bg-soft-gray transition-colors"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -201,17 +206,17 @@ function CreatePageContent() {
 
             {/* Live Progress Bar when generating */}
             {isRunning && (
-              <div className="mb-5 rounded-2xl border border-coral-500/30 bg-coral-500/10 p-4 animate-fade-in">
-                <div className="flex items-center justify-between text-xs mb-2">
-                  <span className="font-semibold text-coral-200 flex items-center gap-2">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-coral-400" />
+              <div className="mb-5 rounded-xl border border-coral-200 bg-coral-50 p-4 animate-fade-in space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-coral-800 flex items-center gap-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-coral-600" />
                     {progressMessage || 'Synthesizing draft...'}
                   </span>
-                  <span className="font-mono text-coral-300 font-bold">{progress}%</span>
+                  <span className="font-mono text-coral-700 font-bold">{progress}%</span>
                 </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-ink-950">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-coral-100">
                   <div
-                    className="h-full bg-gradient-to-r from-coral-500 to-electric-orange transition-all duration-300"
+                    className="h-full bg-coral-500 transition-all duration-300 rounded-full"
                     style={{ width: `${progress}%` }}
                   />
                 </div>
@@ -220,8 +225,8 @@ function CreatePageContent() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-white/70 mb-1.5">
-                  Core Topic or Provocation <span className="text-coral-400">*</span>
+                <label className="block text-xs font-semibold text-text-primary mb-1.5">
+                  Core Topic or Provocation <span className="text-coral-600">*</span>
                 </label>
                 <input
                   type="text"
@@ -236,7 +241,7 @@ function CreatePageContent() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-white/70 mb-1.5">Format</label>
+                  <label className="block text-xs font-semibold text-text-primary mb-1.5">Format</label>
                   <select
                     value={genFormat}
                     disabled={isRunning}
@@ -251,7 +256,7 @@ function CreatePageContent() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-white/70 mb-1.5">Tone</label>
+                  <label className="block text-xs font-semibold text-text-primary mb-1.5">Tone</label>
                   <select
                     value={genTone}
                     disabled={isRunning}
@@ -267,7 +272,7 @@ function CreatePageContent() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-white/70 mb-1.5">
+                <label className="block text-xs font-semibold text-text-primary mb-1.5">
                   Additional Context (optional)
                 </label>
                 <textarea
@@ -275,12 +280,12 @@ function CreatePageContent() {
                   disabled={isRunning}
                   value={genContext}
                   onChange={(e) => setGenContext(e.target.value)}
-                  placeholder="Any specific nuance, data point, or personal anecdote to integrate..."
+                  placeholder="Any specific data point, nuance, or personal anecdote to integrate..."
                   className="input-base text-xs resize-none"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/[0.08]">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-canvas-border">
                 <button
                   type="button"
                   disabled={isRunning}
@@ -293,7 +298,7 @@ function CreatePageContent() {
                   type="button"
                   disabled={!genTopic.trim() || isRunning || isGenerating}
                   onClick={handleStartGeneration}
-                  className="btn-primary text-xs py-2.5 px-5 flex items-center gap-2 shadow-glow"
+                  className="btn-primary text-xs py-2.5 px-5 flex items-center gap-2 shadow-subtle"
                 >
                   {isRunning || isGenerating ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -315,8 +320,8 @@ export default function CreatePage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-ink-900">
-          <Loader2 className="h-8 w-8 animate-spin text-coral-500" />
+        <div className="flex min-h-screen items-center justify-center bg-warm-white">
+          <ThreadPilotLoader message="Opening Content Studio..." />
         </div>
       }
     >

@@ -1,11 +1,21 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Bell, Wifi, WifiOff } from 'lucide-react';
+import { Bell, Menu } from 'lucide-react';
 import { apiClient } from '../lib/api-client';
 import { NotificationDropdown } from './NotificationDropdown';
+import { useDashboardLayout } from '../context/DashboardLayoutContext';
 
-export function TopBar({ title }: { title: string }) {
+interface TopBarProps {
+  title: string;
+  subtitle?: string;
+  onMenuToggle?: () => void;
+  actions?: React.ReactNode;
+}
+
+export function TopBar({ title, subtitle, onMenuToggle, actions }: TopBarProps) {
+  const { toggleMobileNav } = useDashboardLayout();
+  const handleToggle = onMenuToggle || toggleMobileNav;
   const [isSystemOnline, setIsSystemOnline] = useState<boolean | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -34,33 +44,49 @@ export function TopBar({ title }: { title: string }) {
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/[0.08] bg-[#0B0B0F]/85 px-8 backdrop-blur-xl">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-canvas-border bg-white/95 px-5 sm:px-8 backdrop-blur-md">
       <div className="flex items-center gap-3">
-        <h1 className="text-base sm:text-lg font-bold text-white tracking-tight font-display">{title}</h1>
+        <button
+          onClick={handleToggle}
+          className="lg:hidden p-1.5 rounded-lg border border-canvas-border text-text-secondary hover:text-text-primary hover:bg-soft-gray transition-colors"
+          aria-label="Toggle navigation menu"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <div>
+          <h1 className="text-base sm:text-lg font-bold text-text-primary tracking-tight font-display">
+            {title}
+          </h1>
+          {subtitle && (
+            <p className="text-xs text-text-muted hidden sm:block">{subtitle}</p>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-3">
-        {/* System Online Badge */}
+        {actions}
+
+        {/* System Online Status Badge */}
         <div
-          className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+          className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium transition-all ${
             isSystemOnline === null
-              ? 'border-white/10 bg-white/5 text-white/50'
+              ? 'border-canvas-border bg-soft-gray text-text-muted'
               : isSystemOnline
-              ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400'
-              : 'border-rose-500/30 bg-rose-500/10 text-rose-400'
+              ? 'border-lime-200 bg-lime-50 text-lime-800'
+              : 'border-rose-200 bg-rose-50 text-rose-800'
           }`}
           title={isSystemOnline ? 'Backend microservices & database active' : 'Backend connection unavailable'}
         >
           <span
             className={`h-2 w-2 rounded-full ${
               isSystemOnline === null
-                ? 'bg-white/30'
+                ? 'bg-text-muted/40'
                 : isSystemOnline
-                ? 'bg-emerald-400 animate-pulse'
+                ? 'bg-lime-500'
                 : 'bg-rose-500'
             }`}
           />
-          <span className="hidden sm:inline">
+          <span className="hidden md:inline font-mono text-[11px]">
             {isSystemOnline === null ? 'Connecting...' : isSystemOnline ? 'System Online' : 'System Offline'}
           </span>
         </div>
@@ -69,10 +95,10 @@ export function TopBar({ title }: { title: string }) {
         <div className="relative">
           <button
             onClick={() => setIsNotificationsOpen((prev) => !prev)}
-            className={`relative rounded-xl border p-2 transition-all duration-200 ${
+            className={`relative rounded-xl border p-2 transition-all duration-150 ${
               isNotificationsOpen
-                ? 'border-coral-500/50 bg-coral-500/15 text-white ring-2 ring-coral-500/25 shadow-glow'
-                : 'border-white/10 bg-ink-850 text-white/70 hover:border-white/20 hover:bg-ink-800 hover:text-white'
+                ? 'border-coral-300 bg-coral-50 text-coral-600 ring-2 ring-coral-500/15'
+                : 'border-canvas-border bg-white text-text-secondary hover:border-canvas-border-muted hover:bg-soft-gray hover:text-text-primary'
             }`}
             title="Notifications"
             aria-label="Toggle notifications menu"
@@ -80,7 +106,7 @@ export function TopBar({ title }: { title: string }) {
           >
             <Bell className="h-4 w-4" />
             {unreadCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-coral-500 text-[10px] font-bold text-white shadow-glow">
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-coral-500 text-[10px] font-bold text-white shadow-sm">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
@@ -97,3 +123,5 @@ export function TopBar({ title }: { title: string }) {
     </header>
   );
 }
+
+export default TopBar;

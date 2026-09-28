@@ -107,6 +107,7 @@ export function NotificationDropdown({
       document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('keydown', handleKeyDown);
     }
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
@@ -132,7 +133,7 @@ export function NotificationDropdown({
   const handleNotificationClick = async (item: NotificationItem) => {
     await handleMarkAsRead(item);
 
-    // Optional contextual routing
+    // Contextual routing
     if (item.entityType === 'POST' || item.type.includes('PUBLISH')) {
       onClose();
       router.push('/schedules');
@@ -149,7 +150,6 @@ export function NotificationDropdown({
     if (unreadCount === 0 || isMarkingAll) return;
     setIsMarkingAll(true);
 
-    // Optimistic update
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     onUnreadCountChange(0);
 
@@ -172,32 +172,32 @@ export function NotificationDropdown({
     switch (type) {
       case 'POST_PUBLISHED':
         return (
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-400">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-lime-200 bg-lime-50 text-lime-700">
             <CheckCircle2 className="h-4 w-4" />
           </div>
         );
       case 'POST_FAILED':
         return (
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-rose-500/25 bg-rose-500/10 text-rose-400">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-700">
             <AlertCircle className="h-4 w-4" />
           </div>
         );
       case 'STYLE_TRAINED':
       case 'STYLE_UPDATED':
         return (
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-violet-500/25 bg-violet-500/10 text-violet-400">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-700">
             <Sparkles className="h-4 w-4" />
           </div>
         );
       case 'TOKEN_EXPIRING':
         return (
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-amber-500/25 bg-amber-500/10 text-amber-400">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-amber-700">
             <Clock className="h-4 w-4" />
           </div>
         );
       default:
         return (
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-coral-500/25 bg-coral-500/10 text-coral-400">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-coral-200 bg-coral-50 text-coral-600">
             <Bell className="h-4 w-4" />
           </div>
         );
@@ -207,12 +207,12 @@ export function NotificationDropdown({
   return (
     <div
       ref={dropdownRef}
-      className="absolute right-0 top-12 z-50 w-96 max-w-[calc(100vw-2rem)] rounded-2xl border border-white/[0.09] bg-[#111116]/95 p-0 shadow-card-elevated backdrop-blur-2xl animate-in fade-in slide-in-from-top-2 duration-150 overflow-hidden"
+      className="absolute right-0 top-12 z-50 w-96 max-w-[calc(100vw-2rem)] rounded-2xl border border-canvas-border bg-white shadow-dropdown animate-fade-in overflow-hidden"
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4 bg-ink-850/60">
+      <div className="flex items-center justify-between border-b border-canvas-border px-5 py-3.5 bg-paper/60">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-bold text-white">Notifications</h2>
+          <h2 className="text-xs font-bold text-text-primary uppercase tracking-wider">Notifications</h2>
           {unreadCount > 0 && (
             <span className="badge-coral text-[10px] py-0.5">
               {unreadCount} new
@@ -220,32 +220,34 @@ export function NotificationDropdown({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {unreadCount > 0 && (
             <button
               onClick={handleMarkAllAsRead}
               disabled={isMarkingAll}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold text-coral-400 hover:bg-coral-500/10 transition-colors"
+              className="flex items-center gap-1 text-[11px] font-semibold text-coral-600 hover:text-coral-700 transition-colors p-1"
               title="Mark all as read"
             >
               <CheckCheck className="h-3.5 w-3.5" />
-              <span>Mark all read</span>
+              <span className="hidden sm:inline">Mark all read</span>
             </button>
           )}
 
           <button
-            onClick={fetchNotifications}
+            onClick={() => fetchNotifications()}
             disabled={isLoading}
-            className="rounded-lg p-1.5 text-white/50 hover:bg-white/5 hover:text-white transition-colors"
-            title="Refresh notifications"
+            className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-soft-gray transition-colors"
+            title="Refresh"
+            aria-label="Refresh notifications"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
 
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-white/50 hover:bg-white/5 hover:text-white transition-colors"
+            className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-soft-gray transition-colors"
             title="Close"
+            aria-label="Close notifications menu"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -253,57 +255,48 @@ export function NotificationDropdown({
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex border-b border-white/[0.06] px-4 pt-2 bg-ink-900/40">
+      <div className="flex border-b border-canvas-border px-5 py-2 bg-white gap-2 text-xs">
         <button
           onClick={() => setFilter('all')}
-          className={`relative pb-2.5 px-3 text-xs font-semibold transition-colors ${
-            filter === 'all' ? 'text-white' : 'text-white/40 hover:text-white/70'
+          className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+            filter === 'all'
+              ? 'bg-soft-gray text-text-primary font-semibold'
+              : 'text-text-muted hover:text-text-primary'
           }`}
         >
-          All
-          {filter === 'all' && (
-            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-coral-500 rounded-full" />
-          )}
+          All ({notifications.length})
         </button>
         <button
           onClick={() => setFilter('unread')}
-          className={`relative pb-2.5 px-3 text-xs font-semibold transition-colors ${
-            filter === 'unread' ? 'text-white' : 'text-white/40 hover:text-white/70'
+          className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+            filter === 'unread'
+              ? 'bg-coral-50 text-coral-700 font-semibold'
+              : 'text-text-muted hover:text-text-primary'
           }`}
         >
-          Unread {unreadCount > 0 && `(${unreadCount})`}
-          {filter === 'unread' && (
-            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-coral-500 rounded-full" />
-          )}
+          Unread ({unreadCount})
         </button>
       </div>
 
-      {/* Notifications List */}
-      <div className="max-h-[380px] overflow-y-auto divide-y divide-white/[0.05]">
+      {/* Notification List */}
+      <div className="max-h-[380px] overflow-y-auto divide-y divide-canvas-border">
         {isLoading && notifications.length === 0 ? (
-          <div className="flex flex-col gap-3 p-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex gap-3 animate-pulse">
-                <div className="h-8 w-8 rounded-xl bg-white/5 shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3 w-3/4 rounded bg-white/10" />
-                  <div className="h-2.5 w-full rounded bg-white/5" />
-                </div>
-              </div>
-            ))}
+          <div className="flex flex-col items-center justify-center py-12 text-text-muted space-y-2">
+            <RefreshCw className="h-5 w-5 animate-spin text-coral-500" />
+            <span className="text-xs">Loading notifications...</span>
           </div>
         ) : filteredNotifications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white/30 mb-3 shadow-inner">
-              <Inbox className="h-6 w-6" />
+          <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+            <div className="h-10 w-10 rounded-xl bg-soft-gray flex items-center justify-center text-text-muted mb-2">
+              <Inbox className="h-5 w-5" />
             </div>
-            <p className="text-sm font-semibold text-white/80">
+            <p className="text-xs font-semibold text-text-primary">
               {filter === 'unread' ? 'No unread notifications' : 'No notifications yet'}
             </p>
-            <p className="text-xs text-white/40 mt-1 max-w-[230px] leading-relaxed">
+            <p className="text-[11px] text-text-muted mt-1 max-w-xs">
               {filter === 'unread'
-                ? "You're all caught up with recent updates and events."
-                : 'Automated publishing and voice retraining events will appear here.'}
+                ? "You're caught up! Check 'All' for past notifications."
+                : 'System alerts, publish events, and voice retraining updates will appear here.'}
             </p>
           </div>
         ) : (
@@ -311,43 +304,52 @@ export function NotificationDropdown({
             <div
               key={item.id}
               onClick={() => handleNotificationClick(item)}
-              className={`group flex items-start gap-3.5 p-4 transition-all cursor-pointer hover:bg-white/[0.04] ${
-                !item.read ? 'bg-coral-500/[0.04]' : ''
+              className={`group flex items-start gap-3 p-4 transition-colors cursor-pointer text-left ${
+                item.read ? 'bg-white hover:bg-soft-gray/50' : 'bg-coral-50/20 hover:bg-coral-50/40'
               }`}
             >
               {renderIcon(item.type)}
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <h3
+                  <span
                     className={`text-xs font-semibold truncate ${
-                      !item.read ? 'text-white' : 'text-white/70'
+                      item.read ? 'text-text-primary' : 'text-text-primary font-bold'
                     }`}
                   >
                     {item.title}
-                  </h3>
-                  <span className="text-[10px] text-white/40 shrink-0 font-mono">
+                  </span>
+                  <span className="text-[10px] text-text-muted shrink-0 font-mono">
                     {formatRelativeTime(item.createdAt)}
                   </span>
                 </div>
 
-                <p className="text-xs text-white/50 mt-1 line-clamp-2 leading-relaxed">
+                <p className="text-xs text-text-secondary mt-0.5 line-clamp-2 leading-relaxed">
                   {item.body}
                 </p>
 
-                {item.entityType && (
-                  <div className="mt-2 flex items-center gap-1 text-[11px] font-medium text-coral-400 group-hover:text-coral-300 transition-colors">
-                    <span>View details</span>
-                    <ExternalLink className="h-2.5 w-2.5" />
-                  </div>
-                )}
+                <div className="flex items-center gap-2 mt-2">
+                  {!item.read && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleMarkAsRead(item);
+                      }}
+                      className="text-[10px] font-semibold text-coral-600 hover:text-coral-700 transition-colors"
+                    >
+                      Mark as read
+                    </button>
+                  )}
+                  {item.entityType && (
+                    <span className="text-[10px] text-text-muted flex items-center gap-0.5 group-hover:text-coral-600 transition-colors">
+                      View details <ExternalLink className="h-2.5 w-2.5 inline" />
+                    </span>
+                  )}
+                </div>
               </div>
 
               {!item.read && (
-                <div
-                  className="h-2 w-2 rounded-full bg-coral-500 shadow-glow shrink-0 mt-1"
-                  title="Unread"
-                />
+                <span className="h-2 w-2 rounded-full bg-coral-500 shrink-0 mt-1" />
               )}
             </div>
           ))
@@ -355,12 +357,13 @@ export function NotificationDropdown({
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between border-t border-white/[0.08] bg-[#0E0E13] px-4 py-2.5 text-[11px] text-white/40">
-        <div className="flex items-center gap-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-lime-400" />
-          <span>Real-time webhook events active</span>
-        </div>
+      <div className="border-t border-canvas-border px-5 py-2.5 bg-paper/60 text-center">
+        <span className="text-[10px] text-text-muted font-mono">
+          Real-time Event Outbox • ThreadPilot Engine
+        </span>
       </div>
     </div>
   );
 }
+
+export default NotificationDropdown;

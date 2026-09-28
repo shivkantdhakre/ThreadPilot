@@ -24,7 +24,7 @@ const nodeIcons: Record<string, React.ElementType> = {
 
 export const IntelligenceLoop: React.FC = () => {
   return (
-    <section id="intelligence" className="relative z-10 bg-cream py-24 px-6 border-b border-black/[0.06] overflow-hidden">
+    <section id="intelligence" className="relative z-10 bg-paper py-24 px-6 border-b border-canvas-border overflow-hidden">
       {/* Ambient background blur */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[600px] w-[600px] rounded-full bg-coral-500/5 blur-[160px]" />
@@ -37,10 +37,10 @@ export const IntelligenceLoop: React.FC = () => {
           <span className="inline-block text-xs font-bold uppercase tracking-wider text-coral-600 bg-coral-500/10 px-3 py-1 rounded-full border border-coral-500/20 mb-3">
             {intelligenceData.eyebrow}
           </span>
-          <h2 className="text-3xl sm:text-5xl font-extrabold text-[#151515] tracking-tight font-display mb-4">
+          <h2 className="text-3xl sm:text-5xl font-extrabold text-text-primary tracking-tight font-display mb-4">
             {intelligenceData.headline}
           </h2>
-          <p className="text-base text-[#525252] leading-relaxed">
+          <p className="text-base text-text-secondary leading-relaxed">
             {intelligenceData.subtext}
           </p>
         </div>
@@ -80,64 +80,64 @@ export const IntelligenceLoop: React.FC = () => {
             </svg>
 
             {/* Geometric Center: ORIGINAL ThreadPilot 3D Ribbon Logo */}
-            <div className="relative z-20 h-28 w-28 sm:h-36 sm:w-36 rounded-full bg-white border border-black/[0.08] shadow-xl flex flex-col items-center justify-center p-3 text-center transition-transform hover:scale-105 duration-300">
+            <div className="relative z-20 h-28 w-28 sm:h-36 sm:w-36 rounded-full bg-white border border-canvas-border shadow-xl flex flex-col items-center justify-center p-3 text-center transition-transform hover:scale-105 duration-300">
               <LogoIcon size={56} />
-              <span className="text-[11px] font-bold text-[#151515] mt-1 font-display">ThreadPilot</span>
-              <span className="text-[9px] text-[#737373] uppercase font-semibold tracking-wider">Self-Learning</span>
+              <span className="text-[11px] font-bold text-text-primary mt-1 font-display">ThreadPilot</span>
+              <span className="text-[9px] text-text-muted uppercase font-semibold tracking-wider">Self-Learning</span>
             </div>
 
             {/* Orbit Node 1: Threads (Top Center) */}
             <div className="absolute top-0 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center text-center -translate-y-2">
-              <div className="h-12 w-12 rounded-2xl bg-white border border-coral-200 text-coral-600 shadow-md flex items-center justify-center mb-1">
+              <div className="h-12 w-12 rounded-2xl bg-white border border-coral-200 text-coral-600 shadow-card flex items-center justify-center mb-1">
                 <Share2 className="h-5 w-5" />
               </div>
-              <span className="text-xs font-bold text-[#151515]">1. Threads</span>
-              <span className="text-[10px] text-[#737373] hidden sm:block max-w-[100px]">Live content</span>
+              <span className="text-xs font-bold text-text-primary">1. Threads</span>
+              <span className="text-[10px] text-text-muted hidden sm:block max-w-[100px]">Live content</span>
             </div>
 
             {/* Orbit Node 2: Analytics (Top Right) */}
             <div className="absolute top-[18%] right-[-5%] sm:right-[4%] z-20 flex flex-col items-center text-center">
-              <div className="h-12 w-12 rounded-2xl bg-white border border-cyan-200 text-cyan-600 shadow-md flex items-center justify-center mb-1">
+              <div className="h-12 w-12 rounded-2xl bg-white border border-cyan-200 text-cyan-600 shadow-card flex items-center justify-center mb-1">
                 <BarChart3 className="h-5 w-5" />
               </div>
-              <span className="text-xs font-bold text-[#151515]">2. Analytics</span>
-              <span className="text-[10px] text-[#737373] hidden sm:block max-w-[100px]">Real signals</span>
+              <span className="text-xs font-bold text-text-primary">2. Analytics</span>
+              <span className="text-[10px] text-text-muted hidden sm:block max-w-[100px]">Real signals</span>
             </div>
 
             {/* Orbit Node 3: Learning (Bottom Right) */}
             <div className="absolute bottom-[18%] right-[-5%] sm:right-[4%] z-20 flex flex-col items-center text-center">
-              <div className="h-12 w-12 rounded-2xl bg-white border border-purple-200 text-purple-600 shadow-md flex items-center justify-center mb-1">
+              <div className="h-12 w-12 rounded-2xl bg-white border border-purple-200 text-purple-600 shadow-card flex items-center justify-center mb-1">
                 <Bot className="h-5 w-5" />
               </div>
-              <span className="text-xs font-bold text-[#151515]">3. Learning</span>
-              <span className="text-[10px] text-[#737373] hidden sm:block max-w-[100px]">Finds patterns</span>
+              <span className="text-xs font-bold text-text-primary">3. Learning</span>
+              <span className="text-[10px] text-text-muted hidden sm:block max-w-[100px]">Finds patterns</span>
             </div>
 
             {/* Orbit Node 4: Personal Profile (Bottom Center) */}
             <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center text-center translate-y-2">
-              <div className="h-12 w-12 rounded-2xl bg-white border border-violet-200 text-violet-600 shadow-md flex items-center justify-center mb-1">
+              <div className="h-12 w-12 rounded-2xl bg-white border border-violet-200 text-violet-600 shadow-card flex items-center justify-center mb-1">
                 <Fingerprint className="h-5 w-5" />
               </div>
-              <span className="text-xs font-bold text-[#151515]">4. Profile</span>
-              <span className="text-[10px] text-[#737373] hidden sm:block max-w-[100px]">Refines voice</span>
+              <span className="text-xs font-bold text-text-primary">4. Profile</span>
+              <span className="text-[10px] text-text-muted hidden sm:block max-w-[100px]">Refines voice</span>
             </div>
 
             {/* Orbit Node 5: Content Generation (Bottom Left) */}
             <div className="absolute bottom-[18%] left-[-5%] sm:left-[4%] z-20 flex flex-col items-center text-center">
-              <div className="h-12 w-12 rounded-2xl bg-white border border-orange-200 text-orange-600 shadow-md flex items-center justify-center mb-1">
+              <div className="h-12 w-12 rounded-2xl bg-white border border-orange-200 text-orange-600 shadow-card flex items-center justify-center mb-1">
                 <Sparkles className="h-5 w-5" />
               </div>
-              <span className="text-xs font-bold text-[#151515]">5. Drafting</span>
-              <span className="text-[10px] text-[#737373] hidden sm:block max-w-[100px]">Better content</span>
+              <span className="text-xs font-bold text-text-primary">5. Drafting</span>
+              <span className="text-[10px] text-text-muted hidden sm:block max-w-[100px]">Better content</span>
             </div>
 
             {/* Orbit Node 6: Publishing (Top Left) */}
             <div className="absolute top-[18%] left-[-5%] sm:left-[4%] z-20 flex flex-col items-center text-center">
-              <div className="h-12 w-12 rounded-2xl bg-white border border-lime-200 text-lime-600 shadow-md flex items-center justify-center mb-1">
+              <div className="h-12 w-12 rounded-2xl bg-white border border-lime-200 text-lime-600 shadow-card flex items-center justify-center mb-1">
                 <Calendar className="h-5 w-5" />
               </div>
-              <span className="text-xs font-bold text-[#151515]">6. Publishing</span>
-              <span className="text-[10px] text-[#737373] hidden sm:block max-w-[100px]">Smart timing</span>
+              <span className="text-xs font-bold text-text-primary">6. Publishing</span>
+              <span className="text-[10px] text-text-muted hidden sm:block max-w-[100px]">Smart timing</span>
             </div>
           </div>
         </div>

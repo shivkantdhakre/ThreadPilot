@@ -4,89 +4,102 @@
 
 @layer base {
   :root {
-    --background: 240 15% 5%;
-    --foreground: 45 20% 97%;
-    --card: 240 13% 7%;
-    --card-foreground: 45 20% 97%;
-    --border: 240 10% 16%;
-    --input: 240 10% 16%;
-    --ring: 12 100% 65%;
-    --muted: 240 10% 14%;
-    --muted-foreground: 240 5% 65%;
+    /* Foundation Light Palette */
+    --background: 40 33% 99%; /* #FFFDF8 warm white */
+    --foreground: 240 6% 9%;   /* #151518 charcoal text */
+    --card: 0 0% 100%;        /* #FFFFFF pure white */
+    --card-foreground: 240 6% 9%;
+    --border: 40 10% 89%;      /* #E8E5DF border */
+    --input: 40 10% 89%;
+    --ring: 12 100% 65%;       /* Coral ring */
+    --muted: 40 14% 95%;       /* #F4F3F0 soft gray */
+    --muted-foreground: 30 3% 53%; /* #8A8784 muted text */
   }
 
   * {
-    @apply border-border;
+    @apply border-canvas-border;
   }
 
   html {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   body {
+    background-color: #FFFDF8;
+    color: #151518;
     font-feature-settings: "rlig" 1, "calt" 1, "cv11" 1;
     overflow-x: hidden;
   }
 
   ::selection {
-    background-color: rgba(255, 107, 74, 0.9);
-    color: #ffffff;
+    background-color: rgba(255, 107, 74, 0.18);
+    color: #FF5722;
   }
 
   ::-webkit-scrollbar {
     width: 6px;
+    height: 6px;
   }
 
   ::-webkit-scrollbar-track {
-    background: #0B0B0F;
+    background: #F7F4EE;
   }
 
   ::-webkit-scrollbar-thumb {
     border-radius: 9999px;
-    background: #23232B;
+    background: #DDD9D1;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #40404C;
+    background: #C8C4BC;
   }
 }
 
 @layer components {
-  /* Glass Surfaces */
+  /* Surfaces */
+  .card-base {
+    @apply rounded-2xl border border-canvas-border bg-white p-6 shadow-subtle transition-all duration-200;
+  }
+
+  .card-paper {
+    @apply rounded-2xl border border-canvas-border bg-paper p-6 shadow-subtle;
+  }
+
+  .card-subtle {
+    @apply rounded-2xl border border-canvas-border bg-soft-gray p-6;
+  }
+
+  /* Glass adapter for light-first elegance */
   .glass {
-    @apply rounded-2xl border border-white/[0.08] bg-ink-850/70 backdrop-blur-xl shadow-card-elevated;
+    @apply rounded-2xl border border-canvas-border bg-white/90 backdrop-blur-xl shadow-card;
   }
 
   .glass-card {
-    @apply rounded-2xl border border-white/[0.07] bg-[#111116]/80 backdrop-blur-md transition-all duration-200;
-  }
-
-  .glass-card:hover {
-    @apply border-white/[0.14] bg-[#14141B]/90 shadow-xl;
+    @apply rounded-2xl border border-canvas-border bg-white shadow-subtle transition-all duration-200 hover:border-canvas-border-muted hover:shadow-card;
   }
 
   .glass-hover {
-    @apply glass transition-all duration-200 hover:border-white/20 hover:bg-ink-800/80;
+    @apply glass transition-all duration-200 hover:border-canvas-border-muted hover:bg-white;
   }
 
-  /* Buttons */
+  /* Tactile Buttons */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-coral-500 via-coral-500 to-electric-orange
-      px-4 py-2.5 text-sm font-semibold text-white shadow-glow transition-all duration-200
-      hover:from-coral-400 hover:to-coral-500 hover:shadow-coral-500/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-coral-500
+      px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm transition-all duration-150
+      hover:bg-coral-600 hover:shadow active:scale-[0.98]
       disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-ink-700 bg-ink-850 px-4 py-2.5
-      text-sm font-medium text-white/90 shadow-sm transition-all duration-200
-      hover:border-ink-600 hover:bg-ink-800 hover:text-white active:scale-[0.98]
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-canvas-border bg-white px-4 py-2.5
+      text-xs sm:text-sm font-medium text-text-primary shadow-subtle transition-all duration-150
+      hover:bg-paper hover:border-canvas-border-muted active:scale-[0.98]
       disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-white/70
-      transition-all duration-150 hover:bg-white/[0.06] hover:text-white active:scale-95
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium text-text-secondary
+      transition-all duration-150 hover:bg-soft-gray hover:text-text-primary active:scale-[0.98]
       disabled:opacity-50 disabled:pointer-events-none;
   }
 
@@ -95,54 +108,46 @@
   }
 
   .btn-violet {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-electric-purple
-      px-4 py-2.5 text-sm font-semibold text-white shadow-glow-violet transition-all duration-200
-      hover:from-violet-500 hover:to-violet-600 hover:-translate-y-0.5 active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600
+      px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm transition-all duration-150
+      hover:bg-violet-700 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-cyan {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-pacific-cyan px-4 py-2.5
-      text-sm font-semibold text-ink-950 shadow-glow-cyan transition-all duration-200
-      hover:bg-cyan-400 hover:-translate-y-0.5 active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600
+      px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm transition-all duration-150
+      hover:bg-cyan-700 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
   }
 
-  /* Inputs */
+  /* Form Inputs */
   .input-base {
-    @apply w-full rounded-xl border border-ink-700 bg-ink-850 px-3.5 py-2.5 text-sm text-white
-      placeholder:text-white/35 transition-all duration-200
-      focus:border-coral-500/80 focus:bg-ink-800 focus:outline-none focus:ring-2 focus:ring-coral-500/20;
+    @apply w-full rounded-xl border border-canvas-border bg-white px-3.5 py-2.5 text-xs sm:text-sm text-text-primary
+      placeholder:text-text-muted transition-all duration-150
+      focus:border-coral-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-coral-500/15;
   }
 
-  /* Badges */
+  /* Semantic Badges */
   .badge-coral {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-coral-500/25 bg-coral-500/10 px-2.5 py-1 text-xs font-medium text-coral-400;
+    @apply inline-flex items-center gap-1.5 rounded-full border border-coral-200 bg-coral-50 px-2.5 py-0.5 text-xs font-semibold text-coral-700;
   }
 
   .badge-violet {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-violet-500/25 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-300;
+    @apply inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-xs font-semibold text-violet-700;
   }
 
   .badge-cyan {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-cyan-500/25 bg-cyan-500/10 px-2.5 py-1 text-xs font-medium text-cyan-300;
+    @apply inline-flex items-center gap-1.5 rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-0.5 text-xs font-semibold text-cyan-800;
   }
 
   .badge-lime {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-lime-500/25 bg-lime-500/10 px-2.5 py-1 text-xs font-medium text-lime-400;
+    @apply inline-flex items-center gap-1.5 rounded-full border border-lime-200 bg-lime-50 px-2.5 py-0.5 text-xs font-semibold text-lime-800;
   }
 
   .badge-neutral {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-800 px-2.5 py-1 text-xs font-medium text-white/70;
-  }
-
-  /* Subtle mesh and decorative gradients */
-  .mesh-glow {
-    background: radial-gradient(circle at 50% 0%, rgba(255, 107, 74, 0.15), transparent 60%),
-                radial-gradient(circle at 80% 20%, rgba(124, 58, 237, 0.12), transparent 50%),
-                radial-gradient(circle at 20% 40%, rgba(0, 173, 181, 0.08), transparent 45%);
+    @apply inline-flex items-center gap-1.5 rounded-full border border-canvas-border bg-soft-gray px-2.5 py-0.5 text-xs font-medium text-text-secondary;
   }
 
   .subtle-border {
-    @apply border border-white/[0.08];
+    @apply border border-canvas-border;
   }
 }
-

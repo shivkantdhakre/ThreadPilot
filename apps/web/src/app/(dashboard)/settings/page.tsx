@@ -1,13 +1,27 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Settings, Save, Loader2, Shield, AlertTriangle } from 'lucide-react';
+import {
+  Settings,
+  Save,
+  Loader2,
+  Shield,
+  AlertTriangle,
+  Clock,
+  Sparkles,
+  Share2,
+  Lock,
+  Bell,
+  Sliders,
+  CheckCircle2,
+} from 'lucide-react';
 import { TopBar } from '../../../components/TopBar';
 import { apiClient } from '../../../lib/api-client';
 import { UserPreferencesDto, AutomationLevel } from '@threadpilot/types';
 
 export default function SettingsPage() {
   const [prefs, setPrefs] = useState<UserPreferencesDto | null>(null);
+  const [activeCategory, setActiveCategory] = useState<'AUTONOMY' | 'SCHEDULE' | 'CIRCUITS' | 'SECURITY'>('AUTONOMY');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -65,143 +79,256 @@ export default function SettingsPage() {
   };
 
   const autonomyOptions: { value: AutomationLevel; label: string; desc: string }[] = [
-    { value: 'MANUAL', label: 'Manual Only', desc: 'AI only generates on explicit command' },
+    { value: 'MANUAL', label: 'Manual Only', desc: 'AI generates only on explicit user click' },
     { value: 'APPROVAL', label: 'Approval Required', desc: 'AI creates candidates; human approves every draft' },
     { value: 'RULES_BASED', label: 'Rules Based', desc: 'Auto-publish high-confidence items that match style rules' },
     { value: 'AUTONOMOUS', label: 'Fully Autonomous', desc: 'Agent posts and engages autonomously within rate limits' },
   ];
 
   return (
-    <div className="min-h-screen bg-ink-900">
-      <TopBar title="Settings" />
+    <div className="min-h-screen bg-warm-white">
+      <TopBar
+        title="Settings & Guardrails"
+        subtitle="System boundaries, publishing autonomy levels, and global circuit breakers"
+        actions={
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="btn-primary flex items-center gap-1.5 text-xs py-2 px-4 shadow-subtle"
+          >
+            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            <span>{saveSuccess ? 'Saved!' : 'Save Settings'}</span>
+          </button>
+        }
+      />
 
-      <div className="p-6 sm:p-8 max-w-4xl mx-auto space-y-8">
-        <div className="rounded-3xl border border-white/[0.08] bg-[#111116] p-6 sm:p-8 backdrop-blur-xl shadow-card-elevated">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/[0.08] pb-5 mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400">
-                <Shield className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-base sm:text-lg font-bold text-white tracking-tight font-display">
-                  Autonomy & Guardrails
-                </h3>
-                <p className="text-xs text-white/50">
-                  Granular control over AI decision boundaries and publishing limits
-                </p>
-              </div>
-            </div>
+      <div className="p-6 sm:p-8 max-w-6xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+          {/* Left Column: Category Navigation (4 cols) */}
+          <div className="md:col-span-4 card-base p-3 space-y-1">
+            <button
+              onClick={() => setActiveCategory('AUTONOMY')}
+              className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-left transition-all ${
+                activeCategory === 'AUTONOMY'
+                  ? 'bg-paper text-text-primary border border-canvas-border shadow-subtle'
+                  : 'text-text-secondary hover:bg-soft-gray hover:text-text-primary'
+              }`}
+            >
+              <Shield className="h-4 w-4 text-violet-600" />
+              <span>Autonomy & Boundaries</span>
+            </button>
 
             <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="btn-primary flex items-center gap-2 text-xs py-2 px-5 shadow-glow"
+              onClick={() => setActiveCategory('SCHEDULE')}
+              className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-left transition-all ${
+                activeCategory === 'SCHEDULE'
+                  ? 'bg-paper text-text-primary border border-canvas-border shadow-subtle'
+                  : 'text-text-secondary hover:bg-soft-gray hover:text-text-primary'
+              }`}
             >
-              {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              <span>{saveSuccess ? 'Saved!' : 'Save Settings'}</span>
+              <Clock className="h-4 w-4 text-coral-600" />
+              <span>Cadence & Timezone</span>
+            </button>
+
+            <button
+              onClick={() => setActiveCategory('CIRCUITS')}
+              className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-left transition-all ${
+                activeCategory === 'CIRCUITS'
+                  ? 'bg-paper text-text-primary border border-canvas-border shadow-subtle'
+                  : 'text-text-secondary hover:bg-soft-gray hover:text-text-primary'
+              }`}
+            >
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <span>Circuit Breakers</span>
+            </button>
+
+            <button
+              onClick={() => setActiveCategory('SECURITY')}
+              className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-left transition-all ${
+                activeCategory === 'SECURITY'
+                  ? 'bg-paper text-text-primary border border-canvas-border shadow-subtle'
+                  : 'text-text-secondary hover:bg-soft-gray hover:text-text-primary'
+              }`}
+            >
+              <Lock className="h-4 w-4 text-lime-600" />
+              <span>Security & Token Vault</span>
             </button>
           </div>
 
-          <div className="space-y-6">
-            {/* Publishing Autonomy */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-white/70 mb-3">
-                Publishing Autonomy Level
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {autonomyOptions.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setAutonomyPublishing(opt.value)}
-                    className={`rounded-2xl border p-4 text-left transition-all duration-200 ${
-                      autonomyPublishing === opt.value
-                        ? 'border-coral-500/50 bg-coral-500/10 text-white shadow-glow'
-                        : 'border-white/[0.06] bg-ink-900/80 text-white/60 hover:border-white/15'
-                    }`}
-                  >
-                    <div className="text-sm font-bold text-white mb-1 font-display">{opt.label}</div>
-                    <div className="text-xs text-white/50 leading-relaxed">{opt.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
+          {/* Right Column: Settings Content (8 cols) */}
+          <div className="md:col-span-8 card-base p-6 sm:p-8 space-y-6">
+            {activeCategory === 'AUTONOMY' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-base font-bold text-text-primary tracking-tight font-display mb-1">
+                    Publishing Autonomy Level
+                  </h3>
+                  <p className="text-xs text-text-muted">
+                    Determines how much human supervision is enforced prior to Meta Threads API dispatch
+                  </p>
+                </div>
 
-            {/* Target Posting Frequency & Timezone */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-3 border-t border-white/[0.06]">
-              <div>
-                <label className="block text-xs font-semibold text-white/70 mb-1.5">
-                  Target Posts Per Day
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={25}
-                  value={postingFrequency}
-                  onChange={(e) => setPostingFrequency(parseInt(e.target.value, 10) || 1)}
-                  className="input-base text-xs font-mono"
-                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {autonomyOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setAutonomyPublishing(opt.value)}
+                      className={`rounded-xl border p-4 text-left transition-all duration-150 ${
+                        autonomyPublishing === opt.value
+                          ? 'border-coral-400 bg-coral-50/70 shadow-subtle text-text-primary'
+                          : 'border-canvas-border bg-white text-text-secondary hover:border-canvas-border-muted hover:bg-paper'
+                      }`}
+                    >
+                      <div className="text-xs font-bold text-text-primary mb-1 font-display">
+                        {opt.label}
+                      </div>
+                      <div className="text-[11px] text-text-secondary leading-relaxed">
+                        {opt.desc}
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
+            )}
 
-              <div>
-                <label className="block text-xs font-semibold text-white/70 mb-1.5">
-                  Preferred Timezone
-                </label>
-                <select
-                  value={preferredTimezone}
-                  onChange={(e) => setPreferredTimezone(e.target.value)}
-                  className="input-base text-xs"
-                >
-                  <option value="UTC">UTC</option>
-                  <option value="America/New_York">America/New_York (EST)</option>
-                  <option value="America/Los_Angeles">America/Los_Angeles (PST)</option>
-                  <option value="Europe/London">Europe/London (GMT)</option>
-                  <option value="Europe/Paris">Europe/Paris (CET)</option>
-                  <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
-                </select>
-              </div>
-            </div>
+            {activeCategory === 'SCHEDULE' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-base font-bold text-text-primary tracking-tight font-display mb-1">
+                    Publishing Cadence & Timezone
+                  </h3>
+                  <p className="text-xs text-text-muted">
+                    Configure daily throughput limits and operational timezone for scheduled runs
+                  </p>
+                </div>
 
-            {/* Emergency Kill Switches */}
-            <div className="border-t border-white/[0.08] pt-6">
-              <div className="flex items-center gap-2 mb-4">
-                <AlertTriangle className="h-4 w-4 text-amber-400" />
-                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-300">
-                  Global Circuit Breakers
-                </h4>
-              </div>
-
-              <div className="space-y-3">
-                <label className="flex items-center justify-between rounded-2xl border border-white/[0.06] bg-ink-900/80 p-4 cursor-pointer hover:border-white/15 transition-all">
-                  <div className="pr-4">
-                    <div className="text-xs font-bold text-white">Pause All Automation</div>
-                    <div className="text-[11px] text-white/45 mt-0.5">
-                      Instantly freezes all background ingestion, research, and generation jobs
-                    </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-xs font-semibold text-text-primary mb-1.5">
+                      Target Posts Per Day
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={25}
+                      value={postingFrequency}
+                      onChange={(e) => setPostingFrequency(parseInt(e.target.value, 10) || 1)}
+                      className="input-base text-xs font-mono"
+                    />
+                    <p className="text-[11px] text-text-muted mt-1">Recommended: 2–4 posts per day</p>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={automationPaused}
-                    onChange={(e) => setAutomationPaused(e.target.checked)}
-                    className="h-4 w-4 rounded border-white/20 bg-black/40 text-coral-500 focus:ring-coral-500 shrink-0"
-                  />
-                </label>
 
-                <label className="flex items-center justify-between rounded-2xl border border-white/[0.06] bg-ink-900/80 p-4 cursor-pointer hover:border-white/15 transition-all">
-                  <div className="pr-4">
-                    <div className="text-xs font-bold text-white">Pause Publishing Only</div>
-                    <div className="text-[11px] text-white/45 mt-0.5">
-                      Continues learning and drafting, but halts all Threads live publication
-                    </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-text-primary mb-1.5">
+                      Operational Timezone
+                    </label>
+                    <select
+                      value={preferredTimezone}
+                      onChange={(e) => setPreferredTimezone(e.target.value)}
+                      className="input-base text-xs"
+                    >
+                      <option value="UTC">UTC</option>
+                      <option value="America/New_York">America/New_York (EST)</option>
+                      <option value="America/Los_Angeles">America/Los_Angeles (PST)</option>
+                      <option value="Europe/London">Europe/London (GMT)</option>
+                      <option value="Europe/Paris">Europe/Paris (CET)</option>
+                      <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+                      <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+                    </select>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={publishingPaused}
-                    onChange={(e) => setPublishingPaused(e.target.checked)}
-                    className="h-4 w-4 rounded border-white/20 bg-black/40 text-coral-500 focus:ring-coral-500 shrink-0"
-                  />
-                </label>
+                </div>
               </div>
+            )}
+
+            {activeCategory === 'CIRCUITS' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-base font-bold text-text-primary tracking-tight font-display mb-1">
+                    Emergency Circuit Breakers
+                  </h3>
+                  <p className="text-xs text-text-muted">
+                    Instant emergency switches that override worker queues and halt operations
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="flex items-center justify-between rounded-xl border border-canvas-border bg-paper/60 p-4 cursor-pointer hover:border-canvas-border-muted transition-all">
+                    <div className="pr-4">
+                      <div className="text-xs font-bold text-text-primary">Pause All Automation</div>
+                      <div className="text-[11px] text-text-muted mt-0.5">
+                        Freezes all background ingestion, research, and generation workers
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={automationPaused}
+                      onChange={(e) => setAutomationPaused(e.target.checked)}
+                      className="h-4 w-4 rounded border-canvas-border text-coral-600 focus:ring-coral-500 shrink-0"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between rounded-xl border border-canvas-border bg-paper/60 p-4 cursor-pointer hover:border-canvas-border-muted transition-all">
+                    <div className="pr-4">
+                      <div className="text-xs font-bold text-text-primary">Pause Live Publishing</div>
+                      <div className="text-[11px] text-text-muted mt-0.5">
+                        Allows drafting and learning, but halts live dispatch to Threads
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={publishingPaused}
+                      onChange={(e) => setPublishingPaused(e.target.checked)}
+                      className="h-4 w-4 rounded border-canvas-border text-coral-600 focus:ring-coral-500 shrink-0"
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {activeCategory === 'SECURITY' && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-base font-bold text-text-primary tracking-tight font-display mb-1">
+                    Security & Token Encryption
+                  </h3>
+                  <p className="text-xs text-text-muted">
+                    Cryptographic integrity safeguards protecting user access tokens
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-canvas-border bg-paper/60 p-4 space-y-2 text-xs text-text-secondary leading-relaxed">
+                  <p>
+                    All Meta Threads API long-lived user tokens are encrypted via AES-256-GCM before storage in Postgres.
+                    Decryption keys are isolated in process memory with versioned key indexing.
+                  </p>
+                  <p className="text-[11px] text-text-muted font-mono">
+                    Encryption scheme: AES-256-GCM + IV authentication tag validation.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Bottom Save Bar */}
+            <div className="pt-4 border-t border-canvas-border flex items-center justify-between text-xs">
+              <span className="text-text-muted">
+                {saveSuccess ? (
+                  <span className="text-lime-700 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Preferences saved successfully
+                  </span>
+                ) : (
+                  'Changes take effect on subsequent job cycles'
+                )}
+              </span>
+
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="btn-primary text-xs py-2 px-4 shadow-subtle"
+              >
+                {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                <span>Save Preferences</span>
+              </button>
             </div>
           </div>
         </div>

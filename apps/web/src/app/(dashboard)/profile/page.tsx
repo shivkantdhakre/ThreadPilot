@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Save, Loader2, User, Sliders } from 'lucide-react';
+import { Sparkles, Save, Loader2, User, Sliders, CheckCircle2 } from 'lucide-react';
 import { TopBar } from '../../../components/TopBar';
 import { VoiceStyleCard } from '../../../components/profile/VoiceStyleCard';
 import { StyleExamplesList } from '../../../components/profile/StyleExamplesList';
@@ -19,6 +19,7 @@ export default function ProfilePage() {
   const [examples, setExamples] = useState<StyleExampleDto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [hasSocialAccount, setHasSocialAccount] = useState(false);
   const [hasIngestedPosts, setHasIngestedPosts] = useState(false);
 
@@ -46,7 +47,6 @@ export default function ProfilePage() {
       setPreferences(prefsRes);
       setExamples(exRes);
 
-      // Determine pre-flight conditions for voice training
       const accounts = Array.isArray(accountsRes) ? accountsRes : [];
       setHasSocialAccount(accounts.some((a) => a.isConnected));
 
@@ -79,6 +79,7 @@ export default function ProfilePage() {
 
   const handleSaveProfile = async () => {
     setIsSaving(true);
+    setSaveSuccess(false);
     try {
       const expertise = expertiseInput
         .split(',')
@@ -108,6 +109,8 @@ export default function ProfilePage() {
         }),
       ]);
 
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
       loadData();
     } catch (err) {
       console.error('Failed to save profile', err);
@@ -125,8 +128,21 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-ink-900">
-      <TopBar title="Voice & Profile" />
+    <div className="min-h-screen bg-warm-white">
+      <TopBar
+        title="Voice & Profile"
+        subtitle="Creator positioning, 8-dimensional writing model, and style anchors"
+        actions={
+          <button
+            onClick={handleSaveProfile}
+            disabled={isSaving}
+            className="btn-primary flex items-center gap-1.5 text-xs py-2 px-4 shadow-subtle"
+          >
+            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            <span>{saveSuccess ? 'Saved!' : 'Save Identity'}</span>
+          </button>
+        }
+      />
 
       <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-8">
         {/* Style Fingerprint Card */}
@@ -141,18 +157,18 @@ export default function ProfilePage() {
         />
 
         {/* Identity & Strategic Positioning Section */}
-        <div className="rounded-3xl border border-white/[0.08] bg-[#111116] p-6 sm:p-8 backdrop-blur-xl shadow-card-elevated">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-white/[0.08] pb-5 mb-6 gap-4">
+        <div className="card-base p-6 sm:p-8 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-canvas-border pb-4 gap-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-coral-500/10 border border-coral-500/20 text-coral-400">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-coral-50 border border-coral-200 text-coral-600">
                 <User className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-base sm:text-lg font-bold text-white tracking-tight font-display">
+                <h3 className="text-base sm:text-lg font-bold text-text-primary tracking-tight font-display">
                   Identity & Personal Positioning
                 </h3>
-                <p className="text-xs text-white/50">
-                  Manual creator identity controls — never overwritten by automated learning
+                <p className="text-xs text-text-muted">
+                  Creator thesis and background — anchors AI generations and prevents hallucination
                 </p>
               </div>
             </div>
@@ -160,55 +176,55 @@ export default function ProfilePage() {
             <button
               onClick={handleSaveProfile}
               disabled={isSaving}
-              className="btn-primary flex items-center gap-2 text-xs py-2 px-5 shadow-glow"
+              className="btn-secondary text-xs py-2 px-4 flex items-center gap-2 self-start sm:self-auto"
             >
               {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              <span>Save Profile</span>
+              <span>{saveSuccess ? 'Saved' : 'Save Changes'}</span>
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
-              <label className="block text-xs font-semibold text-white/70 mb-1.5">
+              <label className="block text-xs font-semibold text-text-primary mb-1.5">
                 Profession / Title
               </label>
               <input
                 type="text"
                 value={profession}
                 onChange={(e) => setProfession(e.target.value)}
-                placeholder="e.g. AI Founder & Systems Architect"
+                placeholder="e.g. Systems Engineer & Open Source Creator"
                 className="input-base text-xs"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-white/70 mb-1.5">
+              <label className="block text-xs font-semibold text-text-primary mb-1.5">
                 Expertise & Niche Areas (comma separated)
               </label>
               <input
                 type="text"
                 value={expertiseInput}
                 onChange={(e) => setExpertiseInput(e.target.value)}
-                placeholder="e.g. Agentic Workflows, Distributed Systems, SaaS"
+                placeholder="e.g. Distributed Systems, TypeScript, Product Architecture"
                 className="input-base text-xs"
               />
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-white/70 mb-1.5">
-                Personal Bio & Story
+              <label className="block text-xs font-semibold text-text-primary mb-1.5">
+                Personal Bio & Narrative Arc
               </label>
               <textarea
                 rows={3}
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                placeholder="Brief background about yourself, your company, and what you build..."
+                placeholder="Brief background about yourself, what you build, and why you share on Threads..."
                 className="input-base text-xs resize-none"
               />
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-white/70 mb-1.5">
+              <label className="block text-xs font-semibold text-text-primary mb-1.5">
                 Strategic Positioning & Voice Thesis
               </label>
               <textarea
@@ -222,43 +238,43 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Content Topics & Filters */}
-        <div className="rounded-3xl border border-white/[0.08] bg-[#111116] p-6 sm:p-8 backdrop-blur-xl shadow-card-elevated">
-          <div className="flex items-center gap-3 border-b border-white/[0.08] pb-5 mb-6">
-            <div className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400">
+        {/* Content Topics & Constraints */}
+        <div className="card-base p-6 sm:p-8 space-y-6">
+          <div className="flex items-center gap-3 border-b border-canvas-border pb-4">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 border border-violet-200 text-violet-700">
               <Sliders className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-base sm:text-lg font-bold text-white tracking-tight font-display">
+              <h3 className="text-base sm:text-lg font-bold text-text-primary tracking-tight font-display">
                 Topics & Negative Constraints
               </h3>
-              <p className="text-xs text-white/50">Guide what the AI explores and what it must avoid</p>
+              <p className="text-xs text-text-muted">Define what the AI explores and what topics it must strictly avoid</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
-              <label className="block text-xs font-semibold text-lime-400 mb-1.5">
+              <label className="block text-xs font-semibold text-lime-800 mb-1.5">
                 Preferred Topics (comma separated)
               </label>
               <input
                 type="text"
                 value={preferredTopicsInput}
                 onChange={(e) => setPreferredTopicsInput(e.target.value)}
-                placeholder="e.g. AI Agents, TypeScript, System Architecture, Startups"
+                placeholder="e.g. AI Systems, TypeScript, Startups, Design Systems"
                 className="input-base text-xs"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-rose-400 mb-1.5">
+              <label className="block text-xs font-semibold text-rose-800 mb-1.5">
                 Excluded Topics & Forbidden Themes
               </label>
               <input
                 type="text"
                 value={excludedTopicsInput}
                 onChange={(e) => setExcludedTopicsInput(e.target.value)}
-                placeholder="e.g. Politics, Memecoins, Unverified Hype"
+                placeholder="e.g. Politics, Hype, Clickbait, Financial Advice"
                 className="input-base text-xs"
               />
             </div>

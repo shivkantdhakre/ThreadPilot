@@ -29,7 +29,7 @@ export default function HomePage() {
   }, [user, loading, router]);
 
   return (
-    <div className="min-h-screen bg-ivory text-[#151515] selection:bg-coral-500 selection:text-white flex flex-col justify-between overflow-x-hidden">
+    <div className="min-h-screen bg-warm-white text-text-primary selection:bg-coral-500 selection:text-white flex flex-col justify-between overflow-x-hidden">
       {/* 1. Floating Sticky Navbar */}
       <Navbar />
 

@@ -4,9 +4,9 @@ export const footerData = {
     {
       title: 'Product',
       links: [
-        { label: 'Overview', href: '#product' },
-        { label: 'How It Works', href: '#how-it-works' },
-        { label: 'Intelligence Loop', href: '#intelligence' },
+        { label: 'Product', href: '#product' },
+        { label: 'Features', href: '#features' },
+        { label: 'Intelligence', href: '#intelligence' },
         { label: 'Analytics', href: '#analytics' },
         { label: 'Pricing', href: '#pricing' },
       ],
@@ -14,9 +14,8 @@ export const footerData = {
     {
       title: 'Resources',
       links: [
-        { label: 'Documentation', href: '#' },
-        { label: 'Creator Guides', href: '#' },
-        { label: 'Threads Best Practices', href: '#' },
+        { label: 'Docs', href: '#' },
+        { label: 'Guides', href: '#' },
         { label: 'Changelog', href: '#' },
       ],
     },
@@ -25,15 +24,10 @@ export const footerData = {
       links: [
         { label: 'About', href: '#' },
         { label: 'Contact', href: '#' },
-        { label: 'Privacy Policy', href: '#' },
-        { label: 'Terms of Service', href: '#' },
+        { label: 'Privacy', href: '#' },
+        { label: 'Terms', href: '#' },
       ],
     },
   ],
-  socials: [
-    { name: 'X / Twitter', href: 'https://twitter.com', icon: 'x' },
-    { name: 'GitHub', href: 'https://github.com', icon: 'github' },
-    { name: 'LinkedIn', href: 'https://linkedin.com', icon: 'linkedin' },
-  ],
-  copyright: '© 2026 ThreadPilot Inc. All rights reserved.',
+  copyright: '© ThreadPilot',
 };

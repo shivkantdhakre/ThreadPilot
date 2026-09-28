@@ -17,7 +17,8 @@ export function maskRedisUrl(urlStr?: string): string {
 
 export function parseRedisUrl(urlStr: string) {
   try {
-    const u = new URL(urlStr);
+    const cleaned = urlStr.replace(/^["']|["']$/g, '').trim();
+    const u = new URL(cleaned);
     return {
       host: u.hostname || 'localhost',
       port: u.port ? parseInt(u.port, 10) : 6379,

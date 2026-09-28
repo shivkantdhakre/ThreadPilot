@@ -58,7 +58,6 @@ export function CalendarGrid({ posts, onSelectPost, onDayClick }: CalendarGridPr
     setCurrentDate(new Date());
   };
 
-  // Group posts by YYYY-MM-DD based on either Schedule Target Timezone or Viewer Local Timezone
   const postsByDate: Record<string, ScheduledPostItem[]> = useMemo(() => {
     const acc: Record<string, ScheduledPostItem[]> = {};
     posts.forEach((p) => {
@@ -75,7 +74,6 @@ export function CalendarGrid({ posts, onSelectPost, onDayClick }: CalendarGridPr
     year: 'numeric',
   });
 
-  // Build 35 or 42 calendar cells
   const days = [];
   for (let i = 0; i < startDayOfWeek; i++) {
     days.push({ isCurrentMonth: false, dayNum: null, dateKey: null, dateObj: null });
@@ -96,33 +94,35 @@ export function CalendarGrid({ posts, onSelectPost, onDayClick }: CalendarGridPr
   const getStatusDotColor = (status: string) => {
     switch (status) {
       case 'SCHEDULED':
-        return 'bg-cyan-400';
+        return 'bg-cyan-500';
       case 'PUBLISHED':
-        return 'bg-lime-400';
+        return 'bg-lime-500';
       case 'AUTH_REQUIRED':
-        return 'bg-amber-400';
+        return 'bg-amber-500';
       case 'RECOVERY_REQUIRED':
-        return 'bg-violet-400 animate-ping';
+        return 'bg-violet-600 animate-pulse';
       case 'QUOTA_BLOCKED':
-        return 'bg-amber-400';
+        return 'bg-amber-500';
       case 'FAILED_RETRYABLE':
-        return 'bg-rose-400';
-      case 'FAILED_PERMANENT':
         return 'bg-rose-500';
+      case 'FAILED_PERMANENT':
+        return 'bg-rose-600';
       default:
-        return 'bg-white/40';
+        return 'bg-text-muted';
     }
   };
 
   return (
-    <div className="rounded-3xl border border-white/[0.08] bg-[#111116] backdrop-blur-xl p-6 sm:p-7 space-y-4 shadow-card-elevated">
+    <div className="card-base p-6 sm:p-7 space-y-4">
       {/* Calendar Controls Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-canvas-border pb-4">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight font-display">{monthLabel}</h2>
+          <h2 className="text-base sm:text-lg font-bold text-text-primary tracking-tight font-display">
+            {monthLabel}
+          </h2>
           <button
             onClick={handleToday}
-            className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+            className="rounded-xl border border-canvas-border bg-white px-3 py-1 text-xs font-semibold text-text-secondary hover:bg-soft-gray hover:text-text-primary transition-colors shadow-subtle"
           >
             Today
           </button>
@@ -130,12 +130,12 @@ export function CalendarGrid({ posts, onSelectPost, onDayClick }: CalendarGridPr
 
         <div className="flex flex-wrap items-center gap-3">
           {/* Timezone Switcher */}
-          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-ink-850 px-3 py-1.5 text-xs">
-            <Globe className="h-3.5 w-3.5 text-coral-400" />
-            <span className="text-white/40 text-[11px] font-semibold">Timezone:</span>
+          <div className="flex items-center gap-2 rounded-xl border border-canvas-border bg-paper px-3 py-1.5 text-xs">
+            <Globe className="h-3.5 w-3.5 text-coral-600" />
+            <span className="text-text-muted text-[11px] font-semibold">Timezone:</span>
             <button
               onClick={() => setUseLocalTimezone(!useLocalTimezone)}
-              className="font-semibold text-coral-300 hover:text-white transition-colors underline-offset-2 hover:underline"
+              className="font-semibold text-text-primary hover:text-coral-600 transition-colors underline-offset-2 hover:underline"
               title="Toggle between target schedule timezone and browser local timezone"
             >
               {useLocalTimezone ? `Local (${viewerTimezone})` : 'Target Schedule TZ'}
@@ -145,15 +145,17 @@ export function CalendarGrid({ posts, onSelectPost, onDayClick }: CalendarGridPr
           <div className="flex items-center gap-1.5">
             <button
               onClick={handlePrevMonth}
-              className="rounded-xl border border-white/10 p-2 text-white/60 hover:bg-white/5 hover:text-white transition-colors"
+              className="rounded-xl border border-canvas-border bg-white p-2 text-text-secondary hover:bg-soft-gray hover:text-text-primary transition-colors"
               title="Previous Month"
+              aria-label="Previous Month"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
             <button
               onClick={handleNextMonth}
-              className="rounded-xl border border-white/10 p-2 text-white/60 hover:bg-white/5 hover:text-white transition-colors"
+              className="rounded-xl border border-canvas-border bg-white p-2 text-text-secondary hover:bg-soft-gray hover:text-text-primary transition-colors"
               title="Next Month"
+              aria-label="Next Month"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -162,7 +164,7 @@ export function CalendarGrid({ posts, onSelectPost, onDayClick }: CalendarGridPr
       </div>
 
       {/* Weekday Names */}
-      <div className="grid grid-cols-7 text-center text-xs font-bold uppercase tracking-wider text-white/40">
+      <div className="grid grid-cols-7 text-center text-xs font-bold uppercase tracking-wider text-text-muted">
         <div className="py-2">Sun</div>
         <div className="py-2">Mon</div>
         <div className="py-2">Tue</div>
@@ -173,13 +175,13 @@ export function CalendarGrid({ posts, onSelectPost, onDayClick }: CalendarGridPr
       </div>
 
       {/* Days Grid */}
-      <div className="grid grid-cols-7 gap-px bg-white/[0.08] rounded-2xl overflow-hidden border border-white/[0.08]">
+      <div className="grid grid-cols-7 gap-px bg-canvas-border rounded-xl overflow-hidden border border-canvas-border">
         {days.map((cell, idx) => {
           if (!cell.isCurrentMonth || !cell.dateKey) {
             return (
               <div
                 key={`empty-${idx}`}
-                className="min-h-[110px] bg-ink-950/60 p-2 text-white/10 select-none"
+                className="min-h-[110px] bg-soft-gray/40 p-2 text-text-muted/20 select-none"
               />
             );
           }
@@ -191,8 +193,8 @@ export function CalendarGrid({ posts, onSelectPost, onDayClick }: CalendarGridPr
             <div
               key={cell.dateKey}
               onClick={() => onDayClick?.(cell.dateObj!)}
-              className={`group relative min-h-[110px] bg-ink-900/95 p-2 sm:p-2.5 transition-colors hover:bg-white/[0.03] cursor-pointer flex flex-col justify-between ${
-                isToday ? 'ring-2 ring-inset ring-coral-500/50 bg-coral-500/[0.03]' : ''
+              className={`group relative min-h-[110px] bg-white p-2 sm:p-2.5 transition-colors hover:bg-paper/80 cursor-pointer flex flex-col justify-between ${
+                isToday ? 'bg-coral-50/20 ring-2 ring-inset ring-coral-400' : ''
               }`}
             >
               {/* Day Header */}
@@ -200,14 +202,14 @@ export function CalendarGrid({ posts, onSelectPost, onDayClick }: CalendarGridPr
                 <span
                   className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
                     isToday
-                      ? 'bg-coral-500 text-white shadow-glow'
-                      : 'text-white/70 group-hover:text-white'
+                      ? 'bg-coral-500 text-white shadow-sm'
+                      : 'text-text-secondary group-hover:text-text-primary'
                   }`}
                 >
                   {cell.dayNum}
                 </span>
 
-                <span className="opacity-0 group-hover:opacity-100 transition-opacity text-white/40 hover:text-white">
+                <span className="opacity-0 group-hover:opacity-100 transition-opacity text-text-muted hover:text-coral-600">
                   <Plus className="h-3.5 w-3.5" />
                 </span>
               </div>
@@ -227,12 +229,12 @@ export function CalendarGrid({ posts, onSelectPost, onDayClick }: CalendarGridPr
                       }}
                       className={`w-full text-left truncate rounded-lg px-2 py-1 text-[10px] transition-all flex items-center gap-1.5 ${
                         post.status === 'RECOVERY_REQUIRED'
-                          ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40 font-bold'
+                          ? 'bg-violet-50 text-violet-800 border border-violet-200 font-bold'
                           : post.status === 'AUTH_REQUIRED'
-                          ? 'bg-amber-500/20 text-amber-200 border border-amber-500/40 font-bold'
+                          ? 'bg-amber-50 text-amber-800 border border-amber-200 font-bold'
                           : post.status === 'PUBLISHED'
-                          ? 'bg-lime-500/10 text-lime-300 hover:bg-lime-500/20'
-                          : 'bg-white/5 text-white/80 hover:bg-white/10 hover:text-white'
+                          ? 'bg-lime-50 text-lime-800 border border-lime-200'
+                          : 'bg-soft-gray text-text-primary hover:bg-canvas-border border border-canvas-border'
                       }`}
                       title={`${post.contentSnapshot?.body || 'Post'}\nScheduled: ${postTime} (${tz})`}
                     >
@@ -241,7 +243,7 @@ export function CalendarGrid({ posts, onSelectPost, onDayClick }: CalendarGridPr
                           post.status,
                         )}`}
                       />
-                      <span className="font-mono text-white/50">{postTime}</span>
+                      <span className="font-mono text-text-muted">{postTime}</span>
                       <span className="truncate">{post.contentSnapshot?.body || 'Post'}</span>
                     </button>
                   );
@@ -254,3 +256,5 @@ export function CalendarGrid({ posts, onSelectPost, onDayClick }: CalendarGridPr
     </div>
   );
 }
+
+export default CalendarGrid;

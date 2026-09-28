@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Save, Sparkles, Loader2, Plus, ArrowLeft, Calendar, FileCheck } from 'lucide-react';
+import { Save, Calendar, Loader2, ArrowLeft, Lightbulb } from 'lucide-react';
 import { apiClient } from '../../lib/api-client';
 import { ThreadsPreview } from './ThreadsPreview';
 import { AIImprovementPanel } from './AIImprovementPanel';
@@ -155,16 +155,16 @@ export function DraftEditor({ initialDraft, onSaved, onBack }: DraftEditorProps)
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-      {/* Left Column: Editor & Controls */}
+      {/* Left Column: Editor Workspace & Contextual AI */}
       <div className="lg:col-span-7 space-y-6">
-        <div className="rounded-3xl border border-white/[0.08] bg-[#111116] p-6 sm:p-7 shadow-card-elevated backdrop-blur-xl">
+        <div className="card-base p-6 sm:p-7 space-y-4">
           {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-white/[0.08] pb-5 mb-5 gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-canvas-border pb-4 gap-4">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               {onBack && (
                 <button
                   onClick={onBack}
-                  className="rounded-xl border border-white/10 p-2 text-white/50 hover:bg-white/5 hover:text-white transition-colors"
+                  className="rounded-xl border border-canvas-border p-2 text-text-muted hover:text-text-primary hover:bg-soft-gray transition-colors"
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </button>
@@ -174,8 +174,8 @@ export function DraftEditor({ initialDraft, onSaved, onBack }: DraftEditorProps)
                   type="text"
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
-                  placeholder="Post topic or hook summary..."
-                  className="w-full bg-transparent text-base sm:text-lg font-bold text-white placeholder:text-white/30 focus:outline-none font-display tracking-tight"
+                  placeholder="Post topic or thesis summary..."
+                  className="w-full bg-transparent text-base sm:text-lg font-bold text-text-primary placeholder:text-text-muted focus:outline-none font-display tracking-tight"
                 />
               </div>
             </div>
@@ -192,7 +192,7 @@ export function DraftEditor({ initialDraft, onSaved, onBack }: DraftEditorProps)
               <button
                 onClick={handleOpenSchedule}
                 disabled={isSaving || !body.trim()}
-                className="btn-primary flex items-center gap-1.5 text-xs py-2 px-4 shadow-glow"
+                className="btn-primary flex items-center gap-1.5 text-xs py-2 px-4 shadow-subtle"
               >
                 <Calendar className="h-3.5 w-3.5" />
                 <span>Schedule Post</span>
@@ -201,26 +201,29 @@ export function DraftEditor({ initialDraft, onSaved, onBack }: DraftEditorProps)
           </div>
 
           {/* Text Area */}
-          <div className="relative">
+          <div className="space-y-3">
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
               placeholder="Compose your Threads post here (up to 500 characters)..."
-              rows={9}
-              className="w-full resize-y rounded-2xl border border-white/[0.08] bg-ink-950 p-4 sm:p-5 text-sm leading-relaxed text-white placeholder:text-white/35 focus:border-coral-500/80 focus:outline-none focus:ring-2 focus:ring-coral-500/20 font-sans"
+              rows={8}
+              className="w-full resize-y rounded-xl border border-canvas-border bg-white p-4 sm:p-5 text-sm leading-relaxed text-text-primary placeholder:text-text-muted/60 focus:border-coral-500 focus:outline-none focus:ring-2 focus:ring-coral-500/15 font-sans"
             />
 
-            {/* Quick hook tag */}
+            {/* Detected hook pill */}
             {detectedHook && (
-              <div className="mt-3 flex items-center gap-2 text-xs text-white/50 bg-ink-900/60 p-2.5 rounded-xl border border-white/[0.05]">
-                <span className="font-bold text-coral-400">Detected Hook:</span>
-                <span className="truncate italic text-white/80">"{detectedHook}"</span>
+              <div className="flex items-center gap-2 text-xs text-text-secondary bg-soft-gray/70 p-2.5 rounded-xl border border-canvas-border">
+                <div className="flex items-center gap-1 text-coral-600 font-bold shrink-0">
+                  <Lightbulb className="h-3.5 w-3.5" />
+                  <span>Hook:</span>
+                </div>
+                <span className="truncate italic text-text-primary">"{detectedHook}"</span>
               </div>
             )}
           </div>
         </div>
 
-        {/* AI Improvement Panel */}
+        {/* AI Contextual Actions */}
         <AIImprovementPanel
           onImprove={handleImproveTrigger}
           onJobComplete={handleJobComplete}
@@ -228,7 +231,7 @@ export function DraftEditor({ initialDraft, onSaved, onBack }: DraftEditorProps)
         />
       </div>
 
-      {/* Right Column: Live Threads Preview & Version History */}
+      {/* Right Column: Live Threads Simulation & Revision History */}
       <div className="lg:col-span-5 space-y-6">
         <ThreadsPreview body={body} />
 
@@ -262,3 +265,5 @@ export function DraftEditor({ initialDraft, onSaved, onBack }: DraftEditorProps)
     </div>
   );
 }
+
+export default DraftEditor;

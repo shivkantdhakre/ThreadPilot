@@ -14,30 +14,30 @@ export const FinalCtaSection: React.FC = () => {
       </div>
 
       <div className="max-w-4xl mx-auto relative z-10">
-        <h2 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold text-[#151515] tracking-tight font-display mb-6">
-          Start building a smarter{' '}
-          <span className="bg-gradient-to-r from-coral-500 via-lava-orange to-violet-600 bg-clip-text text-transparent">
-            Threads presence today.
+        <h2 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold text-text-primary tracking-tight font-display mb-6">
+          Let ThreadPilot handle the{' '}
+          <span className="bg-gradient-to-r from-coral-500 via-lava-orange to-coral-600 bg-clip-text text-transparent">
+            system behind your Threads.
           </span>
         </h2>
-        <p className="text-base sm:text-lg text-[#525252] max-w-xl mx-auto mb-10 leading-relaxed">
-          Create, automate, analyze and grow with an AI that learns your voice and gets smarter with every thread you publish.
+        <p className="text-base sm:text-lg text-text-secondary max-w-xl mx-auto mb-10 leading-relaxed">
+          Personal voice modeling, intelligent cadence, autonomous learning, and deep telemetry built specifically for creators, founders, and teams who think in public.
         </p>
 
         {/* Dual CTAs */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-14">
           <Link
             href="/register"
-            className="btn-primary py-3.5 px-8 text-sm shadow-glow flex items-center gap-2"
+            className="btn-primary py-3.5 px-8 text-sm shadow-subtle flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
           >
-            <span>Get Started for Free</span>
+            <span>Get Started</span>
             <ArrowRight className="h-4 w-4" />
           </Link>
           <a
             href="#product"
-            className="rounded-xl border border-black/10 bg-white py-3.5 px-6 text-sm font-semibold text-[#151515] hover:bg-black/[0.02] hover:border-black/20 transition-all flex items-center gap-2"
+            className="rounded-xl border border-canvas-border bg-white py-3.5 px-6 text-sm font-semibold text-text-primary hover:bg-paper hover:border-canvas-border-muted transition-all flex items-center gap-2 shadow-subtle"
           >
-            <Play className="h-3.5 w-3.5 fill-current text-[#525252]" />
+            <Play className="h-3.5 w-3.5 fill-current text-text-secondary" />
             <span>Watch Demo</span>
           </a>
         </div>
