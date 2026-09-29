@@ -2,5 +2,20 @@
   "name": "@threadpilot/config",
   "version": "0.0.1",
   "private": true,
-  "files": ["tsconfig.base.json", "prettier.config.js", "eslint-base.js"]
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.4"
+  },
+  "files": [
+    "dist",
+    "tsconfig.base.json",
+    "prettier.config.js",
+    "eslint-base.js"
+  ]
 }

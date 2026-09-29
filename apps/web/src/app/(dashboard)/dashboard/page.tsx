@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   BrainCircuit,
   Radio,
+  MessageSquare,
 } from 'lucide-react';
 import { TopBar } from '../../../components/TopBar';
 import { apiClient } from '../../../lib/api-client';
@@ -51,6 +52,11 @@ export default function DashboardPage() {
   const [queueTab, setQueueTab] = useState<'UPCOMING' | 'PUBLISHED'>('UPCOMING');
   const [ingestionStatus, setIngestionStatus] = useState<any>(null);
   const [account, setAccount] = useState<any>(null);
+  const [engagementStats, setEngagementStats] = useState<{
+    pendingReview: number;
+    autoReplied: number;
+    replied: number;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -67,12 +73,13 @@ export default function DashboardPage() {
   const loadData = async (silent = false) => {
     if (!silent) setIsRefreshing(true);
     try {
-      const [profRes, draftsRes, ingestRes, accountsRes, notifRes] = await Promise.allSettled([
+      const [profRes, draftsRes, ingestRes, accountsRes, notifRes, engRes] = await Promise.allSettled([
         apiClient.get<UserProfileDto>('/profile'),
         apiClient.get<{ data: any[] }>('/content/drafts?limit=5'),
         apiClient.get<any>('/ingestion/status'),
         apiClient.get<{ accounts: any[] }>('/threads-auth/status'),
         apiClient.get<{ notifications: any[] }>('/notifications?limit=4'),
+        apiClient.get<any>('/engagement/stats'),
       ]);
 
       if (profRes.status === 'fulfilled') setProfile(profRes.value);
@@ -80,6 +87,7 @@ export default function DashboardPage() {
       if (ingestRes.status === 'fulfilled') setIngestionStatus(ingestRes.value);
       if (accountsRes.status === 'fulfilled') setAccount(accountsRes.value.accounts?.[0] ?? null);
       if (notifRes.status === 'fulfilled') setRecentActivity(notifRes.value.notifications ?? []);
+      if (engRes.status === 'fulfilled' && engRes.value) setEngagementStats(engRes.value);
 
       let upcoming: any[] = [];
       let published: any[] = [];
@@ -274,6 +282,67 @@ export default function DashboardPage() {
             icon={Sparkles}
             accent="violet"
           />
+        </div>
+
+        {/* Autonomous Engagement & Comment Telemetry Widget */}
+        <div className="rounded-2xl border border-canvas-border bg-white p-5 sm:p-6 shadow-subtle flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <div className="flex items-start sm:items-center gap-4">
+            <div className="h-10 w-10 rounded-xl bg-coral-50 border border-coral-200/60 flex items-center justify-center text-coral-600 shrink-0">
+              <MessageSquare className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-text-primary tracking-tight font-display">
+                  Autonomous Reply Engine
+                </h3>
+                {(engagementStats?.pendingReview ?? 0) > 0 ? (
+                  <span className="badge-coral text-[10px] font-mono font-bold px-2 py-0.5">
+                    {engagementStats?.pendingReview} Require Review
+                  </span>
+                ) : (
+                  <span className="badge-lime text-[10px] font-mono font-bold px-2 py-0.5">
+                    Live & Monitoring
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-text-muted mt-0.5">
+                {(engagementStats?.pendingReview ?? 0) > 0
+                  ? 'Incoming Threads comments have generated grounded drafts awaiting your approval before live publishing.'
+                  : 'AI classification and grounding safety gates are active. Grounded replies dispatch according to your autonomy policy.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 shrink-0">
+            <div className="hidden sm:flex items-center gap-6 border-r border-canvas-border pr-6 text-xs">
+              <div>
+                <div className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Pending Review</div>
+                <div className="text-sm font-bold font-mono text-text-primary">
+                  {engagementStats?.pendingReview ?? 0}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Auto-Replied</div>
+                <div className="text-sm font-bold font-mono text-lime-700">
+                  {engagementStats?.autoReplied ?? 0}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Total Replied</div>
+                <div className="text-sm font-bold font-mono text-text-secondary">
+                  {engagementStats?.replied ?? 0}
+                </div>
+              </div>
+            </div>
+
+            <Link
+              href="/replies"
+              className="btn-primary text-xs py-2 px-3.5 inline-flex items-center gap-1.5 shadow-subtle shrink-0"
+            >
+              <span>Open Review Queue</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
         </div>
 
         {/* Primary Content Grid: Center Workflow & Side Intelligence */}

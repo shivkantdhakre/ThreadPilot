@@ -58,3 +58,31 @@ export interface ThreadsApiTokenResponse {
   refresh_token?: string;
 }
 
+export interface ThreadsApiReply {
+  id: string;
+  text?: string;
+  timestamp: string;      // ISO 8601
+  username?: string;
+  media_type?: 'TEXT_POST' | 'IMAGE' | 'VIDEO' | 'CAROUSEL_ALBUM' | string;
+  is_reply?: boolean;
+  is_reply_owned_by_me?: boolean;
+  root_post?: { id: string };
+  replied_to?: { id: string };
+  hide_status?: 'NOT_HUSHED' | 'HUSHED' | 'DELETED' | string;
+  permalink?: string;
+  has_replies?: boolean;
+  reply_audience?: string;
+}
+
+export interface ThreadsApiReplyList {
+  data: ThreadsApiReply[];
+  paging?: {
+    cursors?: {
+      before?: string;
+      after?: string;
+    };
+    next?: string;
+    previous?: string;
+  };
+}
+

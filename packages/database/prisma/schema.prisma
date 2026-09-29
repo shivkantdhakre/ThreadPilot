@@ -86,6 +86,14 @@ model Workspace {
   publishedPosts PublishedPost[]
   eventOutbox    EventOutbox[]
 
+  // Phase 3 Engagement Relations
+  engagementSyncStates EngagementSyncState[]
+  interactions         Interaction[]
+  replyDrafts          ReplyDraft[]
+  replyExecutions      ReplyExecution[]
+  editorialFeedbacks   EditorialFeedback[]
+  idempotencyRecords   IdempotencyRecord[]
+
   @@map("workspaces")
 }
 
@@ -112,6 +120,12 @@ model SocialAccount {
   publishedPosts  PublishedPost[]
   scheduledPosts  ScheduledPost[]
   rateLimits      PlatformRateLimit[]
+
+  // Phase 3 Engagement Relations
+  engagementSyncStates EngagementSyncState[]
+  interactions         Interaction[]
+  replyExecutions      ReplyExecution[]
+  editorialFeedbacks   EditorialFeedback[]
 
   @@unique([workspaceId, platform, externalId])
   @@index([workspaceId])
@@ -156,6 +170,10 @@ model ThreadPost {
   sourceType      String        @default("PUBLISHED")  // PUBLISHED | INGESTED
   externalPostId  String?       @map("external_post_id") @db.Uuid
   publishedPostId String?       @map("published_post_id") @db.Uuid
+
+  // Phase 3 Engagement Relations
+  engagementSyncStates EngagementSyncState[]
+  interactions         Interaction[]
 
   @@unique([socialAccountId, threadsPostId])
   @@index([socialAccountId, postedAt])
@@ -683,4 +701,448 @@ model ScheduledPostMigrationQuarantine {
   reason             String
 
   @@map("scheduled_posts_migration_quarantine")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 3: ENGAGEMENT ENGINE & CONVERSATIONAL INTELLIGENCE
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum InteractionStatus {
+  NEW
+  CLASSIFYING
+  CLASSIFIED
+  DRAFTING
+  DRAFTED
+  OUTPUT_SAFETY_EVALUATING
+  REVIEW_REQUIRED
+  APPROVED
+  PUBLISHING
+  REPLIED
+  DISMISSED
+  NOT_REQUIRED
+  BLOCKED
+  RECOVERY_REQUIRED
+}
+
+enum ReplyExecutionStatus {
+  CREATED
+  QUEUED
+  CLAIMED
+  QUOTA_BLOCKED
+  CREATING_CONTAINER
+  CONTAINER_CREATED
+  PUBLISHING
+  PUBLISHED
+  RETRYABLE_FAILURE
+  AUTH_REQUIRED
+  RECOVERY_REQUIRED
+  FAILED_PERMANENT
+  CANCELLED_BY_POLICY
+}
+
+enum RecoveryResolution {
+  NONE
+  PENDING
+  MATCHED
+  NOT_LANDED
+  OPERATOR_REQUIRED
+  CONFIRMED_NOT_PUBLISHED
+  CONFIRMED_PUBLISHED
+}
+
+enum AutonomyMode {
+  OFF
+  SHADOW
+  REVIEW_ONLY
+  RULES_BASED
+}
+
+enum PolicyStage {
+  PRE_GENERATION
+  POST_GENERATION_SAFETY
+}
+
+enum PolicyDecisionType {
+  AUTO_REPLY
+  REVIEW_REQUIRED
+  BLOCKED
+  NOT_APPLICABLE
+}
+
+enum InteractionIntent {
+  QUESTION
+  AGREEMENT
+  DISAGREEMENT
+  COMPLIMENT
+  REQUEST
+  TROLLING
+  SPAM
+  UNCLEAR
+}
+
+enum FeedbackType {
+  STYLE_CORRECTION
+  FACTUAL_CORRECTION
+  TONE_CORRECTION
+  LENGTH_CORRECTION
+  CONTENT_CORRECTION
+  SAFETY_CORRECTION
+  PERSONAL_PREFERENCE
+}
+
+enum SyncTier {
+  HOT
+  WARM
+  COLD
+}
+
+enum SyncStatus {
+  IDLE
+  SYNCING
+  FAILED
+}
+
+enum AmbiguityType {
+  CONTAINER_CREATE
+  PUBLISH
+  UNKNOWN
+}
+
+enum ResponseDecision {
+  PENDING
+  REQUIRED
+  NOT_REQUIRED
+  USER_DISMISSED
+  POLICY_BLOCKED
+}
+
+enum Sentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum HideStatus {
+  NOT_HUSHED
+  HUSHED
+  DELETED
+}
+
+enum InteractionType {
+  REPLY
+  QUOTE
+  MENTION
+}
+
+/// Tracks incremental synchronization per social account and root post.
+model EngagementSyncState {
+  id                    String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String        @map("workspace_id") @db.Uuid
+  workspace             Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String        @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  threadPostId          String?       @map("thread_post_id") @db.Uuid
+  threadPost            ThreadPost?   @relation(fields: [threadPostId], references: [id], onDelete: Cascade)
+  rootThreadsPostId     String        @map("root_threads_post_id")
+  
+  // Cursor & Watermarks
+  paginationCursor      String?       @map("pagination_cursor")
+  lastSeenInteractionAt DateTime?     @map("last_seen_interaction_at")
+  lastSyncedAt          DateTime?     @map("last_synced_at")
+  syncTier              SyncTier      @default(HOT) @map("sync_tier")
+  syncStatus            SyncStatus    @default(IDLE) @map("sync_status")
+  leaseToken            String?       @map("lease_token") @db.Uuid
+  leaseUntil            DateTime?     @map("lease_until")
+  errorCount            Int           @default(0) @map("error_count")
+  lastError             String?       @map("last_error")
+
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  @@unique([socialAccountId, rootThreadsPostId])
+  @@index([syncTier, syncStatus, lastSyncedAt])
+  @@map("engagement_sync_states")
+}
+
+/// Authoritative normalized social interaction.
+model Interaction {
+  id                     String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId            String            @map("workspace_id") @db.Uuid
+  workspace              Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId        String            @map("social_account_id") @db.Uuid
+  socialAccount          SocialAccount     @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  
+  // Thread Hierarchy
+  threadPostId           String?           @map("thread_post_id") @db.Uuid
+  threadPost             ThreadPost?       @relation(fields: [threadPostId], references: [id], onDelete: SetNull)
+  rootThreadsPostId      String            @map("root_threads_post_id")
+  parentExternalId       String?           @map("parent_external_id")
+  parentInteractionId    String?           @map("parent_interaction_id") @db.Uuid
+  parentInteraction      Interaction?      @relation("InteractionThread", fields: [parentInteractionId], references: [id], onDelete: SetNull)
+  childInteractions      Interaction[]     @relation("InteractionThread")
+
+  // External Platform Identifiers & Snapshots
+  externalInteractionId  String            @map("external_interaction_id")
+  authorExternalId       String?           @map("author_external_id")
+  authorUsernameSnapshot String            @map("author_username_snapshot")
+  authorDisplayNameSnapshot String?        @map("author_display_name_snapshot")
+  authorProfilePicSnapshot  String?        @map("author_profile_pic_snapshot")
+  
+  // Content & Canonical Hashing
+  content                String
+  canonicalContentHash   String            @map("canonical_content_hash")
+  interactionType        InteractionType   @default(REPLY) @map("interaction_type")
+  isReplyOwnedByMe       Boolean           @default(false) @map("is_reply_owned_by_me")
+  replyAudience          String?           @map("reply_audience")
+  hideStatus             HideStatus        @default(NOT_HUSHED) @map("hide_status")
+  postedAt               DateTime          @map("posted_at")
+  firstSeenAt            DateTime          @default(now()) @map("first_seen_at")
+  lastSeenAt             DateTime          @default(now()) @map("last_seen_at")
+  permalink              String?
+
+  // Business FSM & Workflow Triage
+  status                 InteractionStatus @default(NEW)
+  responseDecision       ResponseDecision  @default(PENDING) @map("response_decision")
+  priorityScore          Int               @default(5) @map("priority_score")
+  dismissedReason        String?           @map("dismissed_reason")
+  
+  // Denormalized Pointer
+  activeExecutionId      String?           @map("active_execution_id") @db.Uuid
+
+  createdAt              DateTime          @default(now()) @map("created_at")
+  updatedAt              DateTime          @updatedAt @map("updated_at")
+
+  classifications        InteractionClassification[]
+  policyDecisions        PolicyDecision[]
+  replyDraft             ReplyDraft?
+  executions             ReplyExecution[]
+  editorialFeedbacks     EditorialFeedback[]
+
+  @@unique([socialAccountId, externalInteractionId])
+  @@index([workspaceId, status, priorityScore(sort: Desc), createdAt(sort: Desc)])
+  @@index([socialAccountId, rootThreadsPostId, postedAt])
+  @@index([parentInteractionId])
+  @@map("interactions")
+}
+
+/// Audit record of intent classification and safety scoring.
+model InteractionClassification {
+  id                    String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  interactionId         String            @map("interaction_id") @db.Uuid
+  interaction           Interaction       @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+  
+  classificationVersion Int               @default(1) @map("classification_version")
+  isCurrent             Boolean           @default(true) @map("is_current")
+  intent                InteractionIntent
+  intentConfidence      Float             @map("intent_confidence")
+  sentiment             Sentiment
+  priorityScore         Int               @map("priority_score")
+  
+  // Granular Safety Categories (0.0 - 1.0)
+  toxicityScore         Float             @default(0) @map("toxicity_score")
+  harassmentScore       Float             @default(0) @map("harassment_score")
+  controversyScore      Float             @default(0) @map("controversy_score")
+  isPromptInjection     Boolean           @default(false) @map("is_prompt_injection")
+  safetyFlags           String[]          @map("safety_flags")
+  
+  // Provenance
+  classifierModel       String            @map("classifier_model")
+  promptVersion         String            @map("prompt_version")
+  schemaVersion         String            @map("schema_version")
+  decisionSummary       String            @map("decision_summary")
+  classifiedAt          DateTime          @default(now()) @map("classified_at")
+
+  @@index([interactionId, isCurrent])
+  @@map("interaction_classifications")
+}
+
+/// Policy decisions separating Pre-Gen Eligibility from Post-Gen Grounding/Safety.
+model PolicyDecision {
+  id                    String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  interactionId         String             @map("interaction_id") @db.Uuid
+  interaction           Interaction        @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+  
+  stage                 PolicyStage
+  policyVersion         String             @map("policy_version")
+  isCurrent             Boolean            @default(true) @map("is_current")
+  decision              PolicyDecisionType
+  reasonCodes           String[]           @map("reason_codes")
+  accountAutonomyMode   AutonomyMode       @map("account_autonomy_mode")
+  wouldAutoReplyInLive  Boolean            @default(false) @map("would_auto_reply_in_live")
+  evaluatedAt           DateTime           @default(now()) @map("evaluated_at")
+
+  @@index([interactionId, stage, isCurrent])
+  @@map("policy_decisions")
+}
+
+/// Logical draft container with explicit named relations.
+model ReplyDraft {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  interactionId         String              @unique @map("interaction_id") @db.Uuid
+  interaction           Interaction         @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+  
+  status                String              @default("ACTIVE")
+  
+  // Named Relations
+  currentVersionId      String?             @unique @map("current_version_id") @db.Uuid
+  currentVersion        ReplyDraftVersion?  @relation("DraftCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  
+  approvedVersionId     String?             @unique @map("approved_version_id") @db.Uuid
+  approvedVersion       ReplyDraftVersion?  @relation("DraftApprovedVersion", fields: [approvedVersionId], references: [id], onDelete: SetNull)
+
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  versions              ReplyDraftVersion[] @relation("DraftAllVersions")
+  executions            ReplyExecution[]
+
+  @@index([workspaceId, status])
+  @@map("reply_drafts")
+}
+
+/// Immutable draft versions.
+/// Application-level deletion is prohibited.
+/// Execution references use Restrict to preserve published audit history.
+/// Workspace/account deletion is the only permitted archival cascade.
+model ReplyDraftVersion {
+  id                    String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  replyDraftId          String           @map("reply_draft_id") @db.Uuid
+  replyDraft            ReplyDraft       @relation("DraftAllVersions", fields: [replyDraftId], references: [id], onDelete: Cascade)
+  
+  versionNumber         Int              @map("version_number")
+  body                  String
+  canonicalHash         String           @map("canonical_hash")
+  source                String
+  
+  // Full Provenance Audit
+  generationModel       String?          @map("generation_model")
+  promptVersion         String?          @map("prompt_version")
+  policyVersion         String?          @map("policy_version")
+  voiceProfileVersion   Int?             @map("voice_profile_version")
+  retrievedExemplarIds  String[]         @map("retrieved_exemplar_ids")
+  
+  // Editorial Metadata
+  diffSummary           String?          @map("diff_summary")
+  regenerationPrompt    String?          @map("regeneration_prompt")
+  parentVersionId       String?          @map("parent_version_id") @db.Uuid
+  createdAt             DateTime         @default(now()) @map("created_at")
+
+  // Reverse named relations
+  currentForDraft       ReplyDraft?      @relation("DraftCurrentVersion")
+  approvedForDraft      ReplyDraft?      @relation("DraftApprovedVersion")
+  executions            ReplyExecution[]
+
+  @@unique([replyDraftId, versionNumber])
+  @@index([replyDraftId, createdAt(sort: Desc)])
+  @@map("reply_draft_versions")
+}
+
+/// Fenced execution lifecycle for publishing an approved draft version.
+model ReplyExecution {
+  id                    String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String               @map("workspace_id") @db.Uuid
+  workspace             Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String               @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount        @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  interactionId         String               @map("interaction_id") @db.Uuid
+  interaction           Interaction          @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+  replyDraftId          String               @map("reply_draft_id") @db.Uuid
+  replyDraft            ReplyDraft           @relation(fields: [replyDraftId], references: [id], onDelete: Cascade)
+  replyDraftVersionId   String               @map("reply_draft_version_id") @db.Uuid
+  replyDraftVersion     ReplyDraftVersion    @relation(fields: [replyDraftVersionId], references: [id], onDelete: Restrict)
+
+  // Initial state is CREATED
+  status                ReplyExecutionStatus @default(CREATED)
+  attemptCount          Int                  @default(0) @map("attempt_count")
+  publishAttemptCount   Int                  @default(0) @map("publish_attempt_count")
+  attemptId             String?              @map("attempt_id") @db.Uuid
+  claimedBy             String?              @map("claimed_by")
+  claimedAt             DateTime?            @map("claimed_at")
+  leaseUntil            DateTime?            @map("lease_until")
+  requestFingerprint    String               @map("request_fingerprint")
+  policyVersion         String?              @map("policy_version")
+  classificationVersion Int?                 @map("classification_version")
+
+  // Container Creation Tracking
+  containerCreateAttemptedAt DateTime?       @map("container_create_attempted_at")
+  containerRequestStartedAt DateTime?        @map("container_request_started_at")
+  containerId           String?              @map("container_id")
+  containerCreatedAt    DateTime?            @map("container_created_at")
+  
+  // Publication Commit Tracking
+  publishRequestedAt    DateTime?            @map("publish_requested_at")
+  publishedThreadPostId String?              @map("published_thread_post_id")
+  publishedAt           DateTime?            @map("published_at")
+  
+  // Granular Ambiguity Tracking & Resolution
+  hasExternalAmbiguity  Boolean              @default(false) @map("has_external_ambiguity")
+  ambiguityType         AmbiguityType?       @map("ambiguity_type")
+  ambiguityDetectedAt   DateTime?            @map("ambiguity_detected_at")
+  recoveryDeadlineAt    DateTime?            @map("recovery_deadline_at")
+  recoveryResolution    RecoveryResolution   @default(NONE) @map("recovery_resolution")
+  lastErrorCode         String?              @map("last_error_code")
+  lastError             String?              @map("last_error")
+  nextRetryAt           DateTime?            @map("next_retry_at")
+  
+  // Quota Management
+  quotaBlockedAt        DateTime?            @map("quota_blocked_at")
+  quotaRetryCount       Int                  @default(0) @map("quota_retry_count")
+
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+
+  editorialFeedbacks    EditorialFeedback[]
+
+  @@index([workspaceId, status, nextRetryAt])
+  @@index([socialAccountId, status, leaseUntil])
+  @@index([interactionId, status])
+  @@map("reply_executions")
+}
+
+/// Curated editorial deltas for voice personalization.
+model EditorialFeedback {
+  id                    String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String          @map("workspace_id") @db.Uuid
+  workspace             Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String          @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount   @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  voiceProfileId        String?         @map("voice_profile_id") @db.Uuid
+  interactionId         String          @map("interaction_id") @db.Uuid
+  interaction           Interaction     @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+  replyExecutionId      String?         @map("reply_execution_id") @db.Uuid
+  replyExecution        ReplyExecution? @relation(fields: [replyExecutionId], references: [id], onDelete: SetNull)
+  
+  feedbackType          FeedbackType    @map("feedback_type")
+  originalText          String          @map("original_text")
+  finalText             String          @map("final_text")
+  wordDiffSummary       String          @map("word_diff_summary")
+  userRating            Int?            @map("user_rating")
+  
+  isVectorCandidate     Boolean         @default(false) @map("is_vector_candidate")
+  indexedToVectorAt     DateTime?       @map("indexed_to_vector_at")
+  memoryItemId          String?         @map("memory_item_id")
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+
+  @@index([workspaceId, voiceProfileId, feedbackType, isVectorCandidate])
+  @@map("editorial_feedbacks")
+}
+
+/// API Idempotency store scoped strictly to workspace and endpoint method.
+model IdempotencyRecord {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  key         String
+  method      String
+  endpoint    String
+  response    Json
+  statusCode  Int       @map("status_code")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([workspaceId, key, method, endpoint])
+  @@index([workspaceId, key, createdAt])
+  @@map("idempotency_records")
 }

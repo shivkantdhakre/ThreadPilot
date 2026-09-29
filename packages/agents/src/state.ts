@@ -136,3 +136,76 @@ export const ContentGraphAnnotation = Annotation.Root({
   status:                Annotation<'running' | 'success' | 'failure' | 'needs_approval'>(),
 });
 export type ContentGraphState = typeof ContentGraphAnnotation.State;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Engagement Intelligence: Intent & Safety Classification
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const InteractionClassificationOutputSchema = z.object({
+  intent: z.enum([
+    'QUESTION',
+    'AGREEMENT',
+    'DISAGREEMENT',
+    'COMPLIMENT',
+    'REQUEST',
+    'TROLLING',
+    'SPAM',
+    'UNCLEAR',
+  ]),
+  intentConfidence: z.number().min(0).max(1),
+  sentiment: z.enum(['POSITIVE', 'NEUTRAL', 'NEGATIVE']),
+  priorityScore: z.number().int().min(1).max(10),
+  toxicityScore: z.number().min(0).max(1),
+  harassmentScore: z.number().min(0).max(1),
+  controversyScore: z.number().min(0).max(1),
+  isPromptInjection: z.boolean(),
+  safetyFlags: z.array(z.string()),
+  decisionSummary: z.string(),
+});
+
+export type InteractionClassificationOutput = z.infer<typeof InteractionClassificationOutputSchema>;
+
+export interface PreGenerationPolicyResult {
+  decision: 'AUTO_REPLY' | 'REVIEW_REQUIRED' | 'BLOCKED' | 'NOT_APPLICABLE';
+  reasonCodes: string[];
+  wouldAutoReplyInLive: boolean;
+  policyVersion: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Engagement Intelligence: Reply Drafting
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const ReplyDraftOutputSchema = z.object({
+  body: z.string().min(1).max(500),
+  hook: z.string().min(1),
+  characterCount: z.number().int().positive(),
+});
+
+export type ReplyDraftOutput = z.infer<typeof ReplyDraftOutputSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Engagement Intelligence: Post-Generation Grounding & Safety
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const PostGenerationGroundingOutputSchema = z.object({
+  isGrounded: z.boolean(),
+  unsupportedClaims: z.array(z.string()),
+  factualityRisk: z.number().min(0).max(1),
+  tonePass: z.boolean(),
+  safetyPass: z.boolean(),
+  reasonCodes: z.array(z.string()),
+  decisionSummary: z.string(),
+});
+
+export type PostGenerationGroundingOutput = z.infer<typeof PostGenerationGroundingOutputSchema>;
+
+export interface PostGenerationPolicyResult {
+  decision: 'AUTO_REPLY' | 'REVIEW_REQUIRED' | 'BLOCKED';
+  reasonCodes: string[];
+  wouldAutoReplyInLive: boolean;
+  policyVersion: string;
+}
+
+
+

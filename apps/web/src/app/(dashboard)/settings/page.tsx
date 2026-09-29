@@ -34,6 +34,7 @@ export default function SettingsPage() {
   const [preferredTimezone, setPreferredTimezone] = useState('UTC');
   const [automationPaused, setAutomationPaused] = useState(false);
   const [publishingPaused, setPublishingPaused] = useState(false);
+  const [repliesPaused, setRepliesPaused] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -48,6 +49,7 @@ export default function SettingsPage() {
         setPreferredTimezone(res.preferredTimezone ?? 'UTC');
         setAutomationPaused(res.automationPaused);
         setPublishingPaused(res.publishingPaused);
+        setRepliesPaused(Boolean(res.repliesPaused));
       } catch (err) {
         console.error(err);
       }
@@ -68,6 +70,7 @@ export default function SettingsPage() {
         preferredTimezone,
         automationPaused,
         publishingPaused,
+        repliesPaused,
       });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
@@ -83,6 +86,24 @@ export default function SettingsPage() {
     { value: 'APPROVAL', label: 'Approval Required', desc: 'AI creates candidates; human approves every draft' },
     { value: 'RULES_BASED', label: 'Rules Based', desc: 'Auto-publish high-confidence items that match style rules' },
     { value: 'AUTONOMOUS', label: 'Fully Autonomous', desc: 'Agent posts and engages autonomously within rate limits' },
+  ];
+
+  const replyAutonomyOptions = [
+    {
+      value: 'REVIEW_ONLY',
+      label: 'Review Only',
+      desc: 'All candidate replies require human review before dispatching to Threads',
+    },
+    {
+      value: 'SHADOW',
+      label: 'Shadow Mode',
+      desc: 'Simulates autonomous pipeline & logs live decisions with 0 external posting',
+    },
+    {
+      value: 'RULES_BASED',
+      label: 'Rules Based',
+      desc: 'Auto-replies to grounded, verified comments; routes edge cases to review',
+    },
   ];
 
   return (
@@ -189,6 +210,40 @@ export default function SettingsPage() {
                     </button>
                   ))}
                 </div>
+
+                {/* Reply & Comment Autonomy */}
+                <div className="pt-6 border-t border-canvas-border space-y-4">
+                  <div>
+                    <h3 className="text-base font-bold text-text-primary tracking-tight font-display mb-1">
+                      Comment Reply Autonomy Level
+                    </h3>
+                    <p className="text-xs text-text-muted">
+                      Controls autonomous sentiment classification, AI drafting, and auto-reply boundaries on Threads comments
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {replyAutonomyOptions.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setAutonomyReplies(opt.value as any)}
+                        className={`rounded-xl border p-4 text-left transition-all duration-150 ${
+                          autonomyReplies === opt.value
+                            ? 'border-coral-400 bg-coral-50/70 shadow-subtle text-text-primary'
+                            : 'border-canvas-border bg-white text-text-secondary hover:border-canvas-border-muted hover:bg-paper'
+                        }`}
+                      >
+                        <div className="text-xs font-bold text-text-primary mb-1 font-display">
+                          {opt.label}
+                        </div>
+                        <div className="text-[11px] text-text-secondary leading-relaxed">
+                          {opt.desc}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -279,6 +334,21 @@ export default function SettingsPage() {
                       type="checkbox"
                       checked={publishingPaused}
                       onChange={(e) => setPublishingPaused(e.target.checked)}
+                      className="h-4 w-4 rounded border-canvas-border text-coral-600 focus:ring-coral-500 shrink-0"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between rounded-xl border border-canvas-border bg-paper/60 p-4 cursor-pointer hover:border-canvas-border-muted transition-all">
+                    <div className="pr-4">
+                      <div className="text-xs font-bold text-text-primary">Pause All Reply Publishing</div>
+                      <div className="text-[11px] text-text-muted mt-0.5">
+                        Emergency kill switch: Halts all automated outbound comment replies across Threads
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={repliesPaused}
+                      onChange={(e) => setRepliesPaused(e.target.checked)}
                       className="h-4 w-4 rounded border-canvas-border text-coral-600 focus:ring-coral-500 shrink-0"
                     />
                   </label>

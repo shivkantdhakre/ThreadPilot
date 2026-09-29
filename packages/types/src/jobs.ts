@@ -8,13 +8,37 @@ export const QUEUES = {
   TOKEN_REFRESH: 'token-refresh',
   EMBEDDING:     'embedding',
   PUBLISH:       'publish',
+  // Engagement Engine Queues
+  ENGAGEMENT_INGEST:   'engagement-ingest-queue',
+  ENGAGEMENT_CLASSIFY: 'engagement-classify-queue',
+  REPLY_DRAFT:         'reply-draft-queue',
+  REPLY_PUBLISH:       'reply-publish-queue',
+} as const;
+
+export const ENGAGEMENT_QUEUES = {
+  ENGAGEMENT_INGEST:   'engagement-ingest-queue',
+  ENGAGEMENT_CLASSIFY: 'engagement-classify-queue',
+  REPLY_DRAFT:         'reply-draft-queue',
+  REPLY_PUBLISH:       'reply-publish-queue',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
+export type EngagementQueueName = (typeof ENGAGEMENT_QUEUES)[keyof typeof ENGAGEMENT_QUEUES];
 
 export type JobStatus = 'PENDING' | 'RUNNING' | 'COMPLETE' | 'FAILED';
 
-export type JobType = 'INGESTION' | 'STYLE' | 'CONTENT' | 'IMPROVE' | 'TOKEN_REFRESH' | 'EMBEDDING' | 'PUBLISH';
+export type JobType =
+  | 'INGESTION'
+  | 'STYLE'
+  | 'CONTENT'
+  | 'IMPROVE'
+  | 'TOKEN_REFRESH'
+  | 'EMBEDDING'
+  | 'PUBLISH'
+  | 'ENGAGEMENT_SYNC'
+  | 'ENGAGEMENT_CLASSIFY'
+  | 'REPLY_DRAFT'
+  | 'REPLY_PUBLISH';
 
 export interface ExecutionContext {
   requestId: string;
@@ -89,6 +113,29 @@ export interface EmbeddingJobPayload extends BaseJobPayload {
 
 export interface PublishJobPayload extends BaseJobPayload {
   scheduledPostId: string;
+}
+
+export interface EngagementSyncJobPayload extends BaseJobPayload {
+  socialAccountId: string;
+  rootThreadsPostId?: string;
+  threadPostId?: string;
+  force?: boolean;
+}
+
+export interface EngagementClassifyJobPayload extends BaseJobPayload {
+  interactionId: string;
+  priorityScore?: number;
+}
+
+export interface ReplyDraftJobPayload extends BaseJobPayload {
+  interactionId: string;
+  userPreference?: string;
+  regenerate?: boolean;
+}
+
+export interface ReplyPublishJobPayload extends BaseJobPayload {
+  replyExecutionId: string;
+  interactionId: string;
 }
 
 // ─── Job status response ──────────────────────────────────────────────────────

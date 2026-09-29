@@ -2,7 +2,7 @@
 // Threads API surface area is isolated here — zero Threads imports anywhere else.
 
 export { ThreadsApiClient, ThreadsApiError } from './threads-api.client';
-export type { GetUserPostsOptions } from './threads-api.client';
+export type { GetUserPostsOptions, GetPostRepliesOptions, GetConversationOptions } from './threads-api.client';
 export { ThreadsOAuthService, OAuthStateError } from './threads-oauth.service';
 export { ThreadsTokenService } from './token.service';
 export { TokenEncryptionService } from './token-encryption.service';

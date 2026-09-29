@@ -3,6 +3,7 @@ import type {
   ThreadsApiPostList,
   ThreadsApiPublishingLimit,
   ThreadsApiPost,
+  ThreadsApiReplyList,
 } from '@threadpilot/types';
 
 export interface GetUserPostsOptions {
@@ -10,6 +11,21 @@ export interface GetUserPostsOptions {
   limit?: number | undefined;
   since?: Date | undefined;
   until?: Date | undefined;
+  timeoutMs?: number | undefined;
+}
+
+export interface GetPostRepliesOptions {
+  cursor?: string | undefined;
+  limit?: number | undefined;
+  since?: Date | undefined;
+  until?: Date | undefined;
+  reverse?: boolean | undefined;
+  timeoutMs?: number | undefined;
+}
+
+export interface GetConversationOptions {
+  cursor?: string | undefined;
+  limit?: number | undefined;
   timeoutMs?: number | undefined;
 }
 
@@ -61,6 +77,41 @@ export class ThreadsApiClient {
     return this.get<ThreadsApiPostList>(url, accessToken, opts.timeoutMs ?? 15_000);
   }
 
+  async getPostReplies(
+    accessToken: string,
+    threadId: string,
+    options?: GetPostRepliesOptions,
+  ): Promise<ThreadsApiReplyList> {
+    const fields = 'id,text,timestamp,username,media_type,is_reply,is_reply_owned_by_me,root_post,replied_to,hide_status';
+    const params = new URLSearchParams({
+      fields,
+      limit: String(Math.min(options?.limit ?? 50, 100)),
+      reverse: String(options?.reverse ?? false),
+    });
+    if (options?.cursor) params.set('after', options.cursor);
+    if (options?.since) params.set('since', String(Math.floor(options.since.getTime() / 1000)));
+    if (options?.until) params.set('until', String(Math.floor(options.until.getTime() / 1000)));
+
+    const url = `${this.baseUrl}/${threadId}/replies?${params.toString()}`;
+    return this.get<ThreadsApiReplyList>(url, accessToken, options?.timeoutMs ?? 15_000);
+  }
+
+  async getConversation(
+    accessToken: string,
+    threadId: string,
+    options?: GetConversationOptions,
+  ): Promise<ThreadsApiReplyList> {
+    const fields = 'id,text,timestamp,username,media_type,is_reply,replied_to';
+    const params = new URLSearchParams({
+      fields,
+      limit: String(Math.min(options?.limit ?? 50, 100)),
+    });
+    if (options?.cursor) params.set('after', options.cursor);
+
+    const url = `${this.baseUrl}/${threadId}/conversation?${params.toString()}`;
+    return this.get<ThreadsApiReplyList>(url, accessToken, options?.timeoutMs ?? 15_000);
+  }
+
   async getPublishingLimit(
     accessToken: string,
     options?: { timeoutMs?: number | undefined },
@@ -71,6 +122,19 @@ export class ThreadsApiClient {
     const wrapper = await this.get<LimitWrapper>(url, accessToken, options?.timeoutMs ?? 15_000);
     const limit = wrapper.data[0];
     if (!limit) throw new Error('No publishing limit data returned from Threads API');
+    return limit;
+  }
+
+  async getReplyPublishingLimit(
+    accessToken: string,
+    options?: { timeoutMs?: number | undefined },
+  ): Promise<ThreadsApiPublishingLimit> {
+    const fields = 'reply_quota_usage,reply_config,quota_usage,config';
+    const url = `${this.baseUrl}/me/threads_publishing_limit?fields=${fields}`;
+    type LimitWrapper = { data: ThreadsApiPublishingLimit[] };
+    const wrapper = await this.get<LimitWrapper>(url, accessToken, options?.timeoutMs ?? 15_000);
+    const limit = wrapper.data[0];
+    if (!limit) throw new Error('No reply publishing limit data returned from Threads API');
     return limit;
   }
 
@@ -87,6 +151,22 @@ export class ThreadsApiClient {
     return this.postQuery<{ id: string }>(url, accessToken, options?.timeoutMs ?? 15_000);
   }
 
+  async createReplyContainer(
+    accessToken: string,
+    text: string,
+    replyToId: string,
+    options?: { timeoutMs?: number | undefined },
+  ): Promise<{ id: string }> {
+    const params = new URLSearchParams({
+      media_type: 'TEXT',
+      text,
+      reply_to_id: replyToId,
+    });
+    // auto_publish_text is strictly prohibited per Phase 3 architecture contract
+    const url = `${this.baseUrl}/me/threads?${params.toString()}`;
+    return this.postQuery<{ id: string }>(url, accessToken, options?.timeoutMs ?? 15_000);
+  }
+
   async getContainerStatus(
     accessToken: string,
     containerId: string,
@@ -98,6 +178,14 @@ export class ThreadsApiClient {
       accessToken,
       options?.timeoutMs ?? 15_000,
     );
+  }
+
+  async getContainerPublishingStatus(
+    accessToken: string,
+    containerId: string,
+    options?: { timeoutMs?: number | undefined },
+  ): Promise<{ id: string; status: string; error_message?: string }> {
+    return this.getContainerStatus(accessToken, containerId, options);
   }
 
   async publishContainer(

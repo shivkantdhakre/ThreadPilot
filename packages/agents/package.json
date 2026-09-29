@@ -17,10 +17,10 @@
     "@threadpilot/observability": "workspace:*",
     "@threadpilot/prompts": "workspace:*",
     "@threadpilot/types": "workspace:*",
+    "@threadpilot/config": "workspace:*",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@threadpilot/config": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "^5.5.4"
   }

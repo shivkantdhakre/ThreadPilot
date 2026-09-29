@@ -8,7 +8,7 @@
     "build": "tsc",
     "test": "node --experimental-strip-types --test test/memory.repository.spec.ts test/real-pgvector-duplicate.spec.ts",
     "lint": "tsc --noEmit",
-    "db:generate": "prisma generate",
+    "db:generate": "prisma generate && node scripts/post-generate.js",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:studio": "prisma studio",

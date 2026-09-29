@@ -1,351 +1,578 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   MessageSquare,
   Sparkles,
-  Send,
-  Heart,
   CheckCircle2,
   Clock,
-  User,
+  Filter,
   RefreshCw,
-  AtSign,
-  ArrowUpRight,
-  ShieldCheck,
+  Search,
+  AlertTriangle,
+  Send,
   Zap,
 } from 'lucide-react';
 import { TopBar } from '../../../components/TopBar';
 import { apiClient } from '../../../lib/api-client';
-import { MetricCard } from '../../../components/ui/MetricCard';
+import { useAuth } from '../../../hooks/useAuth';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { ThreadPilotLoader } from '../../../components/ui/ThreadPilotLoader';
 
-interface ConversationItem {
-  id: string;
-  authorUsername: string;
-  authorDisplayName: string;
-  postSnippet: string;
-  userComment: string;
-  timestamp: string;
-  priority: 'HIGH' | 'QUESTION' | 'STANDARD';
-  replied: boolean;
-}
+// Engagement Modular Components
+import {
+  InteractionItem,
+  AutonomyMode,
+  EngagementStats,
+  ReplyExecutionData,
+  InteractionIntent,
+} from '../../../components/engagement/types';
+import { EngagementHeader } from '../../../components/engagement/EngagementHeader';
+import { AmbiguityAlertBanner } from '../../../components/engagement/AmbiguityAlertBanner';
+import { InteractionCard } from '../../../components/engagement/InteractionCard';
+import { InteractionDetailDeck } from '../../../components/engagement/InteractionDetailDeck';
+import { RegenerateDraftModal } from '../../../components/engagement/RegenerateDraftModal';
+import { DismissModal } from '../../../components/engagement/DismissModal';
+import { OperatorResolveModal } from '../../../components/engagement/OperatorResolveModal';
+import { AutonomySettingsModal } from '../../../components/engagement/AutonomySettingsModal';
+
+type FilterTab = 'REVIEW_REQUIRED' | 'REPLIED' | 'AUTO_REPLIED' | 'DISMISSED' | 'ALL';
 
 export default function RepliesPage() {
-  const [account, setAccount] = useState<any>(null);
-  const [publishedPosts, setPublishedPosts] = useState<any[]>([]);
+  const { workspace } = useAuth();
+
+  // Multi-Account & Autonomy State
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [autonomyMode, setAutonomyMode] = useState<AutonomyMode>('REVIEW_ONLY');
+  const [killSwitchActive, setKillSwitchActive] = useState<boolean>(false);
+  const [stats, setStats] = useState<EngagementStats | null>(null);
+
+  // Queue & Interactions State
+  const [activeTab, setActiveTab] = useState<FilterTab>('REVIEW_REQUIRED');
+  const [intentFilter, setIntentFilter] = useState<string>('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [interactions, setInteractions] = useState<InteractionItem[]>([]);
+  const [selectedInteractionId, setSelectedInteractionId] = useState<string | null>(null);
+  const [selectedInteraction, setSelectedInteraction] = useState<InteractionItem | null>(null);
+
+  // Loading & Sync States
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedConversationId, setSelectedConversationId] = useState<string>('conv-1');
-  const [replyText, setReplyText] = useState('');
-  const [isGeneratingReply, setIsGeneratingReply] = useState(false);
-  const [repliedIds, setRepliedIds] = useState<string[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
 
+  // Modals
+  const [isAutonomyModalOpen, setIsAutonomyModalOpen] = useState(false);
+  const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
+  const [isDismissModalOpen, setIsDismissModalOpen] = useState(false);
+  const [isResolveModalOpen, setIsResolveModalOpen] = useState(false);
+  const [selectedExecutionForResolve, setSelectedExecutionForResolve] = useState<ReplyExecutionData | null>(null);
+  const [selectedInteractionIdForResolve, setSelectedInteractionIdForResolve] = useState<string | null>(null);
+
+  // 1. Load Connected Accounts & Preferences
+  const loadInitialContext = useCallback(async () => {
+    try {
+      const [accRes, prefRes] = await Promise.allSettled([
+        apiClient.get<{ accounts?: any[] }>('/threads-auth/status'),
+        apiClient.get<any>('/profile/preferences'),
+      ]);
+
+      if (accRes.status === 'fulfilled' && accRes.value.accounts) {
+        const accs = accRes.value.accounts;
+        setAccounts(accs);
+        if (accs.length > 0 && !selectedAccountId) {
+          setSelectedAccountId(accs[0].id);
+        }
+      }
+
+      if (prefRes.status === 'fulfilled' && prefRes.value) {
+        const pref = prefRes.value;
+        const mode = (pref.autonomyReplies || 'REVIEW_ONLY') as AutonomyMode;
+        setAutonomyMode(mode);
+        setKillSwitchActive(Boolean(pref.repliesPaused));
+      }
+    } catch (err) {
+      console.error('Failed to load initial context:', err);
+    }
+  }, [selectedAccountId]);
+
+  // 2. Fetch Stats & Interactions for Selected Account & Tab
+  const fetchInteractions = useCallback(async () => {
+    if (!workspace) return;
+    setIsLoading(true);
+    try {
+      const queryParams = new URLSearchParams();
+      if (selectedAccountId) {
+        queryParams.set('socialAccountId', selectedAccountId);
+      }
+
+      if (activeTab === 'REVIEW_REQUIRED') {
+        queryParams.set('status', 'REVIEW_REQUIRED');
+      } else if (activeTab === 'REPLIED') {
+        queryParams.set('status', 'REPLIED');
+      } else if (activeTab === 'DISMISSED') {
+        queryParams.set('status', 'DISMISSED');
+      }
+
+      if (intentFilter !== 'ALL') {
+        queryParams.set('intent', intentFilter);
+      }
+
+      const [listRes, statsRes] = await Promise.allSettled([
+        apiClient.get<{ data: InteractionItem[] }>(`/engagement/interactions?${queryParams.toString()}`),
+        apiClient.get<EngagementStats>(
+          `/engagement/stats${selectedAccountId ? `?socialAccountId=${selectedAccountId}` : ''}`
+        ),
+      ]);
+
+      if (listRes.status === 'fulfilled') {
+        let items = listRes.value.data || [];
+        if (activeTab === 'AUTO_REPLIED') {
+          items = items.filter(
+            (item) =>
+              item.status === 'REPLIED' &&
+              item.policyDecisions?.some(
+                (p) => p.stage === 'POST_GENERATION_SAFETY' && p.decision === 'AUTO_REPLY'
+              )
+          );
+        }
+        setInteractions(items);
+
+        if (items.length > 0 && items[0]) {
+          // Preserve selection or default to first
+          if (!selectedInteractionId || !items.some((i) => i.id === selectedInteractionId)) {
+            setSelectedInteractionId(items[0].id);
+          }
+        } else {
+          setSelectedInteractionId(null);
+          setSelectedInteraction(null);
+        }
+      }
+
+      if (statsRes.status === 'fulfilled') {
+        setStats(statsRes.value);
+      }
+    } catch (err) {
+      console.error('Failed to fetch interactions:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [workspace, selectedAccountId, activeTab, intentFilter, selectedInteractionId]);
+
+  // 3. Load Details for Selected Interaction
   useEffect(() => {
-    async function load() {
-      setIsLoading(true);
-      try {
-        const [accRes, schedRes] = await Promise.allSettled([
-          apiClient.get<{ accounts: any[] }>('/threads-auth/status'),
-          apiClient.get<{ data: any[] }>('/content/schedules?status=PUBLISHED&limit=10'),
-        ]);
+    if (!selectedInteractionId) {
+      setSelectedInteraction(null);
+      return;
+    }
 
-        if (accRes.status === 'fulfilled') {
-          setAccount(accRes.value.accounts?.[0] || null);
-        }
-        if (schedRes.status === 'fulfilled') {
-          setPublishedPosts(schedRes.value.data || []);
-        }
+    async function loadDetail() {
+      try {
+        const item = await apiClient.get<InteractionItem>(`/engagement/interactions/${selectedInteractionId}`);
+        setSelectedInteraction(item);
       } catch (err) {
-        console.error(err);
-      } finally {
-        setIsLoading(false);
+        console.error('Failed to load interaction detail:', err);
       }
     }
-    load();
-  }, []);
+    loadDetail();
+  }, [selectedInteractionId]);
 
-  // Conversational items
-  const conversations: ConversationItem[] = [
-    {
-      id: 'conv-1',
-      authorUsername: 'alex_builds',
-      authorDisplayName: 'Alex Rivera',
-      postSnippet: publishedPosts[0]?.contentSnapshot?.body || 'Building in public on Threads requires high consistency.',
-      userComment: 'How are you balancing depth vs. short hooks? Most short hooks feel like clickbait nowadays.',
-      timestamp: '14m ago',
-      priority: 'QUESTION',
-      replied: repliedIds.includes('conv-1'),
-    },
-    {
-      id: 'conv-2',
-      authorUsername: 'sarah_dev',
-      authorDisplayName: 'Sarah Lin',
-      postSnippet: publishedPosts[1]?.contentSnapshot?.body || 'Our autonomous publishing pipeline arbitrates quota safely.',
-      userComment: 'Love this breakdown! Does the Graph API have webhooks for real-time replies yet?',
-      timestamp: '1h ago',
-      priority: 'HIGH',
-      replied: repliedIds.includes('conv-2'),
-    },
-    {
-      id: 'conv-3',
-      authorUsername: 'marcus_ai',
-      authorDisplayName: 'Marcus Vance',
-      postSnippet: publishedPosts[0]?.contentSnapshot?.body || 'Personal voice modeling is 10x better than generic AI writing.',
-      userComment: 'Bookmarked. The 8-dimensional vector approach is way more rigorous than basic prompt stuffing.',
-      timestamp: '3h ago',
-      priority: 'STANDARD',
-      replied: repliedIds.includes('conv-3'),
-    },
-  ];
+  useEffect(() => {
+    loadInitialContext();
+  }, [loadInitialContext]);
 
-  const selectedConv = conversations.find((c) => c.id === selectedConversationId) || conversations[0];
+  useEffect(() => {
+    fetchInteractions();
+  }, [fetchInteractions]);
 
-  const handleGenerateReply = (tone: 'direct' | 'thoughtful' | 'expand') => {
-    setIsGeneratingReply(true);
-    setTimeout(() => {
-      if (tone === 'direct') {
-        setReplyText(
-          `Great question. The key is making the first line an actual contrarian truth rather than empty suspense. Give the core insight immediately.`
-        );
-      } else if (tone === 'thoughtful') {
-        setReplyText(
-          `Completely agree with this tension. We tune our style profile to prioritize high-signal takeaway density over artificial curiosity gaps.`
-        );
-      } else {
-        setReplyText(
-          `Appreciate the feedback! We're writing up an architectural deep dive on this specific pattern next week.`
-        );
+  // Handler: Sync Inbound Comments
+  const handleSync = async () => {
+    if (!selectedAccountId) return;
+    setIsSyncing(true);
+    try {
+      await apiClient.post('/engagement/sync', { socialAccountId: selectedAccountId });
+      // Short delay for BullMQ processor to start ingesting
+      setTimeout(() => {
+        fetchInteractions();
+        setIsSyncing(false);
+      }, 1500);
+    } catch (err: any) {
+      console.error('Sync failed:', err);
+      setIsSyncing(false);
+    }
+  };
+
+  // Handler: Approve Draft
+  const handleApprove = async (interactionId: string, versionId?: string) => {
+    setIsApproving(true);
+    try {
+      await apiClient.post(`/engagement/interactions/${interactionId}/approve`, { versionId });
+      // Optimistic update
+      setInteractions((prev) =>
+        prev.map((item) =>
+          item.id === interactionId ? { ...item, status: 'APPROVED' } : item
+        )
+      );
+      if (selectedInteraction?.id === interactionId) {
+        setSelectedInteraction((prev) => (prev ? { ...prev, status: 'APPROVED' } : null));
       }
-      setIsGeneratingReply(false);
-    }, 600);
+      setTimeout(() => {
+        fetchInteractions();
+      }, 1000);
+    } catch (err: any) {
+      throw err;
+    } finally {
+      setIsApproving(false);
+    }
   };
 
-  const handleSendReply = () => {
-    if (!replyText.trim() || !selectedConv) return;
-    setRepliedIds((prev) => [...prev, selectedConv.id]);
-    setReplyText('');
+  // Handler: Update Draft (User Inline Edit)
+  const handleUpdateDraft = async (interactionId: string, text: string, versionNumber: number) => {
+    const updated = await apiClient.patch<InteractionItem>(
+      `/engagement/interactions/${interactionId}/draft`,
+      { body: text, versionNumber },
+      { headers: { 'If-Match': `"${versionNumber}"` } }
+    );
+    setSelectedInteraction(updated);
+    fetchInteractions();
   };
+
+  // Handler: Trigger Regeneration
+  const handleRegenerate = async (interactionId: string, preference: string) => {
+    await apiClient.post(`/engagement/interactions/${interactionId}/draft`, {
+      userPreference: preference || undefined,
+      regenerate: true,
+    });
+    // Give worker time to complete generation
+    setTimeout(() => {
+      fetchInteractions();
+    }, 2000);
+  };
+
+  // Handler: Dismiss Interaction
+  const handleDismiss = async (interactionId: string, reason: string) => {
+    await apiClient.post(`/engagement/interactions/${interactionId}/dismiss`, { reason });
+    setInteractions((prev) => prev.filter((i) => i.id !== interactionId));
+    setSelectedInteraction(null);
+    fetchInteractions();
+  };
+
+  // Handler: Resolve Ambiguity
+  const handleResolveAmbiguity = async (
+    executionId: string,
+    resolution: 'CONFIRMED_PUBLISHED' | 'CONFIRMED_NOT_PUBLISHED',
+    externalPostId?: string,
+    notes?: string
+  ) => {
+    await apiClient.post(`/engagement/executions/${executionId}/resolve`, {
+      resolution,
+      externalPostId,
+      notes,
+    });
+    fetchInteractions();
+  };
+
+  // Handler: Save Autonomy Preferences
+  const handleSavePreferences = async (mode: AutonomyMode, killSwitch: boolean) => {
+    await apiClient.patch('/profile/preferences', {
+      autonomyReplies: mode,
+      repliesPaused: killSwitch,
+    });
+    setAutonomyMode(mode);
+    setKillSwitchActive(killSwitch);
+  };
+
+  // Filter interactions by local search query
+  const filteredInteractions = interactions.filter((item) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      item.content.toLowerCase().includes(q) ||
+      item.authorUsernameSnapshot.toLowerCase().includes(q) ||
+      (item.authorDisplayNameSnapshot && item.authorDisplayNameSnapshot.toLowerCase().includes(q))
+    );
+  });
+
+  // Collect any ambiguous executions across loaded items
+  const ambiguousExecutions: Array<{
+    execution: ReplyExecutionData;
+    interactionId: string;
+    authorUsername: string;
+    snippet: string;
+  }> = [];
+
+  for (const item of interactions) {
+    const ambig = item.executions?.find(
+      (e) =>
+        e.hasExternalAmbiguity ||
+        e.status === 'RECOVERY_REQUIRED' ||
+        e.recoveryResolution === 'OPERATOR_REQUIRED'
+    );
+    if (ambig) {
+      ambiguousExecutions.push({
+        execution: ambig,
+        interactionId: item.id,
+        authorUsername: item.authorUsernameSnapshot,
+        snippet: item.content,
+      });
+    }
+  }
 
   return (
     <div className="min-h-screen bg-warm-white">
       <TopBar
-        title="Replies & Social Engagement"
-        subtitle="Conversational workspace for community discussions and voice-aligned replies"
+        title="Social Engagement & Review Queue"
+        subtitle="Manage inbound discussions, verify AI candidate replies, and arbitrate publishing"
       />
 
       <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-6">
-        {/* Top Status & Metrics */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <MetricCard
-            label="Inbound Discussion Threads"
-            value={conversations.length}
-            meta="Active Threads conversations"
-            icon={MessageSquare}
-            accent="coral"
-          />
+        {/* Header: Accounts, Autonomy Badge, Metrics & Sync */}
+        <EngagementHeader
+          accounts={accounts}
+          selectedAccountId={selectedAccountId}
+          onSelectAccount={(accId) => setSelectedAccountId(accId)}
+          autonomyMode={autonomyMode}
+          killSwitchActive={killSwitchActive}
+          onOpenAutonomySettings={() => setIsAutonomyModalOpen(true)}
+          isSyncing={isSyncing}
+          onSync={handleSync}
+          stats={stats}
+        />
 
-          <MetricCard
-            label="Replied Rate"
-            value={`${Math.round((repliedIds.length / conversations.length) * 100)}%`}
-            meta="Audience engagement response"
-            icon={CheckCircle2}
-            accent="lime"
-          />
+        {/* Ambiguity Alert Banner (Visible when external uncertainty occurs) */}
+        <AmbiguityAlertBanner
+          ambiguousExecutions={ambiguousExecutions}
+          onOpenResolveModal={(exec, intId) => {
+            setSelectedExecutionForResolve(exec);
+            setSelectedInteractionIdForResolve(intId);
+            setIsResolveModalOpen(true);
+          }}
+        />
 
-          <MetricCard
-            label="Active Connected Identity"
-            value={account ? `@${account.username}` : 'Not Linked'}
-            meta="Verified Meta Graph API Account"
-            icon={AtSign}
-            accent="cyan"
-          />
-        </div>
+        {/* Filter Navigation Tabs & Search */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-canvas-border pb-3">
+          {/* Tabs */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+            <button
+              onClick={() => setActiveTab('REVIEW_REQUIRED')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                activeTab === 'REVIEW_REQUIRED'
+                  ? 'bg-coral-500 text-white shadow-sm'
+                  : 'bg-white text-text-secondary hover:text-text-primary border border-canvas-border'
+              }`}
+            >
+              <Clock className="h-3.5 w-3.5" />
+              <span>Needs Review</span>
+              {stats && stats.pendingReview > 0 && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                    activeTab === 'REVIEW_REQUIRED' ? 'bg-white/30 text-white' : 'bg-coral-100 text-coral-800'
+                  }`}
+                >
+                  {stats.pendingReview}
+                </span>
+              )}
+            </button>
 
-        {/* Social Workspace: 2 Columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column: Conversations List (5 cols) */}
-          <div className="lg:col-span-5 card-base p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-canvas-border pb-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-text-primary">
-                Inbound Conversations
-              </h3>
-              <span className="badge-neutral text-[10px] font-mono">
-                {conversations.length} discussions
-              </span>
-            </div>
+            <button
+              onClick={() => setActiveTab('REPLIED')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                activeTab === 'REPLIED'
+                  ? 'bg-coral-500 text-white shadow-sm'
+                  : 'bg-white text-text-secondary hover:text-text-primary border border-canvas-border'
+              }`}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              <span>Replied</span>
+              {stats && stats.replied > 0 && (
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-soft-gray text-text-muted">
+                  {stats.replied}
+                </span>
+              )}
+            </button>
 
-            <div className="divide-y divide-canvas-border max-h-[560px] overflow-y-auto">
-              {conversations.map((conv) => {
-                const isSelected = conv.id === selectedConversationId;
-                return (
-                  <button
-                    key={conv.id}
-                    onClick={() => setSelectedConversationId(conv.id)}
-                    className={`w-full p-3.5 text-left rounded-xl transition-all duration-150 space-y-2 ${
-                      isSelected
-                        ? 'bg-paper border border-canvas-border shadow-subtle'
-                        : 'hover:bg-soft-gray/60'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 truncate">
-                        <div className="h-6 w-6 rounded-full bg-gradient-to-tr from-coral-500 to-amber-500 flex items-center justify-center text-[10px] font-bold text-white shrink-0">
-                          {conv.authorDisplayName.slice(0, 1)}
-                        </div>
-                        <span className="text-xs font-bold text-text-primary truncate">
-                          {conv.authorDisplayName}
-                        </span>
-                        <span className="text-[11px] text-text-muted truncate">
-                          @{conv.authorUsername}
-                        </span>
-                      </div>
+            <button
+              onClick={() => setActiveTab('AUTO_REPLIED')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                activeTab === 'AUTO_REPLIED'
+                  ? 'bg-coral-500 text-white shadow-sm'
+                  : 'bg-white text-text-secondary hover:text-text-primary border border-canvas-border'
+              }`}
+            >
+              <Zap className="h-3.5 w-3.5 text-amber-300" />
+              <span>Autonomous</span>
+              {stats && stats.autoReplied > 0 && (
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-soft-gray text-text-muted">
+                  {stats.autoReplied}
+                </span>
+              )}
+            </button>
 
-                      <span className="text-[10px] text-text-muted font-mono shrink-0">
-                        {conv.timestamp}
-                      </span>
-                    </div>
+            <button
+              onClick={() => setActiveTab('DISMISSED')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                activeTab === 'DISMISSED'
+                  ? 'bg-coral-500 text-white shadow-sm'
+                  : 'bg-white text-text-secondary hover:text-text-primary border border-canvas-border'
+              }`}
+            >
+              <span>Dismissed</span>
+            </button>
 
-                    <p className="text-xs text-text-secondary line-clamp-2 leading-relaxed font-normal">
-                      "{conv.userComment}"
-                    </p>
-
-                    <div className="flex items-center justify-between pt-1 text-[10px]">
-                      {conv.priority === 'QUESTION' ? (
-                        <span className="badge-violet text-[9px] py-0.5">Question</span>
-                      ) : conv.priority === 'HIGH' ? (
-                        <span className="badge-coral text-[9px] py-0.5">High Signal</span>
-                      ) : (
-                        <span className="badge-neutral text-[9px] py-0.5">Engagement</span>
-                      )}
-
-                      {conv.replied && (
-                        <span className="text-lime-700 font-semibold flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3" /> Replied
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            <button
+              onClick={() => setActiveTab('ALL')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                activeTab === 'ALL'
+                  ? 'bg-coral-500 text-white shadow-sm'
+                  : 'bg-white text-text-secondary hover:text-text-primary border border-canvas-border'
+              }`}
+            >
+              <span>All Activity</span>
+            </button>
           </div>
 
-          {/* Right Column: Conversation Thread & AI Reply Composer (7 cols) */}
-          <div className="lg:col-span-7 space-y-5">
-            {selectedConv ? (
-              <div className="card-base p-6 space-y-5">
-              <div className="border-b border-canvas-border pb-4 space-y-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                  Your Original Thread
-                </span>
-                <p className="text-xs sm:text-sm text-text-primary italic leading-relaxed bg-paper/70 p-3.5 rounded-xl border border-canvas-border">
-                  "{selectedConv.postSnippet}"
+          {/* Search & Intent Filter */}
+          <div className="flex items-center gap-2.5">
+            <div className="relative">
+              <Search className="h-3.5 w-3.5 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search comments or author..."
+                className="input-base text-xs pl-8 pr-3 py-1.5 w-48 sm:w-56"
+              />
+            </div>
+
+            <select
+              value={intentFilter}
+              onChange={(e) => setIntentFilter(e.target.value)}
+              className="input-base text-xs py-1.5 px-3 bg-white w-32"
+            >
+              <option value="ALL">All Intents</option>
+              <option value="QUESTION">Questions</option>
+              <option value="AGREEMENT">Agreements</option>
+              <option value="DISAGREEMENT">Disagreements</option>
+              <option value="REQUEST">Requests</option>
+              <option value="TROLLING">Trolling / Toxic</option>
+            </select>
+          </div>
+        </div>
+
+        {/* 2-Column Deck: Left (List) & Right (Detail & Actions) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Left Column: List of Interactions (5 cols) */}
+          <div className="lg:col-span-5 space-y-3">
+            {isLoading ? (
+              <div className="card-base p-12 text-center">
+                <ThreadPilotLoader message="Loading engagement inbox..." />
+              </div>
+            ) : filteredInteractions.length === 0 ? (
+              <div className="card-base p-8 text-center space-y-3">
+                <EmptyState
+                  icon={MessageSquare}
+                  title="No interactions found"
+                  description={
+                    activeTab === 'REVIEW_REQUIRED'
+                      ? 'You are all caught up! No candidate replies require review right now.'
+                      : 'No interactions match the selected filters.'
+                  }
+                />
+                <button
+                  onClick={handleSync}
+                  disabled={isSyncing}
+                  className="btn-secondary text-xs py-1.5 px-3 inline-flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`h-3 w-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>Check for New Replies</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[720px] overflow-y-auto pr-1">
+                {filteredInteractions.map((item) => (
+                  <InteractionCard
+                    key={item.id}
+                    interaction={item}
+                    isSelected={item.id === selectedInteractionId}
+                    onSelect={() => setSelectedInteractionId(item.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Right Column: Interaction Full Detail Deck (7 cols) */}
+          <div className="lg:col-span-7">
+            {selectedInteraction ? (
+              <InteractionDetailDeck
+                interaction={selectedInteraction}
+                onApprove={handleApprove}
+                onUpdateDraft={handleUpdateDraft}
+                onOpenRegenerateModal={() => setIsRegenerateModalOpen(true)}
+                onOpenDismissModal={() => setIsDismissModalOpen(true)}
+                onOpenResolveModal={() => {
+                  if (selectedInteraction.executions?.[0]) {
+                    setSelectedExecutionForResolve(selectedInteraction.executions[0]);
+                    setSelectedInteractionIdForResolve(selectedInteraction.id);
+                    setIsResolveModalOpen(true);
+                  }
+                }}
+                isApproving={isApproving}
+              />
+            ) : (
+              <div className="card-base p-16 text-center space-y-3">
+                <MessageSquare className="h-10 w-10 text-text-muted mx-auto" />
+                <h3 className="text-sm font-bold text-text-primary">Select an Inbound Discussion</h3>
+                <p className="text-xs text-text-muted max-w-sm mx-auto leading-relaxed">
+                  Choose a conversation from the left to inspect thread context, analyze AI intent, and verify the candidate reply draft.
                 </p>
               </div>
-
-              {/* User Comment Box */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-cyan-500 to-violet-600 flex items-center justify-center text-sm font-bold text-white shadow-sm">
-                      {selectedConv.authorDisplayName.slice(0, 1)}
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-text-primary">
-                        {selectedConv.authorDisplayName}{' '}
-                        <span className="font-normal text-text-muted">@{selectedConv.authorUsername}</span>
-                      </div>
-                      <div className="text-[11px] text-text-muted font-mono">{selectedConv.timestamp}</div>
-                    </div>
-                  </div>
-
-                  <span className="badge-coral text-[10px]">Direct Reply</span>
-                </div>
-
-                <div className="rounded-2xl border border-canvas-border bg-white p-4 text-xs sm:text-sm text-text-primary leading-relaxed font-sans shadow-subtle">
-                  {selectedConv.userComment}
-                </div>
-              </div>
-
-              {/* Contextual AI Reply Presets */}
-              <div className="pt-2 space-y-2.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-text-primary flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5 text-violet-600" />
-                    <span>AI Reply Assistance</span>
-                  </span>
-                  <span className="text-[10px] text-text-muted font-mono">Personal Voice Aligned</span>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => handleGenerateReply('direct')}
-                    disabled={isGeneratingReply}
-                    className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1"
-                  >
-                    <Zap className="h-3 w-3 text-coral-600" />
-                    <span>Direct Answer</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleGenerateReply('thoughtful')}
-                    disabled={isGeneratingReply}
-                    className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1"
-                  >
-                    <Sparkles className="h-3 w-3 text-violet-600" />
-                    <span>Thoughtful Stance</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleGenerateReply('expand')}
-                    disabled={isGeneratingReply}
-                    className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1"
-                  >
-                    <span>Acknowledge & Expand</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Reply Textarea & Dispatch */}
-              <div className="space-y-3 pt-2">
-                <textarea
-                  rows={4}
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  placeholder={`Write an authentic reply to @${selectedConv.authorUsername} (under 500 chars)...`}
-                  className="input-base text-xs sm:text-sm resize-none"
-                />
-
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-text-muted font-mono text-[11px]">
-                    {replyText.length} / 500 chars
-                  </span>
-
-                  <button
-                    onClick={handleSendReply}
-                    disabled={!replyText.trim() || isGeneratingReply}
-                    className="btn-primary text-xs py-2 px-4 flex items-center gap-1.5 shadow-subtle disabled:opacity-50"
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    <span>Reply on Threads</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="card-base p-12 text-center">
-              <MessageSquare className="h-8 w-8 text-text-muted mx-auto mb-3" />
-              <h3 className="text-sm font-bold text-text-primary">Select a Conversation</h3>
-              <p className="text-xs text-text-muted mt-1">
-                Choose an inbound response from the list to view context and draft an authentic reply.
-              </p>
-            </div>
-          )}
+            )}
           </div>
         </div>
       </div>
+
+      {/* Modals */}
+      <AutonomySettingsModal
+        isOpen={isAutonomyModalOpen}
+        onClose={() => setIsAutonomyModalOpen(false)}
+        currentMode={autonomyMode}
+        killSwitchActive={killSwitchActive}
+        onSavePreferences={handleSavePreferences}
+      />
+
+      {selectedInteraction && (
+        <>
+          <RegenerateDraftModal
+            isOpen={isRegenerateModalOpen}
+            onClose={() => setIsRegenerateModalOpen(false)}
+            interactionId={selectedInteraction.id}
+            onRegenerate={handleRegenerate}
+          />
+
+          <DismissModal
+            isOpen={isDismissModalOpen}
+            onClose={() => setIsDismissModalOpen(false)}
+            interactionId={selectedInteraction.id}
+            authorUsername={selectedInteraction.authorUsernameSnapshot}
+            onDismiss={handleDismiss}
+          />
+        </>
+      )}
+
+      {selectedExecutionForResolve && (
+        <OperatorResolveModal
+          isOpen={isResolveModalOpen}
+          onClose={() => {
+            setIsResolveModalOpen(false);
+            setSelectedExecutionForResolve(null);
+            setSelectedInteractionIdForResolve(null);
+          }}
+          execution={selectedExecutionForResolve}
+          interactionId={selectedInteractionIdForResolve}
+          onResolve={handleResolveAmbiguity}
+        />
+      )}
     </div>
   );
 }

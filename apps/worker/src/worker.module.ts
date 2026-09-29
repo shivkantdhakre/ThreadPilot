@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
-import { QUEUES } from '@threadpilot/types';
+import { QUEUES, ENGAGEMENT_QUEUES } from '@threadpilot/types';
 import { HealthModule } from './health/health.module';
 import { RedisModule } from './redis/redis.module';
 import { JobProgressService } from './services/job-progress.service';
@@ -14,7 +14,13 @@ import { TokenRefreshProcessor } from './processors/token-refresh.processor';
 import { EmbeddingProcessor } from './processors/embedding.processor';
 import { PublishingProcessor } from './processors/publishing.processor';
 import { EventOutboxProcessor } from './processors/event-outbox.processor';
+import { EngagementIngestProcessor } from './processors/engagement-ingest.processor';
+import { EngagementClassifyProcessor } from './processors/engagement-classify.processor';
+import { ReplyDraftProcessor } from './processors/reply-draft.processor';
+import { ReplyPublishProcessor } from './processors/reply-publish.processor';
 import { PublishingReconciliationService } from './services/publishing-reconciliation.service';
+import { EngagementReconciliationService } from './services/engagement-reconciliation.service';
+import { EditorialPersonalizationService } from './services/editorial-personalization.service';
 import { PublishingService } from './services/publishing.service';
 import { prisma, PrismaClient } from '@threadpilot/database';
 
@@ -45,6 +51,10 @@ import { resolveResilientRedisUrl, parseRedisUrl } from './redis/redis-helper';
       { name: QUEUES.TOKEN_REFRESH },
       { name: QUEUES.EMBEDDING },
       { name: QUEUES.PUBLISH },
+      { name: ENGAGEMENT_QUEUES.ENGAGEMENT_INGEST },
+      { name: ENGAGEMENT_QUEUES.ENGAGEMENT_CLASSIFY },
+      { name: ENGAGEMENT_QUEUES.REPLY_DRAFT },
+      { name: ENGAGEMENT_QUEUES.REPLY_PUBLISH },
     ),
   ],
   providers: [
@@ -59,12 +69,23 @@ import { resolveResilientRedisUrl, parseRedisUrl } from './redis/redis-helper';
     PublishingService,
     PublishingProcessor,
     EventOutboxProcessor,
+    EngagementIngestProcessor,
+    EngagementClassifyProcessor,
+    ReplyDraftProcessor,
+    ReplyPublishProcessor,
     PublishingReconciliationService,
+    EngagementReconciliationService,
+    EditorialPersonalizationService,
     {
       provide: PrismaClient,
       useValue: prisma,
     },
   ],
-  exports: [EmbeddingReconciliationService, PublishingReconciliationService],
+  exports: [
+    EmbeddingReconciliationService,
+    PublishingReconciliationService,
+    EngagementReconciliationService,
+    EditorialPersonalizationService,
+  ],
 })
 export class WorkerModule {}

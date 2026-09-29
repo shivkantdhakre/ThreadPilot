@@ -11,6 +11,7 @@ import { ProfileModule } from './profile/profile.module';
 import { ContentModule } from './content/content.module';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { EngagementModule } from './engagement/engagement.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     ContentModule,
     IngestionModule,
     NotificationsModule,
+    EngagementModule,
   ],
 })
 export class AppModule {}

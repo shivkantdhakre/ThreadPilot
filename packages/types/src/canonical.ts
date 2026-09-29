@@ -37,3 +37,32 @@ export function canonicalRequestFingerprint(params: RequestFingerprintParams): s
 
   return createHash('sha256').update(payload).digest('hex');
 }
+
+/**
+ * Authoritative Threads text validator.
+ * Validates against Meta's contract: at most 500 JavaScript UTF-16 code units,
+ * and non-empty (trim length > 0).
+ */
+export function validateThreadText(text: string): { valid: boolean; length: number; error?: string } {
+  if (!text || text.trim().length === 0) {
+    return { valid: false, length: 0, error: 'Text must not be empty' };
+  }
+  const length = text.length; // UTF-16 code units (Meta specification)
+  if (length > 500) {
+    return {
+      valid: false,
+      length,
+      error: `Text length ${length} exceeds maximum 500 UTF-16 code units`,
+    };
+  }
+  return { valid: true, length };
+}
+
+/**
+ * Deterministic SHA-256 hash of canonical normalized text.
+ * Used for deduplication and canonical content identity.
+ */
+export function canonicalContentHash(text: string): string {
+  return createHash('sha256').update(canonicalOutboundText(text)).digest('hex');
+}
+
