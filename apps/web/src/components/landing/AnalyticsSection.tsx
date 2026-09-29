@@ -2,47 +2,66 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { motion } from 'framer-motion';
 import { TrendingUp, ArrowRight, BarChart3, ArrowUpRight } from 'lucide-react';
 import { analyticsData } from '../../data/threadpilot/analytics';
+import { NumberTicker } from '../ui/NumberTicker';
 
 export const AnalyticsSection: React.FC = () => {
   return (
-    <section id="analytics" className="relative z-10 bg-warm-white text-text-primary py-24 px-6 border-b border-canvas-border">
+    <section id="analytics" className="relative z-10 bg-warm-white text-text-primary py-24 px-6 border-b border-canvas-border overflow-hidden">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="text-center max-w-2xl mx-auto mb-16">
-          <span className="inline-block text-xs font-bold uppercase tracking-wider text-cyan-700 bg-cyan-500/10 px-3 py-1 rounded-full border border-cyan-500/20 mb-3">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-60px' }}
+          transition={{ duration: 0.5 }}
+          className="text-center max-w-2xl mx-auto mb-16"
+        >
+          <span className="inline-block text-xs font-bold uppercase tracking-wider text-cyan-700 bg-cyan-500/10 px-3 py-1 rounded-full border border-cyan-500/20 mb-3 font-mono">
             {analyticsData.eyebrow}
           </span>
           <h2 className="text-3xl sm:text-5xl font-extrabold text-text-primary tracking-tight font-display mb-4">
             {analyticsData.headline}
           </h2>
-          <p className="text-base text-text-secondary leading-relaxed">
+          <p className="text-base text-text-secondary leading-relaxed font-sans">
             {analyticsData.subtext}
           </p>
-        </div>
+        </motion.div>
 
-        {/* 4 Metric Badges */}
+        {/* 4 Metric Badges with NumberTicker */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {analyticsData.stats.map((stat) => (
-            <div
+          {analyticsData.stats.map((stat, idx) => (
+            <motion.div
               key={stat.label}
-              className="rounded-2xl border border-canvas-border bg-white p-5 text-left shadow-subtle"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4, delay: idx * 0.1 }}
+              whileHover={{ y: -3 }}
+              className="rounded-2xl border border-canvas-border bg-white p-5 text-left shadow-subtle cursor-default"
             >
-              <div className="text-xs font-semibold text-text-muted uppercase tracking-wider">{stat.label}</div>
+              <div className="text-xs font-semibold text-text-muted uppercase tracking-wider font-mono">{stat.label}</div>
               <div className="text-2xl sm:text-3xl font-extrabold text-text-primary font-display mt-1">{stat.value}</div>
               <div className="text-xs text-emerald-700 font-semibold mt-1 flex items-center gap-1">
                 <ArrowUpRight className="h-3.5 w-3.5" />
                 <span>{stat.change} past 30 days</span>
               </div>
-            </div>
+            </motion.div>
           ))}
         </div>
 
         {/* Dual Chart & Top Performing Posts */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           {/* Main Dual Trend Chart (8 cols) */}
-          <div className="lg:col-span-8 rounded-3xl border border-canvas-border bg-white p-6 sm:p-8 flex flex-col justify-between shadow-card">
+          <motion.div
+            initial={{ opacity: 0, y: 25 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-60px' }}
+            transition={{ duration: 0.6 }}
+            className="lg:col-span-8 rounded-3xl border border-canvas-border bg-white p-6 sm:p-8 flex flex-col justify-between shadow-card"
+          >
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-base font-bold text-text-primary">Engagement vs Reach Trajectory</h3>
@@ -60,13 +79,13 @@ export const AnalyticsSection: React.FC = () => {
               </div>
             </div>
 
-            {/* SVG Visual Curves */}
+            {/* SVG Visual Curves with animated draw */}
             <div className="h-56 w-full relative py-2">
               <svg className="h-full w-full overflow-visible" viewBox="0 0 500 160" preserveAspectRatio="none">
                 <defs>
                   <linearGradient id="analytics-coral-grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#FF7048" stopOpacity="0.18" />
-                    <stop offset="100%" stopColor="#FF7048" stopOpacity="0.0" />
+                    <stop offset="0%" stopColor="#FF6B4A" stopOpacity="0.18" />
+                    <stop offset="100%" stopColor="#FF6B4A" stopOpacity="0.0" />
                   </linearGradient>
                 </defs>
                 {/* Horizontal reference grid lines */}
@@ -79,21 +98,29 @@ export const AnalyticsSection: React.FC = () => {
                   d="M 0 130 Q 80 110, 160 85 T 320 60 T 500 20 L 500 160 L 0 160 Z"
                   fill="url(#analytics-coral-grad)"
                 />
-                {/* Reach Line */}
-                <path
+                {/* Animated Reach Line */}
+                <motion.path
                   d="M 0 130 Q 80 110, 160 85 T 320 60 T 500 20"
                   fill="none"
-                  stroke="#FF7048"
+                  stroke="#FF6B4A"
                   strokeWidth="3"
                   strokeLinecap="round"
+                  initial={{ pathLength: 0 }}
+                  whileInView={{ pathLength: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 1.4, ease: 'easeInOut' }}
                 />
-                {/* Engagement Line */}
-                <path
+                {/* Animated Engagement Line */}
+                <motion.path
                   d="M 0 145 Q 80 135, 160 110 T 320 90 T 500 45"
                   fill="none"
                   stroke="#00ADB5"
                   strokeWidth="2.5"
                   strokeLinecap="round"
+                  initial={{ pathLength: 0 }}
+                  whileInView={{ pathLength: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 1.6, delay: 0.2, ease: 'easeInOut' }}
                 />
               </svg>
             </div>
@@ -107,10 +134,16 @@ export const AnalyticsSection: React.FC = () => {
                 </div>
               ))}
             </div>
-          </div>
+          </motion.div>
 
           {/* Top Posts Leaderboard (4 cols) */}
-          <div className="lg:col-span-4 rounded-3xl border border-canvas-border bg-white p-6 flex flex-col justify-between shadow-card">
+          <motion.div
+            initial={{ opacity: 0, y: 25 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-60px' }}
+            transition={{ duration: 0.6, delay: 0.15 }}
+            className="lg:col-span-4 rounded-3xl border border-canvas-border bg-white p-6 flex flex-col justify-between shadow-card"
+          >
             <div>
               <h3 className="text-base font-bold text-text-primary mb-1">Top Performing Threads</h3>
               <p className="text-xs text-text-muted mb-4">Ranked by discussion thread depth</p>
@@ -142,7 +175,7 @@ export const AnalyticsSection: React.FC = () => {
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </div>
-          </div>
+          </motion.div>
         </div>
       </div>
     </section>

@@ -121,10 +121,14 @@ export async function resolveResilientRedisUrl(config: ConfigService): Promise<s
 
 export async function createResilientRedisClient(config: ConfigService): Promise<Redis> {
   const url = await resolveResilientRedisUrl(config);
-  return new Redis(url, {
+  const client = new Redis(url, {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
     lazyConnect: true,
   });
+  client.on('error', (err) => {
+    logger.warn(`Redis client error: ${err.message}`);
+  });
+  return client;
 }
 

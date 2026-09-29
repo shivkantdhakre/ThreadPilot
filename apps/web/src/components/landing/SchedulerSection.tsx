@@ -1,7 +1,6 @@
-'use client';
-
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Calendar, Clock, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { schedulerData } from '../../data/threadpilot/scheduler';
 
@@ -13,25 +12,37 @@ export const SchedulerSection: React.FC = () => {
   );
 
   return (
-    <section id="scheduler" className="relative z-10 bg-warm-white py-24 px-6 border-b border-canvas-border">
+    <section id="scheduler" className="relative z-10 bg-warm-white py-24 px-6 border-b border-canvas-border overflow-hidden">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="text-center max-w-2xl mx-auto mb-16">
-          <span className="inline-block text-xs font-bold uppercase tracking-wider text-coral-600 bg-coral-500/10 px-3 py-1 rounded-full border border-coral-500/20 mb-3">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-60px' }}
+          transition={{ duration: 0.5 }}
+          className="text-center max-w-2xl mx-auto mb-16"
+        >
+          <span className="inline-block text-xs font-bold uppercase tracking-wider text-coral-600 bg-coral-500/10 px-3 py-1 rounded-full border border-coral-500/20 mb-3 font-mono">
             {schedulerData.eyebrow}
           </span>
           <h2 className="text-3xl sm:text-5xl font-extrabold text-text-primary tracking-tight font-display mb-4">
             {schedulerData.headline}
           </h2>
-          <p className="text-base text-text-secondary leading-relaxed">
+          <p className="text-base text-text-secondary leading-relaxed font-sans">
             {schedulerData.subtext}
           </p>
-        </div>
+        </motion.div>
 
         {/* Content Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* Calendar Grid (8 cols) */}
-          <div className="lg:col-span-8 rounded-3xl border border-canvas-border bg-paper/70 p-6 sm:p-8 shadow-subtle">
+          <motion.div
+            initial={{ opacity: 0, y: 25 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-50px' }}
+            transition={{ duration: 0.6 }}
+            className="lg:col-span-8 rounded-3xl border border-canvas-border bg-paper/70 p-6 sm:p-8 shadow-subtle"
+          >
             <div className="flex items-center justify-between pb-4 mb-6 border-b border-canvas-border">
               <div>
                 <h3 className="text-base font-bold text-text-primary">September 2026</h3>
@@ -85,27 +96,42 @@ export const SchedulerSection: React.FC = () => {
               })}
             </div>
 
-            {/* Active Selected Day Event Card */}
-            {activeEvent && (
-              <div className="mt-5 p-4 rounded-xl border border-coral-500/20 bg-coral-50/50 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="p-2 rounded-lg bg-coral-500/10 text-coral-600">
-                    <Calendar className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <div className="text-xs font-bold text-text-primary">{activeEvent.title}</div>
-                    <div className="text-[11px] text-text-muted">Scheduled for {activeEvent.time} • Automatic Meta Publish</div>
+            {/* Active Selected Day Event Card with Smooth Transition */}
+            <AnimatePresence mode="wait">
+              {activeEvent && (
+                <motion.div
+                  key={activeEvent.day}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2 }}
+                  className="mt-5 p-4 rounded-xl border border-coral-500/20 bg-coral-50/50 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="p-2 rounded-lg bg-coral-500/10 text-coral-600">
+                      <Calendar className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <div className="text-xs font-bold text-text-primary">{activeEvent.title}</div>
+                      <div className="text-[11px] text-text-muted">Scheduled for {activeEvent.time} • Automatic Meta Publish</div>
+                    </div>
                   </div>
-                </div>
-                <span className="text-[10px] uppercase font-bold text-coral-700 bg-coral-100 px-2.5 py-1 rounded-full">
-                  {activeEvent.status}
-                </span>
-              </div>
-            )}
-          </div>
+                  <span className="text-[10px] uppercase font-bold text-coral-700 bg-coral-100 px-2.5 py-1 rounded-full font-mono">
+                    {activeEvent.status}
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
 
           {/* Right Recommendation Sidebar (4 cols) */}
-          <div className="lg:col-span-4 space-y-5">
+          <motion.div
+            initial={{ opacity: 0, y: 25 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-50px' }}
+            transition={{ duration: 0.6, delay: 0.15 }}
+            className="lg:col-span-4 space-y-5"
+          >
             <div className="rounded-3xl border border-canvas-border bg-paper/70 p-6 shadow-subtle">
               <div className="flex items-center gap-2 mb-4">
                 <Clock className="h-4 w-4 text-coral-600" />
@@ -142,7 +168,7 @@ export const SchedulerSection: React.FC = () => {
                 </Link>
               </div>
             </div>
-          </div>
+          </motion.div>
         </div>
       </div>
     </section>

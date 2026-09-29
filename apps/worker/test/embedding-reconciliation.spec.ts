@@ -108,16 +108,21 @@ describe('EmbeddingReconciliationService Unit & Logic Test', () => {
 
     assert.strictEqual(service.isRecurringActive(), false, 'Timer should not be active initially');
 
-    // Start with a fast 25ms interval for deterministic testing
-    service.startRecurring(25);
-    assert.strictEqual(service.isRecurringActive(), true, 'Timer should be active after startRecurring()');
+    try {
+      // Start with a fast 25ms interval for deterministic testing
+      service.startRecurring(25);
+      assert.strictEqual(service.isRecurringActive(), true, 'Timer should be active after startRecurring()');
 
-    // Wait for at least 2 ticks
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    assert(cyclesFired >= 2, `Expected at least 2 recurring reconciliation cycles, got ${cyclesFired}`);
-
-    // Cleanup via onModuleDestroy
-    service.onModuleDestroy();
+      // Wait for at least 2 ticks with polling (up to 500ms for OS timer variance)
+      const startTime = Date.now();
+      while (cyclesFired < 2 && Date.now() - startTime < 500) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert(cyclesFired >= 2, `Expected at least 2 recurring reconciliation cycles, got ${cyclesFired}`);
+    } finally {
+      // Cleanup via onModuleDestroy
+      service.onModuleDestroy();
+    }
     assert.strictEqual(service.isRecurringActive(), false, 'Timer must be stopped after onModuleDestroy()');
 
     const cyclesAtStop = cyclesFired;

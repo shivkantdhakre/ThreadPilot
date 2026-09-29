@@ -9,14 +9,19 @@ import { HeroSection } from '../components/landing/HeroSection';
 import { SignalsStrip } from '../components/landing/SignalsStrip';
 import { HowItWorks } from '../components/landing/HowItWorks';
 import { ProductShowcase } from '../components/landing/ProductShowcase';
+import { AIContentCreation } from '../components/landing/AIContentCreation';
 import { PersonalVoiceSection } from '../components/landing/PersonalVoiceSection';
 import { SchedulerSection } from '../components/landing/SchedulerSection';
 import { AnalyticsSection } from '../components/landing/AnalyticsSection';
 import { IntelligenceLoop } from '../components/landing/IntelligenceLoop';
 import { FeaturesGrid } from '../components/landing/FeaturesGrid';
+import { CreatorWorkflow } from '../components/landing/CreatorWorkflow';
+import { ValueOutcomes } from '../components/landing/ValueOutcomes';
 import { PricingSection } from '../components/landing/PricingSection';
+import { FaqSection } from '../components/landing/FaqSection';
 import { FinalCtaSection } from '../components/landing/FinalCtaSection';
 import { Footer } from '../components/landing/Footer';
+import { TrajectoryScrollThread } from '../components/landing/TrajectoryScrollThread';
 
 export default function HomePage() {
   const { user, loading } = useAuth();
@@ -29,46 +34,61 @@ export default function HomePage() {
   }, [user, loading, router]);
 
   return (
-    <div className="min-h-screen bg-warm-white text-text-primary selection:bg-coral-500 selection:text-white flex flex-col justify-between overflow-x-hidden">
-      {/* 1. Floating Sticky Navbar */}
+    <div className="min-h-screen bg-[#FFFDF8] text-[#151518] selection:bg-coral-500 selection:text-white flex flex-col justify-between overflow-x-hidden">
+      {/* Scroll-Driven Trajectory Indicator (Right Rail) */}
+      <TrajectoryScrollThread />
+
+      {/* 01. Floating Sticky Light Navbar (navbar.gallery) */}
       <Navbar />
 
       <main className="flex-1">
-        {/* 2. Hero Section (Cinematic Dark Stage on Ambient Backdrop) */}
+        {/* 02. Hero Section with Interactive 5-State Live Demo (minimal.gallery + 21st.dev + kinetics) */}
         <HeroSection />
 
-        {/* 3. Capability Signals Strip (Light Ivory) */}
+        {/* 03. Trust & Capability Signals Strip (getlayers.ai) */}
         <SignalsStrip />
 
-        {/* 4. How It Works (6-Step Connected Flow on Paper White) */}
+        {/* 04. How ThreadPilot Works: Connected 6-Stage Loop (minimal.gallery) */}
         <HowItWorks />
 
-        {/* 5. Product Showcase (Dark Contrast Creative Command Center) */}
+        {/* 05. Interactive Product Studio & Live Threads Preview (appshot.gallery) */}
         <ProductShowcase />
 
-        {/* 6. Personal Voice Section (3-Panel Analysis on Warm Ivory) */}
+        {/* 06. AI Content Creation: 3-Tier Drafting & Voice vs Generic LLM (21st.dev) */}
+        <AIContentCreation />
+
+        {/* 07. Personal Voice: 8D Vector Radar & Pattern Extraction (designmd.ai) */}
         <PersonalVoiceSection />
 
-        {/* 7. Smart Scheduling & Cadence (Paper White Calendar Grid) */}
+        {/* 08. Smart Scheduling & Optimal Cadence (component.gallery) */}
         <SchedulerSection />
 
-        {/* 8. Analytics Deep-Dive (Dark Contrast Telemetry Surface) */}
+        {/* 09. Restrained Telemetry & Performance Signals (styles.refero.design) */}
         <AnalyticsSection />
 
-        {/* 9. Signature Intelligence Loop (Self-Improving Feedback System) */}
+        {/* 10. Signature Intelligence Loop: Autonomous Compounding Flywheel (kinetics) */}
         <IntelligenceLoop />
 
-        {/* 10. Powerful Features Grid (Muted Neutral Surface) */}
+        {/* 11. Bento Feature Architecture with Asymmetric Hierarchy (minimal.gallery) */}
         <FeaturesGrid />
 
-        {/* 11. Transparent Pricing Matrix (Ivory Canvas with Toggle) */}
+        {/* 12. Creator Workflow: Editorial Product Showcase (appshot.gallery) */}
+        <CreatorWorkflow />
+
+        {/* 13. Verified Product Outcomes & Architecture Commitments (minimal.gallery) */}
+        <ValueOutcomes />
+
+        {/* 14. Transparent Pricing Matrix (component.gallery + cta.gallery) */}
         <PricingSection />
 
-        {/* 12. Final Launch CTA (Warm Glow Canvas) */}
+        {/* 15. Real Architecture FAQ Accordion (shadcn/ui + component.gallery) */}
+        <FaqSection />
+
+        {/* 16. Final Calm & Confident Conversion CTA (cta.gallery) */}
         <FinalCtaSection />
       </main>
 
-      {/* 13. Editorial Grounding Footer (Dark #0D1018) */}
+      {/* 17. High-Craft Editorial Footer (footer.design) */}
       <Footer />
     </div>
   );

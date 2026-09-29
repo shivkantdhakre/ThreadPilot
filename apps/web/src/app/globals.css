@@ -150,4 +150,18 @@
   .subtle-border {
     @apply border border-canvas-border;
   }
+
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(calc(-100% - var(--gap, 1.5rem)));
+    }
+  }
+
+  .animate-marquee {
+    animation: marquee var(--duration, 35s) linear infinite;
+  }
 }
+
