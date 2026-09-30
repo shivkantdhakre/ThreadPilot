@@ -193,7 +193,7 @@ export class EngagementClassifyProcessor extends WorkerHost {
             interactionId: interaction.id,
           },
           {
-            jobId: `reply-draft:${interaction.id}`,
+            jobId: `reply-draft_${interaction.id}`,
             priority: classification.priorityScore * 100,
             removeOnComplete: true,
           },

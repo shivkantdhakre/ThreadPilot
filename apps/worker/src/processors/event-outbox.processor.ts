@@ -1,5 +1,9 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { randomUUID } from 'crypto';
 import { prisma, PrismaClient } from '@threadpilot/database';
+import { ENGAGEMENT_QUEUES } from '@threadpilot/types';
 
 interface PostPublishedPayload {
   scheduledPostId: string;
@@ -20,7 +24,10 @@ export class EventOutboxProcessor implements OnModuleInit, OnModuleDestroy {
   private static readonly BATCH_SIZE = 10;
   private static readonly MAX_ATTEMPTS = 5;
 
-  constructor(@Optional() private readonly db: PrismaClient = prisma) {}
+  constructor(
+    @Optional() private readonly db: PrismaClient = prisma,
+    @Optional() @InjectQueue(ENGAGEMENT_QUEUES.REPLY_PUBLISH) private readonly replyPublishQueue?: Queue,
+  ) {}
 
   onModuleInit() {
     this.scheduleNext(2000);
@@ -89,6 +96,8 @@ export class EventOutboxProcessor implements OnModuleInit, OnModuleDestroy {
         try {
           if (event.event_type === 'POST_PUBLISHED') {
             await this.handlePostPublished(event);
+          } else if (event.event_type === 'REPLY_EXECUTION_DISPATCH') {
+            await this.handleReplyExecutionDispatch(event);
           } else {
             this.logger.error(
               `Unknown or unhandled event type "${event.event_type}" on outbox event ${event.id}. Dead-lettering to FAILED.`,
@@ -189,5 +198,32 @@ export class EventOutboxProcessor implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Created idempotent notification for scheduled post ${scheduledPostId} (key: ${idempotencyKey})`,
     );
+  }
+
+  private async handleReplyExecutionDispatch(event: {
+    id: string;
+    workspace_id: string;
+    payload: any;
+  }): Promise<void> {
+    const payload = event.payload;
+    if (this.replyPublishQueue && payload?.replyExecutionId) {
+      await this.replyPublishQueue.add(
+        'publish-reply',
+        {
+          requestId: randomUUID(),
+          workspaceId: event.workspace_id,
+          socialAccountId: payload.socialAccountId,
+          replyExecutionId: payload.replyExecutionId,
+          interactionId: payload.interactionId,
+        },
+        {
+          jobId: `reply-publish_${payload.replyExecutionId}`,
+          removeOnComplete: true,
+        },
+      );
+      this.logger.log(
+        `Dispatched reply execution ${payload.replyExecutionId} from event outbox ${event.id}`,
+      );
+    }
   }
 }

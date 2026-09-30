@@ -173,7 +173,7 @@ export class EngagementService {
         force: true,
       },
       {
-        jobId: `engagement-sync:${socialAccountId}:${rootThreadsPostId ?? 'all'}:${Date.now()}`,
+        jobId: `engagement-sync_${socialAccountId}_${rootThreadsPostId ?? 'all'}_${Date.now()}`,
         removeOnComplete: true,
       },
     );
@@ -244,7 +244,7 @@ export class EngagementService {
         regenerate: options.regenerate ?? false,
       },
       {
-        jobId: `reply-draft:${interaction.id}:${Date.now()}`,
+        jobId: `reply-draft_${interaction.id}_${Date.now()}`,
         removeOnComplete: true,
       },
     );
@@ -504,7 +504,7 @@ export class EngagementService {
         interactionId: interaction.id,
       },
       {
-        jobId: `reply-publish:${executionId}`,
+        jobId: `reply-publish_${executionId}`,
         removeOnComplete: true,
       },
     );

@@ -7,7 +7,7 @@
     "dev": "next dev",
     "start": "next start",
     "lint": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test test/calendar-schedules.spec.ts test/timezone-display.spec.ts"
+    "test": "node --experimental-strip-types --test test/calendar-schedules.spec.ts test/timezone-display.spec.ts test/engagement-review-deck.spec.ts test/auth-client-security.spec.ts test/engagement-ui-integration.spec.ts"
   },
   "dependencies": {
     "@threadpilot/types": "workspace:*",

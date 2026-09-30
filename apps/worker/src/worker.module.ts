@@ -30,7 +30,7 @@ import { resolveResilientRedisUrl, parseRedisUrl } from './redis/redis-helper';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '../../.env',
+      envFilePath: ['.env', '../.env', '../../.env'],
     }),
     HealthModule,
     RedisModule,
@@ -39,8 +39,12 @@ import { resolveResilientRedisUrl, parseRedisUrl } from './redis/redis-helper';
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
         const redisUrl = await resolveResilientRedisUrl(config);
+        const parsed = parseRedisUrl(redisUrl);
         return {
-          connection: parseRedisUrl(redisUrl),
+          connection: {
+            ...parsed,
+            tls: parsed.tls ? { rejectUnauthorized: false } : undefined,
+          },
         };
       },
     }),

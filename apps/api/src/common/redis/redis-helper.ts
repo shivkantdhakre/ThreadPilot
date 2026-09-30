@@ -2,9 +2,41 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
+import * as fs from 'fs';
+import * as path from 'path';
+
+import * as dotenv from 'dotenv';
+
 const logger = new Logger('RedisResolver');
 
 let memoizedResolvedUrl: string | null = null;
+
+function ensureEnvLoaded(): void {
+  const currentDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
+  const candidates = [
+    path.resolve(process.cwd(), '../../.env'),
+    path.resolve(process.cwd(), '../.env'),
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(currentDir, '../../../../.env'),
+    path.resolve(currentDir, '../../../.env'),
+    path.resolve(currentDir, '../../.env'),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      try {
+        dotenv.config({ path: c, override: true });
+        break;
+      } catch {
+        try {
+          if (typeof (process as any).loadEnvFile === 'function') {
+            (process as any).loadEnvFile(c);
+          }
+          break;
+        } catch {}
+      }
+    }
+  }
+}
 
 export function resetRedisUrlCache(): void {
   memoizedResolvedUrl = null;
@@ -35,20 +67,31 @@ export async function resolveResilientRedisUrl(config: ConfigService): Promise<s
   if (memoizedResolvedUrl) {
     return memoizedResolvedUrl;
   }
+  ensureEnvLoaded();
 
   const isProd =
     config.get<string>('NODE_ENV') === 'production' ||
     process.env.NODE_ENV === 'production';
 
+  const configPrimary = config?.get<string>('REDIS_URL');
+  const configFallback = config?.get<string>('REDIS_URL_FALLBACK');
+  const configLocal = config?.get<string>('REDIS_URL_LOCAL');
+  const hasConfigOverride =
+    configPrimary !== undefined ||
+    configFallback !== undefined ||
+    configLocal !== undefined;
+
+  const primaryUrl = configPrimary ?? (!hasConfigOverride ? process.env.REDIS_URL : undefined);
+  const fallbackUrl = configFallback ?? (!hasConfigOverride ? process.env.REDIS_URL_FALLBACK : undefined);
+  const localUrl = !isProd
+    ? (configLocal ?? (!hasConfigOverride ? process.env.REDIS_URL_LOCAL : undefined))
+    : undefined;
+
   // In production, local dev overrides are strictly ignored to prevent accidental localhost binding
-  const localUrl = !isProd ? config.get<string>('REDIS_URL_LOCAL') : undefined;
   if (localUrl) {
     memoizedResolvedUrl = localUrl;
     return localUrl;
   }
-
-  const primaryUrl = config.get<string>('REDIS_URL');
-  const fallbackUrl = config.get<string>('REDIS_URL_FALLBACK');
 
   if (!primaryUrl && !fallbackUrl) {
     if (!isProd) {
@@ -63,13 +106,14 @@ export async function resolveResilientRedisUrl(config: ConfigService): Promise<s
     return fallbackUrl;
   }
 
-  // Active probe on primary URL with bounded timeout (2000ms)
+  // Active probe on primary URL with bounded timeout (5000ms)
   const probe = new Redis(primaryUrl!, {
     maxRetriesPerRequest: 1,
     lazyConnect: false,
-    commandTimeout: 2000,
-    connectTimeout: 2000,
+    commandTimeout: 5000,
+    connectTimeout: 5000,
     enableReadyCheck: false,
+    tls: primaryUrl!.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
   });
   probe.on('error', () => {}); // silence unhandled event during probe failure
 
@@ -87,13 +131,14 @@ export async function resolveResilientRedisUrl(config: ConfigService): Promise<s
       throw new Error(`Primary Redis failed (${err?.message || err}) and no fallback configured.`);
     }
 
-    // Active probe on fallback URL with bounded timeout (2000ms)
+    // Active probe on fallback URL with bounded timeout (5000ms)
     const fallbackProbe = new Redis(fallbackUrl, {
       maxRetriesPerRequest: 1,
       lazyConnect: false,
-      commandTimeout: 2000,
-      connectTimeout: 2000,
+      commandTimeout: 5000,
+      connectTimeout: 5000,
       enableReadyCheck: false,
+      tls: fallbackUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
     });
     fallbackProbe.on('error', () => {}); // silence unhandled event
 
@@ -121,13 +166,15 @@ export async function resolveResilientRedisUrl(config: ConfigService): Promise<s
 
 export async function createResilientRedisClient(config: ConfigService): Promise<Redis> {
   const url = await resolveResilientRedisUrl(config);
+  logger.log(`Creating Redis client for URL: ${maskRedisUrl(url)}`);
   const client = new Redis(url, {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
-    lazyConnect: true,
+    lazyConnect: false,
+    tls: url.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
   });
-  client.on('error', (err) => {
-    logger.warn(`Redis client error: ${err.message}`);
+  client.on('error', (err: any) => {
+    logger.warn(`Redis client error [${err?.code || 'NO_CODE'}]: ${err?.message} target=${err?.address || 'unknown'}:${err?.port || 'unknown'}`);
   });
   return client;
 }

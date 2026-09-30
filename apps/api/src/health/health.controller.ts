@@ -27,7 +27,7 @@ export class HealthController {
         try {
           const pingPromise = this.redis.ping();
           const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Redis ping timed out after 7000ms')), 7000),
+            setTimeout(() => reject(new Error('Redis ping timed out after 15000ms')), 15000),
           );
           const pong = await Promise.race([pingPromise, timeoutPromise]);
           if (pong !== 'PONG') {

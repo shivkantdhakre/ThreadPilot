@@ -153,7 +153,7 @@ export class EngagementReconciliationService implements OnModuleInit, OnModuleDe
       const payload = event.payload as any;
       if (!payload?.replyExecutionId) continue;
 
-      const jobId = `reply-publish:${payload.replyExecutionId}`;
+      const jobId = `reply-publish_${payload.replyExecutionId}`;
       const existingJob = await this.publishQueue.getJob(jobId);
 
       if (!existingJob) {
@@ -200,7 +200,7 @@ export class EngagementReconciliationService implements OnModuleInit, OnModuleDe
         data: { status: 'NEW' },
       });
 
-      const jobId = `classify:${item.id}`;
+      const jobId = `classify_${item.id}`;
       await this.classifyQueue.add(
         'classify-interaction',
         {
@@ -242,7 +242,7 @@ export class EngagementReconciliationService implements OnModuleInit, OnModuleDe
         },
       });
 
-      const jobId = `reply-publish:${exec.id}`;
+      const jobId = `reply-publish_${exec.id}`;
       await this.publishQueue.add(
         'publish-reply',
         {
@@ -323,7 +323,7 @@ export class EngagementReconciliationService implements OnModuleInit, OnModuleDe
     });
 
     for (const exec of queuedExecs) {
-      const jobId = `reply-publish:${exec.id}`;
+      const jobId = `reply-publish_${exec.id}`;
       const job = await this.publishQueue.getJob(jobId);
       if (!job) {
         await this.publishQueue.add(
@@ -366,7 +366,7 @@ export class EngagementReconciliationService implements OnModuleInit, OnModuleDe
         },
       });
 
-      const jobId = `reply-publish:${exec.id}`;
+      const jobId = `reply-publish_${exec.id}`;
       await this.publishQueue.add(
         'publish-reply',
         {

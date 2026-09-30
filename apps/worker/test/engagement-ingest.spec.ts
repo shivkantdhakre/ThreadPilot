@@ -106,7 +106,7 @@ describe('EngagementIngestProcessor & Self-Reply Loop Breaker Tests', () => {
             priorityScore: interaction.priorityScore,
           },
           {
-            jobId: `classify:${interaction.id}`,
+            jobId: `classify_${interaction.id}`,
             priority: interaction.priorityScore * 100,
           },
         );
@@ -143,7 +143,7 @@ describe('EngagementIngestProcessor & Self-Reply Loop Breaker Tests', () => {
     // CRITICAL: Exactly ONE classify job enqueued (only for the third party)
     assert.strictEqual(enqueuedClassifyJobs.length, 1, 'Self-replies MUST NEVER trigger classify queue');
     assert.strictEqual(enqueuedClassifyJobs[0].data.interactionId, 'interaction-reply-third-party-user');
-    assert.strictEqual(enqueuedClassifyJobs[0].opts.jobId, 'classify:interaction-reply-third-party-user');
+    assert.strictEqual(enqueuedClassifyJobs[0].opts.jobId, 'classify_interaction-reply-third-party-user');
   });
 
   it('sliding timestamp overlap window computes max(lastSeen - 120s, rootPostTimestamp)', () => {

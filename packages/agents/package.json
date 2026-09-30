@@ -6,7 +6,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "node --experimental-strip-types --test test/duplicate-calibration.spec.ts",
+    "test": "node --experimental-strip-types --test test/duplicate-calibration.spec.ts test/engagement-agents.spec.ts",
     "lint": "tsc --noEmit"
   },
 

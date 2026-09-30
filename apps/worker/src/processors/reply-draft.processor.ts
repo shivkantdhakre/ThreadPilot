@@ -322,7 +322,7 @@ export class ReplyDraftProcessor extends WorkerHost {
             interactionId: interaction.id,
           },
           {
-            jobId: `reply-publish:${executionToDispatchId}`,
+            jobId: `reply-publish_${executionToDispatchId}`,
             removeOnComplete: true,
           },
         );

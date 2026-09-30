@@ -436,7 +436,7 @@ export class EngagementIngestProcessor extends WorkerHost {
               priorityScore: newInteraction.priorityScore,
             },
             {
-              jobId: `classify:${newInteraction.id}`,
+              jobId: `classify_${newInteraction.id}`,
               priority: newInteraction.priorityScore * 100,
               removeOnComplete: true,
             },
