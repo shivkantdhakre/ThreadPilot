@@ -164,11 +164,11 @@ timeline
         Identity & OAuth PKCE : Token Encryption : Ingestion Engine : pgvector Memory : Stylometric Extraction : LangGraph Content Studio
     section Phase 2 (Completed)
         Resilient Publishing Pipeline : Atomic CAS Claiming : 45s Ambiguity Protocol : Scan 1-6 Reconciler : Multi-Account Draft Reuse : Calendar UI
-    section Phase 3 (Next)
-        Reply & Mention Ingestion : Interaction Classifier FSM : Context-Aware Reply Generator : Human Review Queue : Auto-Reply Gate
-    section Phase 4 (Future)
+    section Phase 3 (Completed)
+        Autonomous Engagement Engine : Ingestion Loop Breaker : Multi-Tier Adaptive Sync : Hierarchical Intent Classifier : 500-Code-Unit Reply Graph : Grounding & Kill Switch : CAS Fenced Reply Publisher : Keyset Review Deck UI : Editorial Learning
+    section Phase 4 (Next)
         Platform Metrics Sync : Multi-Dimensional Analytics : AI Correlation Insights : Performance Feedback Loop : Topic Weighting
-    section Phase 5 (Advanced)
+    section Phase 5 (Future)
         Dynamic Rules Engine : Autonomy Levels 0-3 : Safety Gate & Hallucination Filter : A/B Variant Experiments : Continuous Evolution
 ```
 
@@ -192,14 +192,46 @@ timeline
 - Scoped multi-account publishing allowing `ARCHIVED` drafts to be scheduled across accounts without unique collision.
 - Front-end calendar scheduling, timezone handling, and operator resolution interface for quarantined posts.
 
-### Phase 3: Engagement Engine & Conversational Intelligence _(Next Phase)_
+### Phase 3: Autonomous Engagement & Community Intelligence Engine _(Fully Implemented)_
 
-- Periodic retrieval and webhook subscription for incoming replies, quotes, and mentions via Meta Threads Graph API.
-- Interaction classification state machine (`QUESTION`, `AGREEMENT`, `DISAGREEMENT`, `COMPLIMENT`, `REQUEST`, `TROLLING`, `SPAM`, `UNCLEAR`).
-- Context-aware reply generation adhering to the user's disagreement style, conversational humor, and technical depth.
-- Interactive human review queue (Approve, Edit, Regenerate, Dismiss) in `apps/web`.
-- Editorial feedback loop: user edits to generated replies are stored as fine-tuning learning exemplars.
-- Conditional auto-reply rules for high-confidence, non-controversial question categories.
+- **Phase 3A — Database Relational FSM & Constraints (Migration 0007_engagement_engine):**
+  - Implemented 15 core enums (`InteractionStatus`, `ReplyExecutionStatus`, `AutonomyMode`, `PolicyStage`, `PolicyDecisionType`, `InteractionIntent`, `FeedbackType`, `SyncTier`, `SyncStatus`, `AmbiguityType`, `ResponseDecision`, `Sentiment`, `HideStatus`, `RecoveryResolution`, etc.).
+  - Added 9 core relational models: `EngagementSyncState`, `Interaction`, `InteractionClassification`, `PolicyDecision`, `ReplyDraft`, `ReplyDraftVersion`, `ReplyExecution`, `EditorialFeedback`, `IdempotencyRecord`.
+  - Enforced 8 SQL CHECK constraints (bounded confidence $[0,1]$, toxicity/harassment/controversy $[0,1]$, non-empty bodies, rating $-1/1$) and 4 partial unique indexes (`idx_unique_current_classification`, `idx_unique_active_reply_execution`, `idx_unique_active_sync_lease`, `idx_unique_active_draft_per_interaction`).
+- **Phase 3B — Ingestion Loop Breaker & Adaptive Multi-Tier Sync:**
+  - Background polling in `EngagementIngestProcessor` with adaptive synchronization tiers: `HOT` (3 min), `WARM` (20 min), `COLD` (3 hours) based on root post age.
+  - Defense-in-depth triple loop breaker preventing bot self-replies: checks `is_reply_owned_by_me === true`, case-insensitive username snapshot matching, and author external ID matching.
+  - Sliding timestamp overlaps and cursor-based pagination watermarks ensuring zero dropped interactions.
+- **Phase 3C — Hierarchical Intent Classification & Pre-Policy Gating:**
+  - `InteractionClassifierGraph` with Google Gemini structured output categorizing incoming replies (`QUESTION`, `AGREEMENT`, `DISAGREEMENT`, `COMPLIMENT`, `REQUEST`, `TROLLING`, `SPAM`, `UNCLEAR`).
+  - Granular safety and risk scoring: toxicity, harassment, controversy, sentiment, and prompt injection defense.
+  - Pre-generation policy gate (`rules-v1.ts`) setting initial triage: `AUTO_REPLY`, `REVIEW_REQUIRED`, or `BLOCKED`.
+- **Phase 3D — Contextual Reply Drafting & 500-Code-Unit Bounds:**
+  - `ReplyGenerationGraph` assembling root post, parent comments, author voice profile, and exemplar memories into context-aware responses.
+  - Hard UTF-16 code-unit counting (`validateThreadText`) strictly enforcing the 500-code-unit Meta platform ceiling.
+  - Immutable monotonic `ReplyDraftVersion` tracking with parent version lineage and diff summaries.
+- **Phase 3E — Post-Generation Safety Grounding & Outbound Kill Switch:**
+  - `PostGenerationSafetyGraph` detecting unsupported claims, factuality risks, and brand tone violations.
+  - Autonomy level arbitration (`REVIEW_ONLY`, `SHADOW`, `RULES_BASED`, `OFF`). Shadow mode computes would-auto-reply telemetry without dispatching external publish requests.
+  - Emergency Outbound Kill Switch (`repliesPaused = true` in workspace preferences) providing instant pre-flight and post-generation halting across all outbound automation.
+- **Phase 3F — API Gateway, Keyset Pagination & Optimistic Concurrency:**
+  - High-performance REST endpoints in `EngagementController` with keyset cursor pagination (`GET /engagement/interactions`).
+  - Optimistic locking via HTTP `If-Match` headers: stale version updates fail deterministically with HTTP 409 Conflict.
+  - Granular operator ambiguity resolution and tenant-scoped `Idempotency-Key` headers on manual draft triggering.
+- **Phase 3G — Fenced CAS Publisher & Watchdog Reconciliation:**
+  - Universal CAS worker fencing in `ReplyPublishProcessor` with lease duration tracking and unique worker tokens.
+  - Exactly-once container creation: container IDs are persisted immediately, avoiding duplicate Meta containers on retries.
+  - Canonical 429 exponential backoffs (5s, 15s, 30s, 60s, terminal).
+  - Background `EngagementReconciliationService` running Scans 0 through 6 to heal un-enqueued dispatches, expired leases, stuck containers, unlinked executions, and pending sync leases.
+  - Transactional Outbox integration: `REPLY_EXECUTION_DISPATCH` events routed safely to `reply-publish-queue` via `EventOutboxProcessor`.
+- **Phase 3H — Editorial Personalization & Memory Contamination Guard:**
+  - Tracks user manual edits against AI drafts via word-level diff summaries in `EditorialFeedback`.
+  - Curates high-rated edits into vector memory exemplars while filtering out contamination (profanity, prompt leakage, personal data).
+- **Frontend UI/UX Integration:**
+  - Next.js 15 Community Review Deck (`/replies`) with filter tabs (`NEEDS_REVIEW`, `REPLIED`, `AUTO_REPLIED`, `DISMISSED`, `ALL`), search bar, and social account switcher.
+  - Keyboard shortcuts (`a` for Approve, `e` for Edit, `r` for Regenerate, `d` for Dismiss, `Escape` to close modals).
+  - Autonomous Reply Engine telemetry widget in `/dashboard` displaying live monitoring state, queue count, and warning banners.
+  - Autonomy Mode selector and Outbound Kill Switch toggle in `/settings`.
 
 ### Phase 4: Performance Analytics & Intelligence Loop _(Future Phase)_
 
@@ -293,17 +325,30 @@ timeline
 - **45-Second Ambiguous Publish Protocol:** If a network timeout occurs during publish commit, the worker evaluates recent feed history ($\pm4$ min) to verify actual platform publication before declaring failure.
 - **Watchdog Reconciliation:** Background reconciler (Scans 1 to 6) recovers lost Redis jobs, expired leases, and missing platform timestamps without manual operator intervention.
 
-### Module 9: Engagement Monitoring & Interaction Tracking
+### Module 9: Engagement Monitoring, Loop Breaker & Adaptive Ingestion
 
-- **Interaction Polling & Webhook Handler:** Ingests replies, mentions, and quotes associated with the user's published Threads posts.
-- **Interaction FSM:** State transitions from `NEW` $\rightarrow$ `CLASSIFIED` $\rightarrow$ `DRAFTED` $\rightarrow$ `APPROVED` $\rightarrow$ `REPLIED` (or `DISMISSED`).
-- **Priority Queue:** Sorts interactions by engagement potential (e.g. questions from verified accounts prioritized over simple emojis).
+- **Multi-Tier Adaptive Ingestion:** Periodic background polling via [`EngagementIngestProcessor`](file:///d:/Projects/threads-automation/apps/worker/src/processors/engagement-ingest.processor.ts) applying adaptive polling intervals based on root post age: `HOT` (<24h, 3 min), `WARM` (24h-7d, 20 min), and `COLD` (>7d, 3 hours).
+- **Defense-in-Depth Loop Breaker:** Prevents infinite bot self-reply loops through a three-stage validation pipeline:
+  1. Threads API native `is_reply_owned_by_me === true` flag.
+  2. Case-insensitive username snapshot matching against connected `SocialAccount.username`.
+  3. Author external ID matching against connected `SocialAccount.externalId`.
+- **14-State Interaction Lifecycle:** State transitions from `NEW` $\rightarrow$ `CLASSIFYING` $\rightarrow$ `CLASSIFIED` $\rightarrow$ `DRAFTING` $\rightarrow$ `DRAFTED` $\rightarrow$ `OUTPUT_SAFETY_EVALUATING` $\rightarrow$ `REVIEW_REQUIRED` $\rightarrow$ `APPROVED` $\rightarrow$ `PUBLISHING` $\rightarrow$ `REPLIED` (or terminal branches `DISMISSED`, `NOT_REQUIRED`, `BLOCKED`, `RECOVERY_REQUIRED`).
+- **Canonical Content Deduplication:** Normalizes incoming reply text and computes SHA-256 `canonical_content_hash` combined with `(social_account_id, external_interaction_id)` uniqueness.
 
-### Module 10: Context-Aware Reply Generation
+### Module 10: Conversational Intelligence, Safety Grounding & Autonomous Fenced Reply Engine
 
-- **Context Synthesis:** Ingests the parent post, the full conversation thread, the user's style profile, and specific disagreement rules.
-- **Review Queue Interface:** Provides a Tinder-style or inbox-style workflow: Approve, Edit, Regenerate, Dismiss.
-- **Active Learning:** Every manual edit by the user is logged as training signal for future reply generation.
+- **Hierarchical Intent Classification:** Structured Gemini output in [`InteractionClassifierGraph`](file:///d:/Projects/threads-automation/packages/agents/src/engagement/interaction-classifier.graph.ts) categorizing intent into 8 dimensions (`QUESTION`, `AGREEMENT`, `DISAGREEMENT`, `COMPLIMENT`, `REQUEST`, `TROLLING`, `SPAM`, `UNCLEAR`) alongside sentiment and granular continuous risk scores (toxicity, harassment, controversy $[0.0, 1.0]$).
+- **Pre-Generation Policy Engine:** Deterministic rule evaluation (`rules-v1.ts`) gating low-risk questions for draft synthesis while immediately dead-lettering toxic comments or prompt injection attempts.
+- **Contextual Reply Synthesis:** Powered by [`ReplyGenerationGraph`](file:///d:/Projects/threads-automation/packages/agents/src/engagement/reply-generation.graph.ts) assembling thread context (root post + parent interaction), author voice metrics, and vector exemplars with strict 500-code-unit bounds (`validateThreadText`).
+- **Post-Generation Safety Grounding:** Output validation in [`PostGenerationSafetyGraph`](file:///d:/Projects/threads-automation/packages/agents/src/engagement/post-generation-safety.graph.ts) flagging unsupported claims, factuality risks, and brand voice deviations.
+- **Progressive Autonomy & Outbound Kill Switch:**
+  - `REVIEW_ONLY`: All drafts routed to operator review queue.
+  - `SHADOW`: Simulates autonomous routing (`wouldAutoReplyInLive = true`) without making external publish calls.
+  - `RULES_BASED`: High-confidence, safe, non-controversial replies auto-publish while sensitive topics queue for human review.
+  - Emergency Kill Switch (`repliesPaused = true`): Instantly halts all outbound automated comment publishing across the workspace.
+- **Fenced CAS Reply Publisher:** Atomic execution leases, attempt fencing, and single-container creation in [`ReplyPublishProcessor`](file:///d:/Projects/threads-automation/apps/worker/src/processors/reply-publish.processor.ts) with canonical 429 exponential backoffs.
+- **Self-Healing Watchdog:** [`EngagementReconciliationService`](file:///d:/Projects/threads-automation/apps/worker/src/services/engagement-reconciliation.service.ts) executing Scans 0 to 6 recovering lost BullMQ jobs, expired leases, stuck containers, and stale sync leases.
+- **Editorial Personalization & Contamination Guard:** [`EditorialPersonalizationService`](file:///d:/Projects/threads-automation/apps/worker/src/services/editorial-personalization.service.ts) logs word-level diffs (`EditorialFeedback`) on human edits, curating positive feedback into high-quality vector exemplars while sanitizing profanity, sensitive data, and prompt leaks.
 
 ### Module 11: Analytics & Performance Engine
 
@@ -344,14 +389,18 @@ threadpilot/
 │   │       │   ├── password.service.ts           # Argon2id password hashing
 │   │       │   ├── refresh-token.service.ts      # Family-based refresh token rotation
 │   │       │   └── token.service.ts              # In-memory access token signing
-│   │       ├── common/                           # Cross-cutting decorators, guards, filters
+│   │       ├── common/                           # Cross-cutting decorators, guards, filters, redis
 │   │       │   ├── decorators/                   # @CurrentUser(), @CurrentWorkspace()
 │   │       │   ├── filters/                      # GlobalExceptionFilter (RFC 7807 problem details)
 │   │       │   ├── guards/                       # JwtAuthGuard, WorkspaceScopeGuard
-│   │       │   └── redis/                        # Redis client provider
+│   │       │   └── redis/                        # Resilient Redis provider & health probe
 │   │       ├── content/                          # Drafts, Ideas, Versions & Scheduling API
 │   │       │   ├── content.controller.ts         # Endpoints for ideas, drafts, versions, scheduling
 │   │       │   └── content.service.ts            # Business logic for drafts, scheduling, CAS checks
+│   │       ├── engagement/                       # [Phase 3] Autonomous Engagement Gateway
+│   │       │   ├── engagement.controller.ts      # Keyset pagination, draft edit, approve, dismiss, resolve
+│   │       │   ├── engagement.service.ts         # Keyset queries, If-Match 409 check, outbox dispatches
+│   │       │   └── engagement.module.ts          # Dependency injection & queue wiring
 │   │       ├── ingestion/                        # Historical post ingestion triggers
 │   │       │   ├── ingestion.controller.ts       # POST /ingestion/trigger
 │   │       │   └── ingestion.service.ts          # Dispatches BullMQ ingestion jobs
@@ -360,53 +409,40 @@ threadpilot/
 │   │       │   ├── jobs.controller.ts            # GET /jobs/:requestId/status & /jobs/:id/events (SSE)
 │   │       │   └── jobs.service.ts               # Queries job records from database
 │   │       ├── notifications/                    # In-app notifications
-│   │       │   ├── notifications.controller.ts   # GET /notifications
-│   │       │   └── notifications.service.ts      # Notification queries & updates
 │   │       ├── profile/                          # User profile & voice settings
-│   │       │   ├── profile.controller.ts         # GET /profile, PATCH /profile/preferences
-│   │       │   └── profile.service.ts            # Profile management & calibration dispatch
 │   │       ├── social-accounts/                  # Threads account management
-│   │       │   ├── social-accounts.controller.ts # GET /social-accounts, DELETE /social-accounts/:id
-│   │       │   └── social-accounts.service.ts    # Account status & token validation
 │   │       ├── threads-auth/                     # Threads OAuth 2.0 PKCE exchange
-│   │       │   ├── threads-auth.controller.ts    # GET /threads/authorize, /threads/callback
-│   │       │   └── threads-auth.service.ts       # PKCE challenge generation, token exchange
 │   │       └── workspace/                        # Multi-tenant workspace management
-│   │           ├── workspace.controller.ts       # Workspace CRUD
-│   │           └── workspace.service.ts          # Workspace provisioning & member scoping
 │   │
 │   ├── web/                                      # Next.js 15 App Router Frontend
 │   │   └── src/
 │   │       ├── app/
-│   │       │   ├── (auth)/                       # Authentication views
-│   │       │   │   ├── login/page.tsx            # Login screen
-│   │       │   │   ├── register/page.tsx         # Account registration
-│   │       │   │   └── callback/threads/page.tsx # OAuth PKCE popup / redirect handler
-│   │       │   ├── (dashboard)/                  # Main authenticated application shell
+│   │       │   ├── (auth)/                       # Authentication views (login, register, callback)
+│   │       │   ├── (dashboard)/                  # Authenticated application shell
 │   │       │   │   ├── connect/page.tsx          # Connect Threads account interface
 │   │       │   │   ├── create/page.tsx           # Content generation studio, editor & preview
-│   │       │   │   ├── dashboard/page.tsx        # Overview, metrics, recent activity
+│   │       │   │   ├── dashboard/page.tsx        # Overview, metrics, autonomous reply telemetry widget
 │   │       │   │   ├── profile/page.tsx          # Voice style card, 8 metrics, retrain button
-│   │       │   │   └── settings/page.tsx         # Workspace settings & autonomy controls
+│   │       │   │   ├── replies/page.tsx          # [Phase 3] Community Review Deck
+│   │       │   │   └── settings/page.tsx         # Workspace settings & emergency kill switch toggle
 │   │       │   ├── globals.css                   # Global styles & design system tokens
 │   │       │   └── layout.tsx                    # Root application layout
 │   │       ├── components/                       # Shared UI components
 │   │       │   ├── editor/                       # Content studio components
-│   │       │   │   ├── AIImprovementPanel.tsx    # Preset polish buttons & diff comparison
-│   │       │   │   ├── DraftEditor.tsx           # Rich textarea with 500-char meter
-│   │       │   │   ├── ThreadsPreview.tsx        # Authentic Threads UI post preview
-│   │       │   │   └── VersionHistory.tsx        # Immutable version comparison view
+│   │       │   ├── engagement/                   # [Phase 3] Community Review Deck components
+│   │       │   │   ├── AmbiguityAlertBanner.tsx  # Warning banner for external ambiguity
+│   │       │   │   ├── AutonomySettingsModal.tsx # Autonomy level & kill switch modal
+│   │       │   │   ├── DismissModal.tsx          # Dismissal reason selection modal
+│   │       │   │   ├── EngagementHeader.tsx      # Tab controls, stats badges, kill switch indicator
+│   │       │   │   ├── InteractionCard.tsx       # Compact card for incoming replies
+│   │       │   │   ├── InteractionDetailDeck.tsx # Thread context, draft editor, diff viewer
+│   │       │   │   ├── OperatorResolveModal.tsx  # Operator manual confirmation modal
+│   │       │   │   └── RegenerateDraftModal.tsx  # Custom prompt instructions modal
 │   │       │   ├── profile/                      # Profile & voice components
-│   │       │   │   ├── StyleExamplesList.tsx     # Semantic vector exemplars display
-│   │       │   │   └── VoiceStyleCard.tsx        # Visual gauges for the 8 stylometric traits
-│   │       │   ├── Sidebar.tsx                   # Main navigation bar
+│   │       │   ├── Sidebar.tsx                   # Main navigation bar (includes /replies)
 │   │       │   └── TopBar.tsx                    # Header with workspace selector & status
-│   │       ├── hooks/                            # React hooks
-│   │       │   ├── useAuth.tsx                   # Auth context, in-memory token, refresh loop
-│   │       │   └── useJobProgress.ts             # Live SSE subscription to BullMQ job events
-│   │       └── lib/                              # Client utilities
-│   │           ├── api-client.ts                 # Axios / Fetch client with token interceptor
-│   │           └── sse.ts                        # Server-Sent Events connection manager
+│   │       ├── hooks/                            # React hooks (useAuth, useJobProgress)
+│   │       └── lib/                              # Client utilities (api-client, sse)
 │   │
 │   └── worker/                                   # NestJS 11 BullMQ Worker Service
 │       └── src/
@@ -414,63 +450,52 @@ threadpilot/
 │           ├── processors/                       # BullMQ queue consumers
 │           │   ├── content.processor.ts          # Executes LangGraph ContentGenerationGraph
 │           │   ├── embedding.processor.ts        # Generates Google Gemini vector embeddings
+│           │   ├── engagement-classify.processor.ts # [Phase 3] Executes InteractionClassifierGraph
+│           │   ├── engagement-ingest.processor.ts   # [Phase 3] Multi-tier sync & loop breaker
+│           │   ├── event-outbox.processor.ts     # Transactional outbox event dispatcher
 │           │   ├── ingestion.processor.ts        # Ingests historical posts via Threads API
-│           │   ├── style.processor.ts            # Executes LangGraph StyleExtractionGraph
-│           │   ├── token-refresh.processor.ts    # Background OAuth token refresh cron
 │           │   ├── publishing.processor.ts       # [Phase 2] Fenced Threads publisher
-│           │   ├── publishing-reconciliation.service.ts # [Phase 2] Scans 1-6 watchdog
-│           │   └── event-outbox.processor.ts     # [Phase 2] Outbox notification dispatcher
+│           │   ├── reply-draft.processor.ts      # [Phase 3] Executes ReplyGenerationGraph
+│           │   ├── reply-publish.processor.ts    # [Phase 3] Fenced CAS reply publisher
+│           │   ├── style.processor.ts            # Executes LangGraph StyleExtractionGraph
+│           │   └── token-refresh.processor.ts    # Background OAuth token refresh cron
 │           ├── services/                         # Internal worker helper services
 │           │   ├── ai-factory.service.ts         # ModelRouter & Gemini adapter factory
+│           │   ├── editorial-personalization.service.ts # [Phase 3] Word-level diff & memory curation
 │           │   ├── embedding-reconciliation.service.ts # Heals missing vector embeddings
+│           │   ├── engagement-reconciliation.service.ts # [Phase 3] Watchdog Scans 0-6
 │           │   ├── job-progress.service.ts       # Emits Redis pub/sub progress events for SSE
-│           │   └── publishing.service.ts         # [Phase 2] Encapsulates container creation/publish
+│           │   ├── publishing-reconciliation.service.ts # [Phase 2] Watchdog Scans 1-6
+│           │   └── publishing.service.ts         # Encapsulates container creation/publish
 │           └── worker.module.ts                  # Worker application root module
 │
 ├── packages/
 │   ├── agents/                                   # LangGraph Workflow Graphs
 │   │   └── src/
 │   │       ├── content/content.graph.ts          # Content generation, evaluation & 500-char gate
+│   │       ├── engagement/                       # [Phase 3] Engagement Graphs
+│   │       │   ├── interaction-classifier.graph.ts # Intent, sentiment & safety classification
+│   │       │   ├── reply-generation.graph.ts     # Context-aware 500-code-unit reply synthesizer
+│   │       │   ├── post-generation-safety.graph.ts # Factuality, grounding & safety gate
+│   │       │   └── rules-v1.ts                   # Pre-generation policy rule catalog
 │   │       ├── profile/style-extraction.graph.ts # 8-point stylometric feature extractor
 │   │       └── state.ts                          # Agent state interfaces & type guards
 │   ├── ai/                                       # AI Providers & Model Routing
-│   │   └── src/
-│   │       ├── core/ai-provider.ts               # Standard AIProvider abstraction
-│   │       ├── core/model-router.ts              # Fallback chain & retry coordinator
-│   │       └── providers/gemini/                 # Google GenAI implementation (Gemini 2.5)
 │   ├── database/                                 # Prisma Schema & Vector Repository
 │   │   ├── prisma/
-│   │   │   ├── migrations/                       # SQL migrations (0001 to 0006)
-│   │   │   └── schema.prisma                     # Authoritative relational database schema
+│   │   │   ├── migrations/                       # SQL migrations (0001 to 0007_engagement_engine)
+│   │   │   └── schema.prisma                     # Authoritative schema (15 enums, 9 engagement models)
 │   │   └── src/
 │   │       ├── index.ts                          # Exports PrismaClient instance
 │   │       └── memory.repository.ts              # pgvector raw SQL queries (cosine similarity)
 │   ├── observability/                            # Logging & Metrics
-│   │   └── src/
-│   │       ├── logger.ts                         # Pino structured JSON logger
-│   │       └── metrics.ts                        # OpenTelemetry & Prometheus instrumentation
 │   ├── threads-client/                           # Meta Threads API SDK
-│   │   └── src/
-│   │       ├── rate-limit.service.ts             # Sliding window platform rate limiter
-│   │       ├── threads-api.client.ts             # Raw HTTP client for Graph API endpoints
-│   │       ├── threads-oauth.service.ts          # OAuth PKCE challenge & token exchange
-│   │       ├── token-encryption.service.ts       # AES-256-GCM encryption/decryption
-│   │       └── token.service.ts                  # High-level token retrieval & auto-refresh
 │   └── types/                                    # Shared TypeScript Contracts & Schemas
-│       └── src/
-│           ├── agents.ts                         # Graph state & node input/output types
-│           ├── auth.ts                           # JWT payloads, login DTOs, user sessions
-│           ├── canonical.ts                      # Canonical text normalization & request fingerprints
-│           ├── content.ts                        # ContentDraft, ContentVersion, ContentIdea schemas
-│           ├── jobs.ts                           # JobRecord, progress DTOs, SSE event schemas
-│           ├── profile.ts                        # Stylometric features & preferences schemas
-│           ├── threads.ts                        # Meta API request/response types
-│           └── workspace.ts                      # Workspace & membership contracts
 │
 └── prompts/                                      # Version-Controlled Prompt Catalog
     ├── content-generation/                       # Generation prompt templates & few-shot examples
     ├── style-extraction/                         # Stylometric extraction prompt definitions
-    └── reply-generation/                         # Engagement agent reply prompts
+    └── reply-generation/                         # [Phase 3] Engagement agent reply prompts
 ```
 
 ---
@@ -479,7 +504,7 @@ threadpilot/
 
 ThreadPilot adheres strictly to Meta's published Threads API constraints and developer policies:
 
-1. **Character Limit:** Exact hard limit of 500 characters per single post. ThreadPilot enforces a deterministic validation node at the agent level that rejects any text over 500 characters before persistence.
+1. **Character Limit:** Exact hard limit of 500 characters per single post and reply. ThreadPilot enforces a deterministic validation node at the agent level that rejects any text over 500 code units before persistence.
 2. **Publishing Rate Limit:** Meta enforces a limit of 250 published posts per 24-hour rolling window per user. ThreadPilot tracks local usage via `PlatformRateLimit` and enters `QUOTA_BLOCKED` before breaching platform limits.
 3. **Token Validity:** Short-lived user tokens expire in 1 hour; long-lived tokens expire in 60 days. ThreadPilot schedules automated background token refresh via [`TokenRefreshProcessor`](file:///d:/Projects/threads-automation/apps/worker/src/processors/token-refresh.processor.ts) whenever a token reaches 30 days of remaining life.
 4. **Container Expiration:** Threads creation containers expire after 24 hours. The worker polling loop enforces a 24-hour timeout; expired non-ambiguous containers transition to retry or permanent failure.
@@ -489,13 +514,16 @@ ThreadPilot adheres strictly to Meta's published Threads API constraints and dev
 
 ## 10. Success Criteria & KPIs
 
-| Metric                     | Target                                                       | Verification Method                                              |
-| -------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------- |
-| **Drafting Speed**         | $< 10$ seconds from idea to validated draft                  | `AgentRun.latencyMs` instrumentation                             |
-| **Voice Fidelity**         | $> 85\%$ user acceptance of drafts without major rewrite     | Ratio of `user_rating = 1` vs `-1` in `StyleExample`             |
-| **Publishing Reliability** | $99.99\%$ at-most-once delivery; 0 duplicate posts           | Absence of duplicate `threads_post_id` across `published_posts`  |
-| **Recovery Autonomy**      | $100\%$ of transient network flakes healed automatically     | Reconciliation scan metrics in `PublishingReconciliationService` |
-| **Daily Time Saved**       | Reduce daily social management time from 45 min to $< 8$ min | User engagement session length tracking                          |
+| Metric | Target | Verification Method |
+| :--- | :--- | :--- |
+| **Drafting Speed** | $< 10$ seconds from idea to validated draft | `AgentRun.latencyMs` instrumentation |
+| **Voice Fidelity** | $> 85\%$ user acceptance of drafts without major rewrite | Ratio of `user_rating = 1` vs `-1` in `StyleExample` |
+| **Publishing Reliability** | $99.99\%$ at-most-once delivery; 0 duplicate posts | Absence of duplicate `threads_post_id` across `published_posts` |
+| **Recovery Autonomy** | $100\%$ of transient network flakes healed automatically | Reconciliation scan metrics in `PublishingReconciliationService` & `EngagementReconciliationService` |
+| **Loop Breaker Efficacy** | $100\%$ of self-replies intercepted before classification | Triple loop breaker assertions in `engagement-ingest.spec.ts` |
+| **Reply Length Bounds** | $100\%$ of generated replies $\le 500$ UTF-16 code units | Deterministic UTF-16 counting in `reply-generation.graph.ts` |
+| **Optimistic Concurrency** | $100\%$ deterministic HTTP 409 Conflict on stale edits | Keyset version checks in `EngagementService.updateDraft()` |
+| **Daily Time Saved** | Reduce daily social management time from 45 min to $< 8$ min | User engagement session length tracking in `/replies` review deck |
 
 ---
 

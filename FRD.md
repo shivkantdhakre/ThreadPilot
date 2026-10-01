@@ -315,62 +315,166 @@ Requirements are organized chronologically by system phase and functional domain
 
 ---
 
-### Phase 3: Engagement Engine & Conversational Intelligence *(Next Phase)*
+### Phase 3: Autonomous Engagement & Community Intelligence *(Implemented)*
 
-#### FR-022: Interaction Ingestion (Replies, Quotes & Mentions)
-- **Phase:** Phase 3 | **Status:** Roadmap
+#### FR-022: Relational FSM, Check Constraints & Database Invariants (Phase 3A)
+- **Phase:** Phase 3 | **Status:** Implemented
+- **Touchpoints:**
+  - Migration: `0007_engagement_engine` in [`packages/database/prisma/migrations/0007_engagement_engine/migration.sql`](file:///d:/Projects/threads-automation/packages/database/prisma/migrations/0007_engagement_engine/migration.sql)
+  - Schema: [`packages/database/prisma/schema.prisma`](file:///d:/Projects/threads-automation/packages/database/prisma/schema.prisma)
+  - Spec: [`packages/database/test/engagement-schema-constraints.spec.ts`](file:///d:/Projects/threads-automation/packages/database/test/engagement-schema-constraints.spec.ts)
 - **Processing Logic:**
-  1. Worker cron queries Meta `GET /me/threads?fields=id,text,timestamp` and `GET /{threads_post_id}/conversation`.
-  2. Deduplicates incoming messages against `interactions` table using `external_interaction_id`.
-  3. Stores full conversation thread context for hierarchical evaluation.
+  1. Enforces 15 PostgreSQL enums: `InteractionStatus` (14 states), `ReplyExecutionStatus` (13 states), `AutonomyMode`, `PolicyStage`, `PolicyDecisionType`, `InteractionIntent`, `FeedbackType`, `SyncTier`, `SyncStatus`, `AmbiguityType`, `ResponseDecision`, `Sentiment`, `HideStatus`, `RecoveryResolution`, etc.
+  2. Implements 9 core relational models: `EngagementSyncState`, `Interaction`, `InteractionClassification`, `PolicyDecision`, `ReplyDraft`, `ReplyDraftVersion`, `ReplyExecution`, `EditorialFeedback`, `IdempotencyRecord`.
+  3. Enforces 8 SQL CHECK constraints:
+     - `chk_interaction_priority`: `priority_score BETWEEN 1 AND 10`.
+     - `chk_intent_confidence`: `intent_confidence BETWEEN 0.0 AND 1.0`.
+     - `chk_toxicity_score`, `chk_harassment_score`, `chk_controversy_score`: Bounded in $[0.0, 1.0]$.
+     - `chk_reply_body_non_empty`: Rejects empty or whitespace-only bodies (`LENGTH(TRIM(body)) > 0`).
+     - `chk_user_rating`: Restricted to `NULL`, `-1` (thumbs down), or `1` (thumbs up).
+     - `chk_sync_error_count`: `error_count >= 0`.
+  4. Enforces 4 partial unique indexes:
+     - `idx_unique_current_classification`: Guarantees exactly one `is_current = true` record per interaction.
+     - `idx_unique_active_reply_execution`: Prevents duplicate in-flight reply executions.
+     - `idx_unique_active_sync_lease`: Allows only one active syncing worker per root Threads post.
+     - `idx_unique_active_draft_per_interaction`: Prevents multiple active drafts for the same interaction.
 
-#### FR-023: Interaction Classification State Machine
-- **Phase:** Phase 3 | **Status:** Roadmap
-- **Classification Categories:**
-  - `QUESTION`: Queries seeking information or clarification.
-  - `AGREEMENT`: Supportive remarks, validation, agreement.
-  - `DISAGREEMENT`: Counter-arguments, critical questions, objections.
-  - `COMPLIMENT`: Praise, gratitude, appreciation.
-  - `REQUEST`: Feature requests, collaboration inquiries, direct asks.
-  - `TROLLING`: Insults, bad-faith attacks, inflammatory remarks.
-  - `SPAM`: Self-promotion, crypto shilling, automated links.
-  - `UNCLEAR`: Ambiguous context, single emoji reactions.
-- **Output:** Writes classification, priority score ($1-10$), and `requires_response` boolean to `interactions`.
-
-#### FR-024: Context-Aware Reply Generation
-- **Phase:** Phase 3 | **Status:** Roadmap
-- **Inputs:** Parent post text, incoming reply text, author positioning, conversation history, user disagreement policy.
+#### FR-023: Multi-Tier Adaptive Ingestion & Defense-in-Depth Loop Breaker (Phase 3B)
+- **Phase:** Phase 3 | **Status:** Implemented
+- **Touchpoints:**
+  - Processor: [`apps/worker/src/processors/engagement-ingest.processor.ts`](file:///d:/Projects/threads-automation/apps/worker/src/processors/engagement-ingest.processor.ts)
+  - Spec: [`apps/worker/test/engagement-ingest.spec.ts`](file:///d:/Projects/threads-automation/apps/worker/test/engagement-ingest.spec.ts)
 - **Processing Logic:**
-  1. Evaluates user's `disagreement_style` from profile (e.g., *conciliatory*, *technical/empirical*, *firm/direct*).
-  2. Injects author's persona guidelines (never get defensive, prioritize clarity, keep replies concise).
-  3. Produces candidate reply stored in `reply_drafts` with confidence score.
+  1. **Adaptive Sync Tiers:** Polling dynamically scales based on root post creation age:
+     - `HOT` (< 24 hours): Synchronizes every 3 minutes.
+     - `WARM` (24 hours to 7 days): Synchronizes every 20 minutes.
+     - `COLD` (> 7 days): Synchronizes every 3 hours.
+  2. **Triple-Check Loop Breaker:** Prevents self-reply bot loops by evaluating three independent layers:
+     - Layer 1: Platform `is_reply_owned_by_me === true` flag from Meta API.
+     - Layer 2: Case-insensitive username snapshot matching against connected `SocialAccount.username`.
+     - Layer 3: Author external ID matching against connected `SocialAccount.externalId`.
+     If any check matches, the interaction is flagged with `isReplyOwnedByMe = true` and terminal `status = 'NOT_REQUIRED'`, immediately aborting downstream processing.
+  3. **Watermark Management & Resilient Overlap:** Employs sliding timestamp overlaps (5 minutes) and cursor pagination watermarks in `engagement_sync_states` to prevent dropped interactions during network drops.
 
-#### FR-025: Human-in-the-Loop Review Queue Interface
-- **Phase:** Phase 3 | **Status:** Roadmap
-- **UI Components:** In `apps/web/src/app/(dashboard)/engagement`:
-  - Card deck or list view displaying incoming comment + generated reply.
-  - 1-Click Actions: `Approve & Publish`, `Edit & Publish`, `Regenerate`, `Dismiss`.
-  - User edits are persisted to a dataset of fine-tuning exemplars for reply learning.
-
-#### FR-026: Conditional Auto-Reply Rules & Safety Filters
-- **Phase:** Phase 3 | **Status:** Roadmap
+#### FR-024: Hierarchical Intent Classification & Pre-Policy Gating (Phase 3C)
+- **Phase:** Phase 3 | **Status:** Implemented
+- **Touchpoints:**
+  - Graph: [`packages/agents/src/engagement/interaction-classifier.graph.ts`](file:///d:/Projects/threads-automation/packages/agents/src/engagement/interaction-classifier.graph.ts)
+  - Processor: [`apps/worker/src/processors/engagement-classify.processor.ts`](file:///d:/Projects/threads-automation/apps/worker/src/processors/engagement-classify.processor.ts)
+  - Rules: [`packages/agents/src/engagement/rules-v1.ts`](file:///d:/Projects/threads-automation/packages/agents/src/engagement/rules-v1.ts)
+  - Spec: [`packages/agents/test/engagement-agents.spec.ts`](file:///d:/Projects/threads-automation/packages/agents/test/engagement-agents.spec.ts), [`apps/worker/test/engagement-classify.spec.ts`](file:///d:/Projects/threads-automation/apps/worker/test/engagement-classify.spec.ts)
 - **Processing Logic:**
-  - Auto-reply only executes if `user_preferences.autonomy_replies === 'RULES_BASED'`.
-  - Allowed categories: `QUESTION`, `COMPLIMENT` with confidence $> 0.90$.
-  - Hard Exclusions: If interaction is classified as `DISAGREEMENT`, `TROLLING`, or contains flagged political/sensitive keywords, auto-reply is suppressed and routed to human review.
+  1. Structured output from Google Gemini classifies intent across 8 categories: `QUESTION`, `AGREEMENT`, `DISAGREEMENT`, `COMPLIMENT`, `REQUEST`, `TROLLING`, `SPAM`, `UNCLEAR`.
+  2. Scores sentiment (`POSITIVE`, `NEUTRAL`, `NEGATIVE`) and calculates continuous safety metrics: `toxicityScore`, `harassmentScore`, `controversyScore`, and `isPromptInjection`.
+  3. Pre-generation policy rules evaluate classification:
+     - `AUTO_REPLY`: High-confidence questions/compliments from non-toxic accounts. Transitions interaction to `DRAFTING`.
+     - `REVIEW_REQUIRED`: Disagreements, complex questions, or borderline scores. Transitions to `DRAFTING` with mandatory operator approval.
+     - `BLOCKED`: Toxic remarks, harassment, prompt injections, or spam. Immediately transitions to terminal `BLOCKED` with zero LLM draft generation.
+  4. Atomically replaces active classification using `is_current = false` updates inside a database transaction.
+
+#### FR-025: Contextual Reply Drafting & 500-Code-Unit Bounds (Phase 3D)
+- **Phase:** Phase 3 | **Status:** Implemented
+- **Touchpoints:**
+  - Graph: [`packages/agents/src/engagement/reply-generation.graph.ts`](file:///d:/Projects/threads-automation/packages/agents/src/engagement/reply-generation.graph.ts)
+  - Processor: [`apps/worker/src/processors/reply-draft.processor.ts`](file:///d:/Projects/threads-automation/apps/worker/src/processors/reply-draft.processor.ts)
+  - Spec: [`packages/agents/test/engagement-agents.spec.ts`](file:///d:/Projects/threads-automation/packages/agents/test/engagement-agents.spec.ts)
+- **Processing Logic:**
+  1. Assembles conversation hierarchy: root Threads post content, direct parent comment, author stylometric features, and top-$k$ vector memory exemplars from `MemoryRepository`.
+  2. Synthesizes a tone-aligned reply reflecting personal voice guidelines, conversational brevity, and technical positioning.
+  3. **Strict 500-Code-Unit Hard Ceiling:** Deterministic UTF-16 code-unit validation (`validateThreadText`). If candidate exceeds 500 code units, the graph performs automatic single-pass compression.
+  4. Stores candidate reply as monotonic `ReplyDraftVersion` linked to `ReplyDraft`, storing parent version lineage and diff summary.
+
+#### FR-026: Post-Generation Safety Grounding, Shadow Mode & Kill Switch (Phase 3E)
+- **Phase:** Phase 3 | **Status:** Implemented
+- **Touchpoints:**
+  - Graph: [`packages/agents/src/engagement/post-generation-safety.graph.ts`](file:///d:/Projects/threads-automation/packages/agents/src/engagement/post-generation-safety.graph.ts)
+  - Spec: [`apps/worker/test/engagement-autonomy-gate.spec.ts`](file:///d:/Projects/threads-automation/apps/worker/test/engagement-autonomy-gate.spec.ts)
+- **Processing Logic:**
+  1. Evaluates candidate draft for hallucinated claims, unsupported technical assertions, and brand safety violations.
+  2. Gating Decision:
+     - If factuality risk $> 0.30$ or brand safety fails: Downgrades decision to `REVIEW_REQUIRED` or `BLOCKED`.
+  3. **Autonomy Mode Enforcement:**
+     - `REVIEW_ONLY`: Always routes to operator review queue (`status = 'REVIEW_REQUIRED'`).
+     - `SHADOW`: Evaluates auto-reply rules and records `wouldAutoReplyInLive = true` for telemetry, but holds the draft in `REVIEW_REQUIRED` with 0 external Meta API calls.
+     - `RULES_BASED`: High-confidence, fully grounded replies advance to `APPROVED` and schedule automatic publication.
+  4. **Emergency Outbound Kill Switch:** If `repliesPaused === true` in workspace preferences, all auto-reply dispatches are instantly halted and routed to `REVIEW_REQUIRED`.
+
+#### FR-027: Keyset Pagination, Optimistic Concurrency & API Idempotency (Phase 3F)
+- **Phase:** Phase 3 | **Status:** Implemented
+- **Touchpoints:**
+  - Controller: [`apps/api/src/engagement/engagement.controller.ts`](file:///d:/Projects/threads-automation/apps/api/src/engagement/engagement.controller.ts)
+  - Service: [`apps/api/src/engagement/engagement.service.ts`](file:///d:/Projects/threads-automation/apps/api/src/engagement/engagement.service.ts)
+  - Spec: [`apps/api/test/engagement-controller-gateway.spec.ts`](file:///d:/Projects/threads-automation/apps/api/test/engagement-controller-gateway.spec.ts), [`apps/api/test/engagement-service.spec.ts`](file:///d:/Projects/threads-automation/apps/api/test/engagement-service.spec.ts)
+- **Processing Logic:**
+  1. Keyset cursor pagination over interactions (`GET /engagement/interactions`) using compound cursor `(priorityScore, createdAt, id)` for stable $O(1)$ pagination.
+  2. **Optimistic Concurrency Control:** `PATCH /engagement/interactions/:id/draft` requires HTTP `If-Match` header. If passed version does not match `ReplyDraft.currentVersion.versionNumber`, the request fails with HTTP 409 Conflict.
+  3. **Tenant-Scoped Idempotency:** Manual generation requests (`POST /engagement/interactions/:id/draft`) support `Idempotency-Key` header, caching responses in `idempotency_records` table.
+  4. **Operator Ambiguity Resolution:** `POST /engagement/executions/:id/resolve` enables operators to confirm or reject ambiguous in-flight publications (`CONFIRM_PUBLISHED` or `CONFIRM_NOT_PUBLISHED`).
+
+#### FR-028: CAS Fenced Reply Publishing, Exponential Backoffs & Watchdog Healing (Phase 3G)
+- **Phase:** Phase 3 | **Status:** Implemented
+- **Touchpoints:**
+  - Processor: [`apps/worker/src/processors/reply-publish.processor.ts`](file:///d:/Projects/threads-automation/apps/worker/src/processors/reply-publish.processor.ts)
+  - Watchdog: [`apps/worker/src/services/engagement-reconciliation.service.ts`](file:///d:/Projects/threads-automation/apps/worker/src/services/engagement-reconciliation.service.ts)
+  - Outbox: [`apps/worker/src/processors/event-outbox.processor.ts`](file:///d:/Projects/threads-automation/apps/worker/src/processors/event-outbox.processor.ts)
+  - Spec: [`apps/worker/test/engagement-fenced-publish.spec.ts`](file:///d:/Projects/threads-automation/apps/worker/test/engagement-fenced-publish.spec.ts), [`apps/worker/test/engagement-reconciliation.spec.ts`](file:///d:/Projects/threads-automation/apps/worker/test/engagement-reconciliation.spec.ts)
+- **Processing Logic:**
+  1. **Universal CAS Claim Fencing:** Reply execution claiming uses atomic database fencing (`UPDATE reply_executions SET claimed_by = :token, lease_until = NOW() + INTERVAL '2 minutes' WHERE id = :id AND (lease_until IS NULL OR lease_until <= NOW())`).
+  2. **Exactly-Once Container Creation:** Once Meta container is created, `containerId` is persisted immediately. Retries never invoke container creation a second time.
+  3. **Canonical 429 Exponential Backoffs:** Backoffs follow strictly bounded progression: 5s, 15s, 30s, 60s, then terminal failure. Respects `Retry-After` header when greater.
+  4. **Watchdog Reconciler (Scans 0–6):**
+     - Scan 0: Heals un-enqueued dispatches from transactional outbox.
+     - Scan 1: Reschedules due reply executions.
+     - Scan 2: Redispatches retryable failures.
+     - Scan 3: Reclaims expired execution leases.
+     - Scan 4: Resolves stuck in-flight containers via platform polling.
+     - Scan 5: Re-links unlinked executions to parent interactions.
+     - Scan 6: Reclaims stale sync state leases in `engagement_sync_states`.
+  5. **Transactional Outbox Dispatch:** `REPLY_EXECUTION_DISPATCH` events in `event_outbox` are processed by `EventOutboxProcessor`, reliably queuing jobs into `reply-publish-queue`.
+
+#### FR-029: Editorial Personalization, Word-Level Diffs & Memory Guardrails (Phase 3H)
+- **Phase:** Phase 3 | **Status:** Implemented
+- **Touchpoints:**
+  - Service: [`apps/worker/src/services/editorial-personalization.service.ts`](file:///d:/Projects/threads-automation/apps/worker/src/services/editorial-personalization.service.ts)
+  - Spec: [`apps/worker/test/editorial-personalization.spec.ts`](file:///d:/Projects/threads-automation/apps/worker/test/editorial-personalization.spec.ts)
+- **Processing Logic:**
+  1. Computes word-level diffs (`diffSummary`) between initial AI candidate draft and final human-edited draft.
+  2. Records feedback in `editorial_feedbacks` with feedback category (`STYLE_CORRECTION`, `FACTUAL_CORRECTION`, `TONE_CORRECTION`, `LENGTH_CORRECTION`).
+  3. **Memory Contamination Guard:** High-rated human edits (`userRating = 1`) are evaluated before vector embedding:
+     - Rejects any edit containing PII, API tokens, profanity, or prompt injection artifacts.
+     - Embeds clean exemplars into `pgvector` as `DOCUMENT` representation for few-shot dynamic injection into future reply generations.
+
+#### FR-030: Community Review Deck, Telemetry Widgets & Keyboard Shortcuts (Phase 3 UI/UX)
+- **Phase:** Phase 3 | **Status:** Implemented
+- **Touchpoints:**
+  - Views: [`apps/web/src/app/(dashboard)/replies/page.tsx`](file:///d:/Projects/threads-automation/apps/web/src/app/(dashboard)/replies/page.tsx), [`apps/web/src/app/(dashboard)/dashboard/page.tsx`](file:///d:/Projects/threads-automation/apps/web/src/app/(dashboard)/dashboard/page.tsx)
+  - Components: [`apps/web/src/components/engagement/`](file:///d:/Projects/threads-automation/apps/web/src/components/engagement/)
+  - Spec: [`apps/web/test/engagement-review-deck.spec.ts`](file:///d:/Projects/threads-automation/apps/web/test/engagement-review-deck.spec.ts), [`apps/web/test/engagement-ui-integration.spec.ts`](file:///d:/Projects/threads-automation/apps/web/test/engagement-ui-integration.spec.ts)
+- **UI Components & Workflows:**
+  1. **Community Review Deck (`/replies`):** Segmented filter tabs (`NEEDS_REVIEW`, `REPLIED`, `AUTO_REPLIED`, `DISMISSED`, `ALL`), search bar, and social account switcher.
+  2. **Interaction Card & Detail Deck:** Collapsible thread hierarchy view showing root post, parent comments, author metadata, and draft diff editor.
+  3. **Productive Keyboard Shortcuts:**
+     - `a` or `Enter`: Approve draft and dispatch publication.
+     - `e`: Focus inline draft editor.
+     - `r`: Open regeneration prompt modal.
+     - `d`: Open dismissal reason modal.
+     - `Escape`: Close active modal.
+     - Shortcuts are automatically suppressed when user is actively focused in textarea.
+  4. **Dashboard Telemetry Widget (`/dashboard`):** Real-time monitoring card displaying active sync status, queue counts, pending review alert badges, and emergency kill switch status.
+  5. **Settings Deck (`/settings`):** User selection of Autonomy Mode (`REVIEW_ONLY`, `SHADOW`, `RULES_BASED`) and one-click toggle for Emergency Outbound Kill Switch.
 
 ---
 
 ### Phase 4: Performance Analytics & Intelligence Loop *(Future Phase)*
 
-#### FR-027: Platform Metrics Synchronization
+#### FR-031: Platform Metrics Synchronization
 - **Phase:** Phase 4 | **Status:** Roadmap
 - **Processing Logic:**
   1. Worker cron queries Meta Insights API for all published posts created in the last 30 days.
   2. Metrics fetched: `views`, `likes`, `replies`, `reposts`, `quotes`.
   3. Appends historical snapshot to `post_metrics` for longitudinal trend analysis.
 
-#### FR-028: Multi-Dimensional Performance Aggregation
+#### FR-032: Multi-Dimensional Performance Aggregation
 - **Phase:** Phase 4 | **Status:** Roadmap
 - **Aggregated Dimensions:**
   - **Topic Level:** Average engagement rate per topic (e.g. AI vs Cloud vs Careers).
@@ -378,7 +482,7 @@ Requirements are organized chronologically by system phase and functional domain
   - **Hook Style Level:** Performance of contrarian openings vs question openings.
   - **Temporal Level:** Heatmap of reach by day of week and hour of day.
 
-#### FR-029: AI Correlation Insights Generation
+#### FR-033: AI Correlation Insights Generation
 - **Phase:** Phase 4 | **Status:** Roadmap
 - **Processing Logic:**
   1. AI analyzes performance differentials across stylometric clusters.
@@ -393,7 +497,7 @@ Requirements are organized chronologically by system phase and functional domain
      ```
   3. Guardrail: Labels correlations strictly as *observed trends*, never as guaranteed outcomes.
 
-#### FR-030: Performance-Driven Content Recommendations
+#### FR-034: Performance-Driven Content Recommendations
 - **Phase:** Phase 4 | **Status:** Roadmap
 - **Processing Logic:**
   - Feeds empirical high-performing topics and formats into `ContentIdea` generator.
@@ -403,7 +507,7 @@ Requirements are organized chronologically by system phase and functional domain
 
 ### Phase 5: Autonomous Social Operator & Experiments *(Future Phase)*
 
-#### FR-031: Dynamic Automation Rules Engine
+#### FR-035: Dynamic Automation Rules Engine
 - **Phase:** Phase 5 | **Status:** Roadmap
 - **DSL Structure:** Evaluates conditional rules defined by user:
   ```
@@ -414,21 +518,21 @@ Requirements are organized chronologically by system phase and functional domain
   THEN AUTO_SCHEDULE(next_available_slot)
   ```
 
-#### FR-032: Pre-Publish Safety Gate & Policy Verification
+#### FR-036: Pre-Publish Safety Gate & Policy Verification
 - **Phase:** Phase 5 | **Status:** Roadmap
 - **Verification Gates:**
   1. **Hallucination / Personal Claim Check:** Flag any post claiming first-person factual achievements not verified in `user_profile`.
   2. **Controversy / Sentiment Filter:** Screen against sensitive topic blacklists.
   3. **Platform Rate Guard:** Verify rolling 24-hour post count is $< 200$ (well below Meta's 250 limit).
 
-#### FR-033: Native A/B Content Experimentation
+#### FR-037: Native A/B Content Experimentation
 - **Phase:** Phase 5 | **Status:** Roadmap
 - **Processing Logic:**
   1. User configures an experiment (e.g., Hook A: Direct Statement vs Hook B: Contrarian Question).
   2. System alternates variants across scheduled posts over a 14-day window.
   3. Reports statistical comparison across reach, completion, and reply rate.
 
-#### FR-034: Continuous Profile Adaptation Loop
+#### FR-038: Continuous Profile Adaptation Loop
 - **Phase:** Phase 5 | **Status:** Roadmap
 - **Processing Logic:**
   - Evaluates quarterly stylometric shift.
@@ -464,15 +568,19 @@ Requirements are organized chronologically by system phase and functional domain
 | `AIUsage` | UUID | `workspaceId`, `provider`, `model`, `inputTokens`, `cost` | LLM token usage accounting |
 | `Notification` | UUID | `workspaceId`, `type`, `title`, `body`, `idempotencyKey` | User alerts and notifications |
 | `AuditLog` | UUID | `workspaceId`, `action`, `entityType`, `entityId` | Immutable security audit log |
+| `ScheduledPostDispatch` | UUID | `scheduledPostId`, `status`, `dispatchedAt` | Outbox dispatch tracking |
+| `EventOutbox` | UUID | `workspaceId`, `eventType`, `payload`, `status`, `leaseToken` | Decoupled notification events with lease fencing |
+| `EngagementSyncState` | UUID | `socialAccountId`, `rootThreadsPostId`, `syncTier`, `syncStatus`, `leaseToken` | Multi-tier adaptive ingestion sync tracker |
+| `Interaction` | UUID | `socialAccountId`, `rootThreadsPostId`, `externalInteractionId`, `content`, `status`, `priorityScore` | Normalized incoming comment/reply FSM |
+| `InteractionClassification` | UUID | `interactionId`, `intent`, `intentConfidence`, `sentiment`, `toxicityScore`, `isCurrent` | Structured intent and risk scoring audit record |
+| `PolicyDecision` | UUID | `interactionId`, `stage`, `decision`, `reasonCodes`, `isTerminal` | Pre/post policy evaluation record |
+| `ReplyDraft` | UUID | `workspaceId`, `interactionId`, `status`, `currentVersionId`, `approvedVersionId` | Active reply draft entity |
+| `ReplyDraftVersion` | UUID | `replyDraftId`, `versionNumber`, `body`, `canonicalHash`, `source` | Monotonic immutable reply version history |
+| `ReplyExecution` | UUID | `workspaceId`, `interactionId`, `replyDraftVersionId`, `status`, `leaseUntil`, `containerId` | Fenced CAS reply publisher execution tracker |
+| `EditorialFeedback` | UUID | `workspaceId`, `interactionId`, `originalText`, `finalText`, `wordDiffSummary`, `isVectorCandidate` | Word diff and exemplar feedback record |
+| `IdempotencyRecord` | UUID | `workspaceId`, `key`, `method`, `endpoint`, `response`, `statusCode` | Tenant-scoped API idempotency store |
 
-### Phase 2 Publishing Models
-- `ScheduledPostDispatch`: Outbox dispatch tracking (`id`, `scheduledPostId`, `status`, `dispatchedAt`).
-- `EventOutbox`: Decoupled notification events with lease fencing (`id`, `workspaceId`, `eventType`, `payload`, `status`, `leaseToken`).
-- `scheduled_posts_migration_quarantine`: Standalone quarantine table for conflicting pre-migration recovery rows.
-
-### Phase 3–5 Roadmap Models
-- `Interaction`: Ingested comments and mentions (`id`, `socialAccountId`, `threadPostId`, `authorUsername`, `content`, `classification`, `sentiment`, `status`).
-- `ReplyDraft`: AI-generated reply candidate (`id`, `interactionId`, `body`, `confidence`, `approvalStatus`).
+### Phase 4–5 Roadmap Models
 - `PostMetric`: Time-series analytics snapshots (`id`, `threadPostId`, `views`, `likes`, `replies`, `reposts`, `capturedAt`).
 - `Insight`: Extracted statistical observations (`id`, `workspaceId`, `observation`, `confidence`, `sampleSize`, `recommendation`).
 - `Experiment`: A/B testing campaign (`id`, `workspaceId`, `hypothesis`, `variantA`, `variantB`, `status`, `metrics`).
@@ -521,15 +629,58 @@ stateDiagram-v2
 ### 4.3 Interaction Review Lifecycle (Phase 3)
 ```mermaid
 stateDiagram-v2
-    [*] --> NEW : Ingest from Threads
-    NEW --> CLASSIFIED : AI Classifies Intent
-    CLASSIFIED --> DRAFTED : Context Reply Generated
-    DRAFTED --> APPROVED : User 1-Click Approval
-    DRAFTED --> APPROVED : Auto-Reply Rule Matches
-    DRAFTED --> DISMISSED : User Ignores / Dismisses
-    APPROVED --> REPLIED : Published via Threads API
+    [*] --> NEW : Ingest from Threads API
+    NEW --> NOT_REQUIRED : Loop Breaker / Self-Authored / Out of Scope
+    NEW --> CLASSIFYING : Ingest Worker Enqueues Classification Job
+    CLASSIFYING --> CLASSIFIED : Intent & Safety Extraction Complete
+    CLASSIFIED --> BLOCKED : Toxicity / Harassment / Controversy Threshold Breached
+    CLASSIFIED --> NOT_REQUIRED : Trolling / Spam Ineligible for Reply
+    CLASSIFIED --> DRAFTING : Pre-Gen Policy Eligible
+    DRAFTING --> DRAFTED : LangGraph Reply Generated with Exemplars
+    DRAFTED --> OUTPUT_SAFETY_EVALUATING : Post-Gen Guardrails Invoked
+    OUTPUT_SAFETY_EVALUATING --> BLOCKED : Hallucination / Factuality / Toxic Output
+    OUTPUT_SAFETY_EVALUATING --> APPROVED : Rules-Based Auto-Reply Approved
+    OUTPUT_SAFETY_EVALUATING --> REVIEW_REQUIRED : Review-Only / Shadow Mode / Escalation
+    REVIEW_REQUIRED --> APPROVED : User 1-Click Approval (UI / Keyboard 'a')
+    REVIEW_REQUIRED --> DISMISSED : User Dismisses (UI / Keyboard 'd')
+    REVIEW_REQUIRED --> DRAFTING : User Requests Regeneration (UI / Keyboard 'r')
+    APPROVED --> PUBLISHING : Reply Publisher Claims Draft
+    PUBLISHING --> REPLIED : Threads API Confirms Publication
+    PUBLISHING --> RECOVERY_REQUIRED : Ambiguous Network Partition / Ambiguity Detected
+    RECOVERY_REQUIRED --> REPLIED : Reconciler Feed Scan Matches Published Reply
+    RECOVERY_REQUIRED --> PUBLISHING : Reconciler Confirms Not Landed (Retry Available)
     REPLIED --> [*]
     DISMISSED --> [*]
+    BLOCKED --> [*]
+    NOT_REQUIRED --> [*]
+```
+
+### 4.4 ReplyExecution Lifecycle (Phase 3)
+```mermaid
+stateDiagram-v2
+    [*] --> CREATED : Execution Initialized
+    CREATED --> QUEUED : Enqueued in BullMQ reply-publish Queue
+    QUEUED --> CLAIMED : Worker Atomic CAS Lease Claim
+    CLAIMED --> CANCELLED_BY_POLICY : Emergency Kill Switch Activated
+    CLAIMED --> AUTH_REQUIRED : OAuth Token Expired / Revoked
+    CLAIMED --> QUOTA_BLOCKED : Meta Rate Limit Reached (Attempts Unincremented)
+    QUOTA_BLOCKED --> QUEUED : Rate Limit Cooldown Elapsed
+    CLAIMED --> CREATING_CONTAINER : Rate Limits Confirmed
+    CREATING_CONTAINER --> CONTAINER_CREATED : Threads Container ID Returned
+    CREATING_CONTAINER --> RETRYABLE_FAILURE : Network Glitch (Attempt < 3)
+    CREATING_CONTAINER --> FAILED_PERMANENT : Container Attempts Exceeded
+    CONTAINER_CREATED --> PUBLISHING : Publish Container API Dispatched
+    PUBLISHING --> PUBLISHED : Platform Authoritatively Confirms Post ID
+    PUBLISHING --> RECOVERY_REQUIRED : Ambiguous 500 / Network Timeout
+    RETRYABLE_FAILURE --> QUEUED : Exponential Backoff Retry (Max 5)
+    RETRYABLE_FAILURE --> FAILED_PERMANENT : Max Retries Exceeded
+    RECOVERY_REQUIRED --> PUBLISHED : Feed Reconciler Confirms Match
+    RECOVERY_REQUIRED --> RETRYABLE_FAILURE : Feed Reconciler Confirms Not Landed
+    RECOVERY_REQUIRED --> FAILED_PERMANENT : Operator Manual Fail / Timeout Expired
+    PUBLISHED --> [*]
+    FAILED_PERMANENT --> [*]
+    CANCELLED_BY_POLICY --> [*]
+    AUTH_REQUIRED --> [*]
 ```
 
 ---
@@ -543,7 +694,9 @@ stateDiagram-v2
 | **NFR-003** | **Credential Security** | Zero plain-text OAuth tokens stored in database or logs. Client access tokens stored exclusively in browser memory. | Automated static security AST scan |
 | **NFR-004** | **Vector Memory Purity** | All embeddings maintain uniform 768 dimensions under `gemini-embedding-2`. Coordinate spaces never mixed. | Database dimension check constraints |
 | **NFR-005** | **Observability** | All agent runs trace input hash, output hash, latency, tokens, and USD cost. | Audit verification via `AgentRun` table |
-| **NFR-006** | **Platform Compliance** | Strict hard ceiling of 500 characters per post enforced before database commit or API call. | Unit tests in `content.graph.spec.ts` |
+| **NFR-006** | **Platform Compliance** | Strict hard ceiling of 500 characters per post enforced before database commit or API call. | Unit tests in `content.graph.spec.ts` & `engagement-agents.spec.ts` |
+| **NFR-007** | **Loop Breaker Invariant** | Ingestion pipeline terminates self-echo loops immediately ($N \le 2$ consecutive bot replies per author thread). | Unit tests in `engagement-ingest.spec.ts` |
+| **NFR-008** | **Optimistic Concurrency** | Zero lost edits during concurrent operator review; 409 Conflict returned if target draft version stale. | E2E test in `engagement-controller-gateway.spec.ts` |
 
 ---
 
@@ -551,23 +704,41 @@ stateDiagram-v2
 
 | Requirement | Domain / Phase | Primary Source Files | Primary Spec / Test Files |
 |---|---|---|---|
-| **FR-001** | Auth / Phase 1 | `apps/api/src/auth/auth.service.ts` | `apps/api/test/auth.spec.ts` |
-| **FR-002** | Auth / Phase 1 | `apps/api/src/auth/refresh-token.service.ts` | `apps/api/test/token-rotation.spec.ts` |
+| **FR-001** | Auth / Phase 1 | `apps/api/src/auth/auth.service.ts` | `apps/api/test/auth-service.spec.ts` |
+| **FR-002** | Auth / Phase 1 | `apps/api/src/auth/refresh-token.service.ts` | `apps/api/test/auth-service.spec.ts` |
+| **FR-003** | Tenancy / Phase 1 | `apps/api/src/common/guards/workspace-scope.guard.ts` | `apps/api/test/cross-tenant-isolation.spec.ts` |
 | **FR-004** | OAuth / Phase 1 | `packages/threads-client/src/threads-oauth.service.ts` | `packages/threads-client/test/oauth-negative-paths.spec.ts` |
-| **FR-005** | Security / Phase 1 | `packages/threads-client/src/token-encryption.service.ts` | `packages/threads-client/test/encryption.spec.ts` |
+| **FR-005** | Security / Phase 1 | `packages/threads-client/src/token-encryption.service.ts` | `packages/threads-client/test/token-refresh-concurrency.spec.ts` |
 | **FR-006** | Ingestion / Phase 1 | `apps/worker/src/processors/ingestion.processor.ts` | `apps/worker/test/ingestion-interruption.spec.ts` |
-| **FR-007** | Voice Profile / Phase 1 | `packages/agents/src/profile/style-extraction.graph.ts` | `apps/worker/test/style-extraction.spec.ts` |
+| **FR-007** | Voice Profile / Phase 1 | `packages/agents/src/profile/style-extraction.graph.ts` | `apps/worker/test/style-processor.spec.ts` |
 | **FR-008** | Memory / Phase 1 | `packages/database/src/memory.repository.ts` | `packages/database/test/real-pgvector-duplicate.spec.ts` |
-| **FR-010** | Drafting / Phase 1 | `packages/agents/src/content/content.graph.ts` | `apps/worker/test/content-generation.spec.ts` |
-| **FR-011** | Validation / Phase 1 | `packages/agents/src/content/content.graph.ts` | `packages/agents/test/validation-gate.spec.ts` |
+| **FR-009** | Ideas / Phase 1 | `packages/agents/src/content/content.graph.ts` | `apps/worker/test/content-service.spec.ts` |
+| **FR-010** | Drafting / Phase 1 | `packages/agents/src/content/content.graph.ts` | `packages/agents/test/duplicate-calibration.spec.ts` |
+| **FR-011** | Validation / Phase 1 | `packages/agents/src/content/content.graph.ts` | `packages/agents/test/duplicate-calibration.spec.ts` |
+| **FR-012** | Versioning / Phase 1 | `apps/api/src/content/content.service.ts` | `apps/api/test/content-service.spec.ts` |
 | **FR-013** | Streaming / Phase 1 | `apps/worker/src/services/job-progress.service.ts` | `apps/web/src/hooks/useJobProgress.ts` |
-| **FR-014** | Scheduling / Phase 2 | `apps/api/src/content/content.service.ts` | `apps/api/test/content-scheduling.spec.ts` |
-| **FR-016** | Fenced Claim / Phase 2 | `apps/worker/src/processors/publishing.processor.ts` | `apps/worker/test/fenced-claim.spec.ts` |
-| **FR-017** | Quota Gate / Phase 2 | `apps/worker/src/processors/publishing.processor.ts` | `apps/worker/test/quota-isolation.spec.ts` |
-| **FR-018** | Publishing / Phase 2 | `apps/worker/src/services/publishing.service.ts` | `apps/worker/test/container-lifecycle.spec.ts` |
-| **FR-019** | Ambiguity / Phase 2 | `apps/worker/src/processors/publishing.processor.ts` | `apps/worker/test/ambiguous-recovery.spec.ts` |
-| **FR-020** | Reconciler / Phase 2 | `apps/worker/src/processors/publishing-reconciliation.service.ts` | `apps/worker/test/reconciliation-scans.spec.ts` |
-| **FR-022** | Engagement / Phase 3 | `apps/worker/src/processors/engagement.processor.ts` *(Roadmap)* | `apps/worker/test/engagement-ingest.spec.ts` |
-| **FR-023** | Classification / Phase 3 | `packages/agents/src/engagement/classifier.graph.ts` *(Roadmap)* | `packages/agents/test/classifier.spec.ts` |
-| **FR-027** | Analytics / Phase 4 | `apps/worker/src/processors/analytics.processor.ts` *(Roadmap)* | `apps/worker/test/analytics-sync.spec.ts` |
-| **FR-031** | Autonomy / Phase 5 | `apps/worker/src/services/rules-engine.service.ts` *(Roadmap)* | `apps/worker/test/rules-engine.spec.ts` |
+| **FR-014** | Scheduling / Phase 2 | `apps/api/src/content/content.service.ts` | `apps/api/test/content-service.spec.ts` |
+| **FR-015** | Calendar UI / Phase 2 | `apps/web/src/app/(dashboard)/schedule/page.tsx` | `apps/web/test/calendar-schedules.spec.ts` |
+| **FR-016** | Fenced Claim / Phase 2 | `apps/worker/src/processors/publishing.processor.ts` | `apps/worker/test/publishing-processor.spec.ts` |
+| **FR-017** | Quota Gate / Phase 2 | `apps/worker/src/processors/publishing.processor.ts` | `apps/worker/test/publishing-processor.spec.ts` |
+| **FR-018** | Publishing / Phase 2 | `packages/threads-client/src/threads-api.client.ts` | `packages/threads-client/test/threads-api.client.spec.ts` |
+| **FR-019** | Ambiguity / Phase 2 | `apps/worker/src/processors/publishing.processor.ts` | `apps/worker/test/publishing-processor.spec.ts` |
+| **FR-020** | Reconciler / Phase 2 | `apps/worker/src/processors/publishing-reconciliation.service.ts` | `apps/worker/test/publishing-reconciliation.spec.ts` |
+| **FR-021** | Event Outbox / Phase 2 | `apps/worker/src/processors/event-outbox.processor.ts` | `apps/worker/test/event-outbox-processor.spec.ts` |
+| **FR-022** | Adaptive Ingestion / Phase 3 | `apps/worker/src/processors/engagement-ingest.processor.ts` | `apps/worker/test/engagement-ingest.spec.ts` |
+| **FR-023** | Loop Breaker / Phase 3 | `apps/worker/src/processors/engagement-ingest.processor.ts` | `apps/worker/test/engagement-ingest.spec.ts` |
+| **FR-024** | Classifier Graph / Phase 3 | `packages/agents/src/engagement/interaction-classifier.graph.ts` | `apps/worker/test/engagement-classify.spec.ts` |
+| **FR-025** | Reply Gen Graph / Phase 3 | `packages/agents/src/engagement/reply-generation.graph.ts` | `packages/agents/test/engagement-agents.spec.ts` |
+| **FR-026** | Safety Gate / Phase 3 | `packages/agents/src/engagement/post-generation-safety.graph.ts` | `packages/agents/test/engagement-agents.spec.ts` |
+| **FR-027** | Policy Engine / Phase 3 | `packages/agents/src/engagement/post-generation-safety.graph.ts` | `apps/worker/test/engagement-autonomy-gate.spec.ts` |
+| **FR-028** | Fenced Reply Pub / Phase 3 | `apps/worker/src/processors/reply-publish.processor.ts` | `apps/worker/test/engagement-fenced-publish.spec.ts` |
+| **FR-029** | Editorial Loop / Phase 3 | `apps/api/src/engagement/editorial-personalization.service.ts` | `apps/worker/test/editorial-personalization.spec.ts` |
+| **FR-030** | Review Deck & UI / Phase 3 | `apps/web/src/app/(dashboard)/replies/page.tsx` | `apps/web/test/engagement-review-deck.spec.ts` |
+| **FR-031** | Platform Metrics / Phase 4 | `apps/worker/src/processors/analytics.processor.ts` *(Roadmap)* | `apps/worker/test/analytics-sync.spec.ts` |
+| **FR-032** | Multi-Dim Aggregation / Phase 4 | `apps/api/src/analytics/analytics.service.ts` *(Roadmap)* | `apps/api/test/analytics-aggregation.spec.ts` |
+| **FR-033** | AI Insights / Phase 4 | `packages/agents/src/analytics/insights.graph.ts` *(Roadmap)* | `packages/agents/test/insights-agent.spec.ts` |
+| **FR-034** | Content Recs / Phase 4 | `packages/agents/src/content/content.graph.ts` *(Roadmap)* | `apps/worker/test/content-recs.spec.ts` |
+| **FR-035** | Rules Engine / Phase 5 | `apps/worker/src/services/rules-engine.service.ts` *(Roadmap)* | `apps/worker/test/rules-engine.spec.ts` |
+| **FR-036** | Pre-Publish Safety / Phase 5 | `packages/agents/src/safety/pre-publish.guard.ts` *(Roadmap)* | `packages/agents/test/safety-guard.spec.ts` |
+| **FR-037** | Native A/B Testing / Phase 5 | `apps/api/src/experiments/experiment.service.ts` *(Roadmap)* | `apps/api/test/experiments.spec.ts` |
+| **FR-038** | Profile Adaptation / Phase 5 | `packages/agents/src/profile/adaptation.graph.ts` *(Roadmap)* | `packages/agents/test/adaptation.spec.ts` |

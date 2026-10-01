@@ -25,7 +25,7 @@ $$\text{Incoming Webhook/Poll} \longrightarrow \text{Loop Breaker} \longrightarr
   4. **Worker Test Coverage Expansion**: Registered `engagement-fenced-publish.spec.ts` and `engagement-acceptance-suite.spec.ts` into `apps/worker/package.json` test suite.
 - **Verification Results**:
   - **Turbo Lint / Typecheck**: `19/19` tasks successful (0 errors across 11 packages).
-  - **Automated Tests**: **193 passed, 0 failed** across `apps/web`, `apps/api`, `apps/worker`, `packages/database`, `packages/agents`, `packages/ai`, and `packages/threads-client`.
+  - **Automated Tests**: **290 passed, 0 failed** across `apps/web` (61), `apps/api` (58), `apps/worker` (94), `packages/database` (33), `packages/agents` (11), `packages/ai` (13), and `packages/threads-client` (20).
   - **Zero Regressions**: All existing Phase 0–2 features (auth, tokens, ingestion, style profiling, scheduling, calendar, publishing) remain 100% operational.
 
 ---
@@ -141,14 +141,14 @@ $$\text{Incoming Webhook/Poll} \longrightarrow \text{Loop Breaker} \longrightarr
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
 | **`@threadpilot/types`** | Static | — | — | — | — | Zod schema validation, DTO types, string length validators. |
 | **`@threadpilot/observability`** | Static | — | — | — | — | Structured logging contracts, correlation IDs. |
-| **`@threadpilot/database`** | 2 | 10 | 10 | 0 | 0 | Real Neon PostgreSQL + pgvector cosine similarity, model coordinate space isolation, dual representation embeddings. |
+| **`@threadpilot/database`** | 3 | 33 | 33 | 0 | 0 | Real Neon PostgreSQL + pgvector cosine similarity, model coordinate space isolation, dual representation embeddings, 8 SQL check constraints. |
 | **`@threadpilot/threads-client`** | 4 | 21 | 20 | 0 | 1 | Token concurrency (50 parallel callers get 1 refresh), encryption, outbox dispatcher, error classification. (1 live contract skipped). |
-| **`@threadpilot/ai`** | 1 | 13 | 13 | 0 | 0 | Gemini structured output schemas, transient error retries, model fallbacks, 768-dim embeddings. |
-| **`@threadpilot/agents`** | 1 | 5 | 5 | 0 | 0 | Stylometric vector calibration, 0.88 cosine duplicate detection threshold. |
-| **`@threadpilot/api`** | 6 | 39 | 39 | 0 | 0 | Cross-tenant isolation, content service, health checks, Redis resilient resolver, and `EngagementService` API gateway with tenant idempotency. |
-| **`@threadpilot/worker`** | 15 | 71 | 71 | 0 | 0 | Ingestion E2E, crash recovery, embedding reconciliation, engagement ingest, intent classify, smoke pipeline, autonomy gates, fenced publisher, and acceptance suite A–M. |
-| **`@threadpilot/web`** | 2 | 35 | 35 | 0 | 0 | Calendar schedules, timezone displays, wall-clock UTC instant conversions, review queue filters, search filters, FSM modal state checks. |
-| **TOTALS** | **31 Suites** | **194 Tests** | **193** | **0** | **1** | **100% Pass Rate Across Entire Repository** |
+| **`@threadpilot/ai`** | 2 | 13 | 13 | 0 | 0 | Gemini structured output schemas, transient error retries, model fallbacks, 768-dim embeddings. |
+| **`@threadpilot/agents`** | 2 | 11 | 11 | 0 | 0 | Stylometric vector calibration, 0.88 cosine duplicate detection threshold, engagement classification, reply generation, 500-code-unit safety gate. |
+| **`@threadpilot/api`** | 9 | 58 | 58 | 0 | 0 | Cross-tenant isolation, content service, health checks, Redis resilient resolver, engagement controller gateway, and tenant-scoped idempotency. |
+| **`@threadpilot/worker`** | 20 | 94 | 94 | 0 | 0 | Ingestion E2E, crash recovery, embedding reconciliation, engagement ingest, intent classify, smoke pipeline, autonomy gates, fenced publisher, and acceptance suite A–M. |
+| **`@threadpilot/web`** | 5 | 61 | 61 | 0 | 0 | Calendar schedules, timezone displays, wall-clock UTC instant conversions, review queue filters, search filters, keyboard triage shortcuts, modal state checks. |
+| **TOTALS** | **45 Suites** | **291 Tests** | **290** | **0** | **1** | **100% Pass Rate Across Entire Repository** |
 
 ### 4.2. Monorepo Turborepo Lint & Typecheck
 ```bash
@@ -189,7 +189,7 @@ $$\text{Incoming Webhook/Poll} \longrightarrow \text{Loop Breaker} \longrightarr
 
 The ThreadPilot codebase has been fully audited and brought to **100% compliance** with all requirements in the Phase 0–2 architecture specification and the Phase 3 v2.4-Final-Frozen implementation plan.
 
-- All 193 automated tests pass with zero failures.
+- All 290 automated tests pass with zero failures.
 - All 11 monorepo packages compile cleanly under TypeScript strict mode.
 - All database constraints, partial indexes, and models are deployed and active.
 - All worker processors, reconciliation scans, AI graphs, and API endpoints are wired and operational.

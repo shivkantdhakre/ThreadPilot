@@ -19,13 +19,16 @@
 
 ### ✨ Highlights
 
-- **🧬 Personal Voice & Stylometric Fingerprinting**: Real-time extraction of 8 distinct stylistic metrics (post length, sentence cadence, question ratio, emoji frequency, first-person voice, technical depth, contrary hooks, and list patterns).
-- **🧠 Vector Memory & Exemplar Retrieval**: Semantic similarity matching over past successful posts using Google GenAI embeddings (`gemini-embedding-2`) with cosine distance ranking in PostgreSQL `pgvector`. Vector coordinate space purity is preserved without cross-model mixing.
-- **🛡️ Stateless Interactions API Requests**: ThreadPilot uses stateless Interactions API requests (`store: false`) and does not rely on Gemini's server-side interaction history as its application memory. PostgreSQL + pgvector serves as the sole authoritative memory store.
-- **🔒 In-Memory Token Security & OAuth 2.0 PKCE**: Access tokens are held exclusively in-memory (never persisted in `localStorage` to eliminate XSS risks), paired with HttpOnly, SameSite=Lax rotating refresh tokens and strict multi-tenant workspace isolation.
-- **⚡ Asynchronous Queue Architecture**: Powered by Redis and BullMQ with live Server-Sent Events (SSE) streaming real-time job lifecycle stages (`QUEUED` → `LOADING_MEMORY` → `GENERATING` → `EVALUATING` → `PERSISTING` → `COMPLETE`).
-- **🛡️ Deterministic Final Validation Gate**: Post-editing validation node ensures AI polishing never expands content past 500 characters or produces empty drafts.
-
+- **🧬 Personal Voice & Stylometric Fingerprinting (Phase 1)**: Real-time extraction of 8 distinct stylistic metrics (post length, sentence cadence, question ratio, emoji frequency, first-person voice, technical depth, contrary hooks, and list patterns).
+- **🧠 Vector Memory & Exemplar Retrieval (Phase 1)**: Semantic similarity matching over past successful posts using Google GenAI embeddings (`gemini-embedding-2`) with cosine distance ranking in PostgreSQL `pgvector`. Vector coordinate space purity is strictly preserved without cross-model mixing.
+- **🛡️ Stateless Interactions API Requests (Phase 1)**: ThreadPilot uses stateless Interactions API requests (`store: false`) and does not rely on Gemini's server-side interaction history as its application memory. PostgreSQL + `pgvector` serves as the sole authoritative memory store.
+- **🔒 In-Memory Token Security & OAuth 2.0 PKCE (Phase 1)**: Access tokens are held exclusively in-memory (never persisted in `localStorage` to eliminate XSS risks), paired with HttpOnly, SameSite=Lax rotating refresh tokens and strict multi-tenant workspace isolation.
+- **⚡ Asynchronous Queue Architecture (Phases 1–3)**: Powered by Redis and BullMQ with live Server-Sent Events (SSE) streaming real-time job lifecycle stages (`QUEUED` → `LOADING_MEMORY` → `GENERATING` → `EVALUATING` → `PERSISTING` → `COMPLETE`).
+- **📅 Resilient Two-Phase Scheduled Publishing (Phase 2)**: Atomic CAS lease claiming, 24-hour rolling Meta rate limit protection, container-to-publication lifecycle, and autonomous 3-scan feed reconciliation for ambiguous network partitions.
+- **💬 Autonomous Engagement Engine (Phase 3)**: Multi-tier adaptive ingestion (HOT/WARM/COLD sync cadences), loop-breaker invariants preventing circular bot-to-bot replies, 14-state `InteractionStatus` FSM, and 13-state `ReplyExecutionStatus` FSM.
+- **🛡️ Multi-Stage Safety Grounding & 500-Code-Unit Hard Ceiling (Phase 3)**: Pre-generation intent and risk classification, post-generation factuality and safety verification, prompt injection defense, and strict UTF-16 code unit ceiling enforcement.
+- **✏️ Editorial Feedback Loop & Exemplar Learning (Phase 3)**: Tracks word diffs and operator revisions during review triage, embedding approved exemplars into vector memory for continual stylometric personalization.
+- **🖥️ Community Review Deck & Real-Time Telemetry (Phase 3)**: Next.js 15 review interface with segmented filtering (`NEEDS_REVIEW`, `REPLIED`, `AUTO_REPLIED`, `DISMISSED`), rapid single-key triage shortcuts (`a`, `d`, `r`, `e`), optimistic 409 CAS conflict handling, and live SSE telemetry.
 
 ---
 
@@ -35,51 +38,98 @@
 flowchart TD
     subgraph Client ["Frontend (Next.js 15 + TailwindCSS)"]
         UI["Web App (Port 3000)"]
-        SSE["SSE / Polling Client"]
+        Studio["Content Studio & Editor"]
+        Calendar["Publishing Calendar (/schedule)"]
+        ReviewDeck["Community Review Deck (/replies)"]
+        Telemetry["Real-Time Dashboard Telemetry"]
+        SSEClient["SSE / Telemetry Client"]
     end
 
-    subgraph Gateway ["API Layer (NestJS 11)"]
-        API["REST API (Port 3001)"]
-        Auth["Auth & Passport JWT"]
-        OAuth["Threads OAuth & PKCE"]
+    subgraph Gateway ["API Layer (NestJS 11 - Port 3001)"]
+        API["REST API Gateway"]
+        Auth["Auth & Refresh Token Rotation"]
+        OAuth["Threads OAuth 2.0 PKCE"]
+        ContentSvc["Content & Scheduling Service"]
+        EngageCtrl["Engagement Controller & Idempotency"]
+        EngageGateway["Engagement SSE Gateway"]
+        PersonalizeSvc["Editorial Personalization Service"]
     end
 
-    subgraph Queue ["Message Broker & Cache"]
-        Redis[("Redis / BullMQ")]
+    subgraph Queue ["Message Broker & Distributed State (Redis 7)"]
+        BullMQ["BullMQ Distributed Queues"]
+        QPublish["publishing / event-outbox"]
+        QEngage["engagement-ingest / classify"]
+        QReply["reply-publish / feedback"]
+        Locks["Redlock Distributed Leases"]
     end
 
-    subgraph Workers ["Async Worker Service (NestJS 11)"]
-        Worker["Worker Service (Port 3002)"]
-        IngestProc["Ingestion Processor"]
-        StyleProc["Style Extractor"]
-        ContentProc["Content Generation Graph"]
+    subgraph Workers ["Async Worker Service (NestJS 11 - Port 3002)"]
+        Worker["Worker Core"]
+        IngestProc["Historical & Adaptive Ingestion"]
+        PubProc["Two-Phase Publishing Processor"]
+        PubReconciler["Publishing Feed Reconciler (Scans 1-3)"]
+        EngageIngestProc["Engagement Ingestion & Loop Breaker"]
+        ReplyPubProc["Fenced Reply Publisher & Ambiguity Handler"]
+        EditorialProc["Editorial Feedback Processor"]
     end
 
     subgraph Intelligence ["AI Layer (@threadpilot/ai & @threadpilot/agents)"]
-        GeminiRouter["Model Router & Fallback Chain"]
-        GeminiFlash["Gemini Flash (Content & Extraction)"]
-        GeminiEmbed["Gemini Embeddings (768-dim)"]
+        GeminiRouter["Model Router & Resilient Fallback"]
+        StyleGraph["Style Extraction Graph"]
+        ContentGraph["Content Generation & Polishing Graph"]
+        ClassifierGraph["Intent & Risk Classification Graph"]
+        ReplyGraph["Contextual Reply Generation Graph"]
+        SafetyGate["Post-Generation Safety & Grounding Gate"]
     end
 
-    subgraph Storage ["Persistence"]
-        Postgres[("PostgreSQL + pgvector (Neon)")]
+    subgraph Platform ["External Integrations"]
+        ThreadsAPI["Meta Threads Graph API"]
+        GeminiAPI["Google Gemini 2.5 & Embeddings"]
+    end
+
+    subgraph Storage ["Persistence Layer"]
+        Postgres[("PostgreSQL 16 + pgvector (Neon)")]
+        FSMs["14-State Interaction & 13-State Reply FSMs"]
+        CheckConstraints["8 SQL Check Constraints & Vector Memory"]
     end
 
     UI -->|REST / HTTPS| API
-    UI -->|Listen Events| API
+    SSEClient -->|SSE Streams| EngageGateway
     API --> Auth
     API --> OAuth
-    API -->|Dispatch Jobs| Redis
-    Redis --> Worker
+    API --> ContentSvc
+    API --> EngageCtrl
+    EngageCtrl --> PersonalizeSvc
+    
+    API -->|Dispatch Jobs| BullMQ
+    BullMQ --> QPublish
+    BullMQ --> QEngage
+    BullMQ --> QReply
+    
     Worker --> IngestProc
-    Worker --> StyleProc
-    Worker --> ContentProc
-    StyleProc --> GeminiRouter
-    ContentProc --> GeminiRouter
-    GeminiRouter --> GeminiFlash
-    GeminiRouter --> GeminiEmbed
+    Worker --> PubProc
+    Worker --> PubReconciler
+    Worker --> EngageIngestProc
+    Worker --> ReplyPubProc
+    Worker --> EditorialProc
+
+    Worker --> Intelligence
+    StyleGraph --> GeminiRouter
+    ContentGraph --> GeminiRouter
+    ClassifierGraph --> GeminiRouter
+    ReplyGraph --> GeminiRouter
+    SafetyGate --> GeminiRouter
+    GeminiRouter --> GeminiAPI
+
+    PubProc --> ThreadsAPI
+    ReplyPubProc --> ThreadsAPI
+    IngestProc --> ThreadsAPI
+    PubReconciler --> ThreadsAPI
+
     Worker --> Postgres
     API --> Postgres
+    Postgres --> FSMs
+    Postgres --> CheckConstraints
 ```
 
 ---
@@ -91,17 +141,30 @@ ThreadPilot is organized as an efficient Turborepo monorepo powered by `pnpm`:
 ```
 threadpilot/
 ├── apps/
-│   ├── api/                 # NestJS REST API (Auth, OAuth, Workspaces, Jobs, Drafts)
-│   ├── web/                 # Next.js 15 Frontend (App Router, Dashboard, Profile, Creator)
-│   └── worker/              # NestJS BullMQ Worker executing LangGraph workflows
+│   ├── api/                 # NestJS REST API (Auth, OAuth, Workspaces, Jobs, Content, Engagement, SSE)
+│   │   ├── src/auth/            # Argon2id auth, family-based refresh token rotation
+│   │   ├── src/common/          # Tenancy guards, idempotency interceptors, logging
+│   │   ├── src/content/         # Content draft authoring, versioning, and scheduling
+│   │   ├── src/engagement/      # Phase 3: Review deck controller, SSE gateway, editorial service
+│   │   └── src/threads-auth/    # OAuth 2.0 PKCE redirect & callback handlers
+│   ├── web/                 # Next.js 15 Frontend (App Router, Studio, Schedule, Replies Deck)
+│   │   ├── src/app/             # Pages: /creator, /schedule, /replies, /dashboard, /settings
+│   │   ├── src/components/      # UI: engagement cards, thread tree, keyboard triage, modals
+│   │   └── src/hooks/           # Custom hooks: useEngagementSSE, useKeyboardShortcuts, useJobProgress
+│   └── worker/              # NestJS BullMQ Worker executing resilient pipelines & agents
+│       ├── src/processors/      # Publishing, Ingestion, Engagement Ingest, Reply Publisher
+│       └── src/services/        # Reconciliation scans, feed verification, lease managers
 ├── packages/
-│   ├── agents/              # LangGraph workflows (Style extraction, Content generation)
+│   ├── agents/              # LangGraph workflows
+│   │   ├── src/content/         # Content generation, idea discovery, validation gate
+│   │   ├── src/profile/         # Voice extraction, stylometric fingerprinting
+│   │   └── src/engagement/      # Phase 3: Classifier graph, Reply graph, Safety grounding gate
 │   ├── ai/                  # AI adapters (Google GenAI, Model Router, Resilient Fallback)
-│   ├── config/              # Shared configuration schemas
-│   ├── database/            # Prisma schema, migrations, and MemoryRepository (pgvector)
+│   ├── config/              # Shared configuration schemas & environment validation
+│   ├── database/            # Prisma schema, migrations (0001-0007), and MemoryRepository (pgvector)
 │   ├── observability/       # Pino logger and OpenTelemetry instrumentation
-│   ├── prompts/             # Version-controlled prompt catalog & few-shot examples
-│   ├── threads-client/      # Meta Threads API SDK (OAuth exchange, Ingestion, Refresh)
+│   ├── prompts/             # Version-controlled prompt catalog & few-shot exemplars
+│   ├── threads-client/      # Meta Threads API SDK (OAuth exchange, publishing, rate limits)
 │   └── types/               # Shared TypeScript interfaces, DTOs, and schemas
 └── scripts/
     └── comprehensive-audit-test.js  # 29-step end-to-end integration & security test suite
@@ -240,29 +303,28 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## 🧪 Automated Testing & Verification
 
-ThreadPilot is thoroughly verified across unit, integration, live provider, and security layers:
+ThreadPilot is thoroughly verified across unit, integration, live provider, and security layers with **290 automated tests (100% passing)**:
 
-### 1. Package & App Unit Test Suites
+### 1. Monorepo Test Coverage Breakdown
 
-Run all automated unit, crash recovery, and negative-path test suites across the monorepo:
+Run all automated unit, crash recovery, and integration test suites across the monorepo:
 
 ```bash
 pnpm test
 ```
 
-| Level | Test Suite | Package / App | Coverage & Guarantees Verified |
+| Package / App | Tests | Key Test Suites | Critical Guarantees Verified |
 |---|---|---|---|
-| **Unit** | **Interactions API & Capabilities** | `@threadpilot/ai` | `interactions.create()` payload, `store: false`, Zod JSON schema validation, `getCapabilities()`, vector coordinate space purity |
-| **Unit** | **Gemini Embedding 2 Pipeline** | `@threadpilot/ai` | Prefix formatting (`title: ... | text: ...`, `task: search result | query: ...`, `task: sentence similarity | query: ...`), assertion of NO `taskType` in API payload, 768-dim validation |
-| **Unit** | **Error Classification** | `@threadpilot/ai` | Fast-fail on 4xx/schema errors, exponential backoff on 429/5xx, `TIMEOUT` handling, streaming |
-| **Unit** | **Duplicate Calibration** | `@threadpilot/agents` | Calibration benchmark across true duplicates, related-but-distinct, and unrelated posts against real Gemini Embedding 2 vectors (`DuplicatePolicy` threshold: 0.88) |
-| **Unit** | **Embedding Provenance & Isolation** | `@threadpilot/database` | Provenance metadata (`embeddingModel`, `dimensions`, `taskType`, `pipelineVersion: v2`), pipeline version & symmetric taskType isolation in vector queries |
-| **Integration** | **OAuth Negative Paths** | `@threadpilot/threads-client` | PKCE handshake, invalid state, TTL expired state, atomic one-time state consumption (`getdel`), server-side workspace identity enforcement |
-| **Integration** | **Crash Recovery & Idempotency** | `@threadpilot/worker` | Idempotent skip on completed jobs, result caching recovery across process crashes (at-most-once DB effect; external AI call retry-safe via hash recovery) |
-| **Integration** | **Ingestion Interruption** | `@threadpilot/worker` | Multi-page pagination termination (no cursor), mid-stream interruption retry without duplicate post creation (`socialAccountId_externalId`) |
-| **Contract** | **Threads Graph API Contract** | `@threadpilot/threads-client` | Response shapes for `/me`, `/me/threads`, `/me/threads_publishing_limit`, rate-limit and auth error propagation |
-| **Live Smoke** | **Google Gemini Live Smoke** | `@threadpilot/ai` | Real Google servers: Interactions API (`store: false`) + Gemini Embedding 2 (DOCUMENT, QUERY, SIMILARITY, 768 dims, wire-level absence of `taskType`, semantic duplicate discrimination) |
-| **E2E Security** | **Cross-Tenant Isolation** | `@threadpilot/api` | `WorkspaceScopeGuard` 403 authorization, database query scoping (`where: { workspaceId, id }`) returning 404 for drafts, style examples, memories, jobs, and notifications |
+| **`@threadpilot/database`** | **33** | `engagement-schema-constraints.spec.ts`, `real-pgvector-duplicate.spec.ts`, `memory.repository.spec.ts` | 8 SQL check constraints (priority 1–10, confidence 0–1, non-empty body, user rating -1/1), pgvector 768-dim space purity, duplicate deduplication |
+| **`@threadpilot/ai`** | **13** | `gemini-provider.spec.ts`, `gemini-live-smoke.spec.ts` | Stateless Interactions API (`store: false`), error classification (429 backoff, 4xx abort), Gemini Embedding 2 prefix pipeline, model fallback chain |
+| **`@threadpilot/agents`** | **11** | `engagement-agents.spec.ts`, `duplicate-calibration.spec.ts` | Style extraction graph, duplicate calibration (0.88 threshold), intent classification, reply generation graph, 500-code-unit safety gate |
+| **`@threadpilot/threads-client`** | **20** | `threads-api.client.spec.ts`, `token-refresh-concurrency.spec.ts`, `oauth-negative-paths.spec.ts`, `threads-live-contract.spec.ts` | OAuth 2.0 PKCE handshake, token encryption (AES-256-GCM), refresh concurrency locking, platform rate-limit error propagation |
+| **`@threadpilot/worker`** | **94** | `publishing-processor.spec.ts`, `publishing-reconciliation.spec.ts`, `engagement-ingest.spec.ts`, `engagement-classify.spec.ts`, `engagement-fenced-publish.spec.ts`, `engagement-acceptance-suite.spec.ts`, `editorial-personalization.spec.ts` | Two-phase publishing FSM, CAS lease claims, 3-scan feed reconciler, loop breaker invariant ($N \le 2$), intent triage, fenced CAS reply publisher, word diff extraction |
+| **`@threadpilot/api`** | **58** | `auth-service.spec.ts`, `cross-tenant-isolation.spec.ts`, `content-service.spec.ts`, `engagement-controller-gateway.spec.ts`, `engagement-service.spec.ts` | Argon2id auth, family-based refresh rotation, `WorkspaceScopeGuard` 403 enforcement, optimistic 409 conflict handling, SSE telemetry streaming |
+| **`@threadpilot/web`** | **61** | `engagement-review-deck.spec.ts`, `engagement-ui-integration.spec.ts`, `calendar-schedules.spec.ts`, `auth-client-security.spec.ts`, `timezone-display.spec.ts` | Community review deck tab filters, keyboard triage shortcuts (`a`, `d`, `r`, `e`), textarea shortcut suppression, calendar scheduling, in-memory token safety |
+| **Total Monorepo Suite** | **290** | **100% Passing Tests** | **Zero known flaky tests, strict database constraints, end-to-end multi-tenant isolation** |
+
+---
 
 ### 2. Live Gemini Interactions & Embedding Smoke Test
 
@@ -279,6 +341,8 @@ Validates:
 - Gemini Embedding 2 execution across `DOCUMENT`, `QUERY`, and `SIMILARITY` formats
 - Wire-level JSON verification confirming NO `taskType` request field is transmitted in API payloads
 - Live end-to-end semantic duplicate discrimination: verifies that a paraphrased duplicate yields high similarity (`0.9434 >= 0.88`) while a same-topic contrasting post remains safely below threshold (`0.8214 < 0.88`) with a >0.12 separation margin
+
+---
 
 ### 3. 29-Step Live Integration Audit
 
@@ -309,27 +373,26 @@ node scripts/comprehensive-audit-test.js
 ══════════════════════════════════════════════════════
 ```
 
-
 ---
 
 ## 🔑 Key Features Deep Dive
 
-### 1. Dynamic Stylometric Profiler
+### 1. Dynamic Stylometric Profiler (Phase 1)
 
 ThreadPilot extracts key markers from your authentic Threads posts:
 
-| Metric                  | Description                                                 |
-| :---------------------- | :---------------------------------------------------------- |
-| **Avg Post Length**     | Character count distribution across historical posts        |
-| **Sentence Length**     | Word cadence and rhythm                                     |
-| **Question Frequency**  | Frequency of rhetorical and engagement queries              |
-| **Emoji Density**       | Placement and density of emojis per post                    |
-| **First-Person Voice**  | Proportion of active personal narrative (`I`, `we`, `my`)   |
-| **Technical Vocab**     | Density of specialized industry and domain terminology      |
-| **Contrary Hooks**      | Frequency of contrarian and counter-intuitive opening lines |
-| **List / Bullet Usage** | Formatting tendencies toward multi-line structured lists    |
+| Metric | Description |
+| :--- | :--- |
+| **Avg Post Length** | Character count distribution across historical posts |
+| **Sentence Length** | Word cadence and rhythm |
+| **Question Frequency** | Frequency of rhetorical and engagement queries |
+| **Emoji Density** | Placement and density of emojis per post |
+| **First-Person Voice** | Proportion of active personal narrative (`I`, `we`, `my`) |
+| **Technical Vocab** | Density of specialized industry and domain terminology |
+| **Contrary Hooks** | Frequency of contrarian and counter-intuitive opening lines |
+| **List / Bullet Usage** | Formatting tendencies toward multi-line structured lists |
 
-### 2. Resilient AI Fallback Engine
+### 2. Resilient AI Fallback Engine (Phase 1)
 
 To prevent workflow disruptions caused by API rate-limits (`429 RESOURCE_EXHAUSTED`) or transient server spikes (`503 UNAVAILABLE`), `@threadpilot/ai` includes an intelligent configuration-driven failover loop:
 
@@ -344,6 +407,36 @@ Configured Primary (e.g. gemini-3.5-flash-lite)
     Configured Fallback (e.g. gemini-3.1-flash-lite ──> gemini-3.7-flash)
             └── Executed strictly through identical Interactions API (store: false)
 ```
+
+### 3. Resilient Two-Phase Publishing Engine (Phase 2)
+
+Thread publishing on Meta Threads requires creating a media container followed by a publish commit. ThreadPilot wraps this in a fault-tolerant state machine:
+- **Atomic CAS Lease Claiming:** Distributed workers claim scheduled posts using atomic Compare-And-Swap database leases, eliminating race conditions across multiple worker pods.
+- **24-Hour Rolling Quota Guard:** Intercepts outgoing requests against Meta's platform limit (250 posts/24h). If limits are approached, jobs enter `QUOTA_BLOCKED` without consuming attempt retries.
+- **Ambiguity Reconciliation Scans:** If a network partition or HTTP 500 occurs during container publication, the reconciler executes a 3-stage scan against the author's live public feed before attempting a retry, guaranteeing zero duplicate Threads posts.
+- **Transactional Event Outbox:** Notifications and analytics events are persisted in `event_outbox` alongside business operations, ensuring atomic dispatch even during network failures.
+
+### 4. Autonomous Engagement & Community Intelligence Engine (Phase 3)
+
+ThreadPilot actively monitors conversations around your posts, triaging comments and generating grounded replies:
+- **Adaptive Sync Tiers:** Root posts are automatically categorized into `HOT` (active discussion, 2-minute cadence), `WARM` (moderate velocity, 10-minute cadence), and `COLD` (archived, 1-hour cadence) sync loops to optimize API quota.
+- **Conversational Loop Breaker:** Enforces an invariant ceiling ($N \le 2$ consecutive bot replies per author thread) and immediately marks self-authored comments as `NOT_REQUIRED`, permanently preventing runaway AI-to-AI reply loops.
+- **Intent & Safety Classification Graph:** Analyzes inbound comments for 8 discrete intents (`QUESTION`, `AGREEMENT`, `DISAGREEMENT`, `COMPLIMENT`, `REQUEST`, `TROLLING`, `SPAM`, `UNCLEAR`) and computes granular safety scores (`toxicityScore`, `harassmentScore`, `controversyScore`, `isPromptInjection`).
+- **Contextual Reply Generation Graph:** Synthesizes context from the root post, parent comments, author voice profile, and retrieved style exemplars to generate nuanced, authentic draft responses.
+- **Post-Generation Safety Gate:** Validates drafts against hallucinated first-person claims, controversial topics, and enforces the strict platform limit of $\le 500$ UTF-16 code units.
+- **Multi-Modal Autonomy Gate:** Operates under four tenant-configurable modes:
+  - `RULES_BASED`: High-confidence, safe responses publish autonomously; sensitive or complex comments route to review.
+  - `REVIEW_ONLY`: Every generated draft awaits explicit operator approval before dispatch.
+  - `SHADOW`: AI runs all classification and drafting workflows invisibly to benchmark performance without publishing.
+  - `OFF`: Automatic engagement ingestion and drafting are paused.
+
+### 5. Community Review Deck & Editorial Personalization (Phase 3)
+
+- **Dedicated Review Interface (`/replies`):** Segmented filter tabs (`NEEDS_REVIEW`, `REPLIED`, `AUTO_REPLIED`, `DISMISSED`, `ALL`), collapsible thread hierarchy tree, and real-time pending alert badges.
+- **Productive Single-Key Triage:** Fast-triage keyboard shortcuts (`a` to approve, `d` to dismiss, `r` to regenerate, `e` to edit inline) allow operators to process hundreds of comments per hour. Shortcuts automatically yield when typing in text areas.
+- **Editorial Memory Learning:** Captures word-level diffs when operators edit AI drafts. High-quality human revisions are indexed as few-shot exemplars in `pgvector`, continuously refining future reply style to mirror operator preferences.
+- **Optimistic Concurrency Control:** Enforces version-checked draft modifications, returning `409 Conflict` if another operator or background job updated the draft concurrently.
+- **Real-Time Telemetry Gateway:** WebSocket / SSE streaming delivers live sync status, queue counts, and emergency kill switch indicators directly to the operator dashboard.
 
 ---
 
