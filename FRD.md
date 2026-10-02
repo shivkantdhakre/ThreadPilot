@@ -683,6 +683,41 @@ stateDiagram-v2
     AUTH_REQUIRED --> [*]
 ```
 
+### 4.5 AnalyticsObservation Lifecycle (Phase 4)
+```mermaid
+stateDiagram-v2
+    [*] --> SCHEDULED : Slot Scheduled (T_1H .. T_30D)
+    SCHEDULED --> PROCESSING : Worker CAS Lease Claim (60s lease)
+    SCHEDULED --> MISSED : Window Expired Prior to Worker Claim
+    PROCESSING --> CAPTURED : API Call Succeeded & PostMetric Persisted
+    PROCESSING --> MISSED : Window Cutoff Reached In-Flight
+    PROCESSING --> FAILED : 5xx / Network Timeout (Retry via Outbox)
+    PROCESSING --> RATE_LIMITED : 429 Throttle (Exponential Backoff via Outbox)
+    PROCESSING --> DELETED : Platform 404 (Post Removed)
+    PROCESSING --> UNAVAILABLE : Platform 401/403 (Permission Revoked)
+    FAILED --> PROCESSING : Outbox Retry Dispatch
+    FAILED --> MISSED : Window Cutoff Reached
+    RATE_LIMITED --> PROCESSING : Outbox Retry Dispatch
+    RATE_LIMITED --> MISSED : Window Cutoff Reached
+    CAPTURED --> [*]
+    MISSED --> [*]
+    DELETED --> [*]
+    UNAVAILABLE --> [*]
+```
+
+### 4.6 RecommendationExposure Attribution Lifecycle (Phase 4)
+```mermaid
+stateDiagram-v2
+    [*] --> EXPOSED : Recommendation Generated & Presented to User
+    EXPOSED --> ACCEPTED : Operator Clicks "Accept" (Draft Created)
+    EXPOSED --> DISMISSED : Operator Dismisses Recommendation
+    ACCEPTED --> PUBLISHED : Draft is Scheduled & Successfully Published
+    ACCEPTED --> DISMISSED : Accepted Draft is Cancelled or Discarded
+    PUBLISHED --> EVALUATED : T_24H PostMetric Captured & Observed Lift Computed
+    EVALUATED --> [*]
+    DISMISSED --> [*]
+```
+
 ---
 
 ## 5. Non-Functional Requirements (NFRs)
@@ -697,6 +732,10 @@ stateDiagram-v2
 | **NFR-006** | **Platform Compliance** | Strict hard ceiling of 500 characters per post enforced before database commit or API call. | Unit tests in `content.graph.spec.ts` & `engagement-agents.spec.ts` |
 | **NFR-007** | **Loop Breaker Invariant** | Ingestion pipeline terminates self-echo loops immediately ($N \le 2$ consecutive bot replies per author thread). | Unit tests in `engagement-ingest.spec.ts` |
 | **NFR-008** | **Optimistic Concurrency** | Zero lost edits during concurrent operator review; 409 Conflict returned if target draft version stale. | E2E test in `engagement-controller-gateway.spec.ts` |
+| **NFR-009** | **Multiple Testing Control** | Control false discoveries across the entire hypothesis family universe $|U| = m$ using Benjamini-Hochberg FDR at $q \le 0.10$. | Algorithmic tests in `statistical-evidence.spec.ts` |
+| **NFR-010** | **Metric Immutability** | Database-engine immutability on `post_metrics`: zero UPDATE permitted; DELETE rejected unless authorized via purge session setting. | PostgreSQL trigger test in `scripts/verify-full-system-e2e.ts` |
+| **NFR-011** | **Attribution Ledger Integrity** | Enforce 1:1 attribution linkage with composite `ON DELETE RESTRICT` preventing physical deletion of active evidence. | Foreign key constraint checks in `scripts/verify-full-system-e2e.ts` |
+| **NFR-012** | **Deterministic asOf Decay** | Replayed or delayed workers compute bit-for-bit identical decay weights using canonical `asOf` propagation. | Acceptance test suite in `scripts/verify-full-system-e2e.ts` |
 
 ---
 
@@ -734,11 +773,15 @@ stateDiagram-v2
 | **FR-028** | Fenced Reply Pub / Phase 3 | `apps/worker/src/processors/reply-publish.processor.ts` | `apps/worker/test/engagement-fenced-publish.spec.ts` |
 | **FR-029** | Editorial Loop / Phase 3 | `apps/api/src/engagement/editorial-personalization.service.ts` | `apps/worker/test/editorial-personalization.spec.ts` |
 | **FR-030** | Review Deck & UI / Phase 3 | `apps/web/src/app/(dashboard)/replies/page.tsx` | `apps/web/test/engagement-review-deck.spec.ts` |
-| **FR-031** | Platform Metrics / Phase 4 | `apps/worker/src/processors/analytics.processor.ts` *(Roadmap)* | `apps/worker/test/analytics-sync.spec.ts` |
-| **FR-032** | Multi-Dim Aggregation / Phase 4 | `apps/api/src/analytics/analytics.service.ts` *(Roadmap)* | `apps/api/test/analytics-aggregation.spec.ts` |
-| **FR-033** | AI Insights / Phase 4 | `packages/agents/src/analytics/insights.graph.ts` *(Roadmap)* | `packages/agents/test/insights-agent.spec.ts` |
-| **FR-034** | Content Recs / Phase 4 | `packages/agents/src/content/content.graph.ts` *(Roadmap)* | `apps/worker/test/content-recs.spec.ts` |
-| **FR-035** | Rules Engine / Phase 5 | `apps/worker/src/services/rules-engine.service.ts` *(Roadmap)* | `apps/worker/test/rules-engine.spec.ts` |
-| **FR-036** | Pre-Publish Safety / Phase 5 | `packages/agents/src/safety/pre-publish.guard.ts` *(Roadmap)* | `packages/agents/test/safety-guard.spec.ts` |
-| **FR-037** | Native A/B Testing / Phase 5 | `apps/api/src/experiments/experiment.service.ts` *(Roadmap)* | `apps/api/test/experiments.spec.ts` |
-| **FR-038** | Profile Adaptation / Phase 5 | `packages/agents/src/profile/adaptation.graph.ts` *(Roadmap)* | `packages/agents/test/adaptation.spec.ts` |
+| **FR-031** | Fenced Observation & Ingestion / Phase 4 | `apps/worker/src/processors/analytics-sync.processor.ts` | `apps/worker/test/observation-fsm.spec.ts` |
+| **FR-032** | Multi-Dim Cohort Aggregation / Phase 4 | `apps/worker/src/processors/analytics-aggregate.processor.ts` | `apps/worker/test/dimension-resolvers.spec.ts` |
+| **FR-033** | Welch & BH-FDR Evidence / Phase 4 | `apps/worker/src/services/statistical-evidence.service.ts` | `apps/worker/test/statistical-evidence.spec.ts` |
+| **FR-034** | Evidence-Gated AI Insights / Phase 4 | `apps/worker/src/processors/analytics-insights.processor.ts` | `apps/api/test/analytics-pipeline.spec.ts` |
+| **FR-035** | Longitudinal Profile Learning / Phase 4 | `apps/worker/src/services/learning-profile.service.ts` | `apps/api/test/analytics-pipeline.spec.ts` |
+| **FR-036** | 1:1 Attribution Ledger & Recs / Phase 4 | `apps/worker/src/services/recommendation-engine.service.ts` | `scripts/verify-full-system-e2e.ts` |
+| **FR-037** | Transactional Analytics Outbox / Phase 4 | `apps/worker/src/services/analytics-outbox-dispatch.service.ts` | `apps/api/test/analytics-pipeline.spec.ts` |
+| **FR-038** | Analytics Dashboard & Deck UI / Phase 4 | `apps/web/src/app/(dashboard)/analytics/page.tsx` | `apps/web/test/analytics-ui-integration.spec.ts` |
+| **FR-039** | Rules Engine / Phase 5 | `apps/worker/src/services/rules-engine.service.ts` *(Roadmap)* | `apps/worker/test/rules-engine.spec.ts` |
+| **FR-040** | Pre-Publish Safety / Phase 5 | `packages/agents/src/safety/pre-publish.guard.ts` *(Roadmap)* | `packages/agents/test/safety-guard.spec.ts` |
+| **FR-041** | Native A/B Testing / Phase 5 | `apps/api/src/experiments/experiment.service.ts` *(Roadmap)* | `apps/api/test/experiments.spec.ts` |
+| **FR-042** | Profile Adaptation / Phase 5 | `packages/agents/src/profile/adaptation.graph.ts` *(Roadmap)* | `packages/agents/test/adaptation.spec.ts` |

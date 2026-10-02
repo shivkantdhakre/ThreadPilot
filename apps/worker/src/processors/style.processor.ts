@@ -46,7 +46,8 @@ export class StyleProcessor extends WorkerHost {
     const inputHash = createHash('sha256')
       .update(`${workspaceId}:${socialAccountId}`)
       .digest('hex');
-
+  // Helper to validate UUID strings
+  const isUuid = (id: string): boolean => /^[0-9a-fA-F-]{36}$/.test(id);
     try {
       const graph = createStyleExtractionGraph({
         db: prisma,
@@ -88,10 +89,13 @@ export class StyleProcessor extends WorkerHost {
       });
 
       // Persist AgentRun record for observability & audit trail
+      // Validate jobRecordId to ensure it's a proper UUID before persisting
+
+      const jobRecordId = existingJob && isUuid(existingJob.id) ? existingJob.id : null;
       await prisma.agentRun.create({
         data: {
           workspaceId,
-          jobRecordId: existingJob?.id ?? null,
+          jobRecordId,
           workflowId: 'style-extraction',
           workflowVersion: '1.0.0',
           status: 'SUCCESS',
@@ -118,10 +122,12 @@ export class StyleProcessor extends WorkerHost {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error({ err, requestId }, `Style extraction job failed: ${msg}`);
 
+      // Validate jobRecordId for failure case as well
+      const jobRecordId = existingJob && isUuid(existingJob.id) ? existingJob.id : null;
       await prisma.agentRun.create({
         data: {
           workspaceId,
-          jobRecordId: existingJob?.id ?? null,
+          jobRecordId,
           workflowId: 'style-extraction',
           workflowVersion: '1.0.0',
           status: 'FAILED',
@@ -133,7 +139,6 @@ export class StyleProcessor extends WorkerHost {
           error: msg,
         },
       }).catch(() => {});
-
       await this.progressService.update(requestId, {
         status: 'FAILED',
         progress: 0,

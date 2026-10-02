@@ -23,12 +23,15 @@
 - **🧠 Vector Memory & Exemplar Retrieval (Phase 1)**: Semantic similarity matching over past successful posts using Google GenAI embeddings (`gemini-embedding-2`) with cosine distance ranking in PostgreSQL `pgvector`. Vector coordinate space purity is strictly preserved without cross-model mixing.
 - **🛡️ Stateless Interactions API Requests (Phase 1)**: ThreadPilot uses stateless Interactions API requests (`store: false`) and does not rely on Gemini's server-side interaction history as its application memory. PostgreSQL + `pgvector` serves as the sole authoritative memory store.
 - **🔒 In-Memory Token Security & OAuth 2.0 PKCE (Phase 1)**: Access tokens are held exclusively in-memory (never persisted in `localStorage` to eliminate XSS risks), paired with HttpOnly, SameSite=Lax rotating refresh tokens and strict multi-tenant workspace isolation.
-- **⚡ Asynchronous Queue Architecture (Phases 1–3)**: Powered by Redis and BullMQ with live Server-Sent Events (SSE) streaming real-time job lifecycle stages (`QUEUED` → `LOADING_MEMORY` → `GENERATING` → `EVALUATING` → `PERSISTING` → `COMPLETE`).
+- **⚡ Asynchronous Queue Architecture (Phases 1–4)**: Powered by Redis and BullMQ with live Server-Sent Events (SSE) streaming real-time job lifecycle stages (`QUEUED` → `LOADING_MEMORY` → `GENERATING` → `EVALUATING` → `PERSISTING` → `COMPLETE`).
 - **📅 Resilient Two-Phase Scheduled Publishing (Phase 2)**: Atomic CAS lease claiming, 24-hour rolling Meta rate limit protection, container-to-publication lifecycle, and autonomous 3-scan feed reconciliation for ambiguous network partitions.
 - **💬 Autonomous Engagement Engine (Phase 3)**: Multi-tier adaptive ingestion (HOT/WARM/COLD sync cadences), loop-breaker invariants preventing circular bot-to-bot replies, 14-state `InteractionStatus` FSM, and 13-state `ReplyExecutionStatus` FSM.
 - **🛡️ Multi-Stage Safety Grounding & 500-Code-Unit Hard Ceiling (Phase 3)**: Pre-generation intent and risk classification, post-generation factuality and safety verification, prompt injection defense, and strict UTF-16 code unit ceiling enforcement.
 - **✏️ Editorial Feedback Loop & Exemplar Learning (Phase 3)**: Tracks word diffs and operator revisions during review triage, embedding approved exemplars into vector memory for continual stylometric personalization.
 - **🖥️ Community Review Deck & Real-Time Telemetry (Phase 3)**: Next.js 15 review interface with segmented filtering (`NEEDS_REVIEW`, `REPLIED`, `AUTO_REPLIED`, `DISMISSED`), rapid single-key triage shortcuts (`a`, `d`, `r`, `e`), optimistic 409 CAS conflict handling, and live SSE telemetry.
+- **📈 Performance Analytics & Telemetry Ingestion (Phase 4)**: 8 standardized observation slots (`T_1H` to `T_30D`), strict observation FSM with CAS lease fencing, and PostgreSQL database-engine immutability triggers on metrics with authorized purge session bypass.
+- **🧪 Rigorous Statistical Evidence Engine (Phase 4)**: Independent-group CTE aggregation, Welch's t-test with unequal sample variances, 95% confidence intervals, Cohen's d effect sizes, and Benjamini-Hochberg FDR correction controlling false discoveries at $q \le 0.10$ across the complete hypothesis family universe.
+- **🔄 Closed-Loop Intelligence & 1:1 Attribution Ledger (Phase 4)**: Longitudinal monthly profile learning with 30-day temporal half-life decay, multi-factor recommendation candidate scoring, and first-class 1:1 attribution tracking (`EXPOSED` $\rightarrow$ `ACCEPTED` $\rightarrow$ `PUBLISHED` $\rightarrow$ `EVALUATED`) with `ON DELETE RESTRICT` composite keys and observed lift evaluation.
 
 ---
 
@@ -38,10 +41,11 @@
 flowchart TD
     subgraph Client ["Frontend (Next.js 15 + TailwindCSS)"]
         UI["Web App (Port 3000)"]
-        Studio["Content Studio & Editor"]
-        Calendar["Publishing Calendar (/schedule)"]
+        Studio["Content Studio & Editor (/create)"]
+        Calendar["Publishing Calendar (/schedules)"]
         ReviewDeck["Community Review Deck (/replies)"]
-        Telemetry["Real-Time Dashboard Telemetry"]
+        AnalyticsDeck["Performance Analytics (/analytics)"]
+        LearningDeck["Closed-Loop Intelligence (/learning)"]
         SSEClient["SSE / Telemetry Client"]
     end
 
@@ -51,6 +55,7 @@ flowchart TD
         OAuth["Threads OAuth 2.0 PKCE"]
         ContentSvc["Content & Scheduling Service"]
         EngageCtrl["Engagement Controller & Idempotency"]
+        AnalyticsCtrl["Analytics & Recommendation Controller"]
         EngageGateway["Engagement SSE Gateway"]
         PersonalizeSvc["Editorial Personalization Service"]
     end
@@ -60,6 +65,7 @@ flowchart TD
         QPublish["publishing / event-outbox"]
         QEngage["engagement-ingest / classify"]
         QReply["reply-publish / feedback"]
+        QAnalytics["analytics-sync / aggregate / insights / recs"]
         Locks["Redlock Distributed Leases"]
     end
 
@@ -71,6 +77,12 @@ flowchart TD
         EngageIngestProc["Engagement Ingestion & Loop Breaker"]
         ReplyPubProc["Fenced Reply Publisher & Ambiguity Handler"]
         EditorialProc["Editorial Feedback Processor"]
+        AnalyticsSyncProc["Analytics Observation Sync Processor"]
+        AnalyticsAggregateProc["Cohort Aggregator & Welch/FDR Engine"]
+        AnalyticsInsightsProc["Evidence-Gated AI Insights Processor"]
+        AnalyticsLearningProc["Longitudinal Profile Learning Processor"]
+        OutboxDispatchSvc["Transactional Outbox Dispatcher (5s poll)"]
+        SweeperSvc["Expired Observation Sweeper Service"]
     end
 
     subgraph Intelligence ["AI Layer (@threadpilot/ai & @threadpilot/agents)"]
@@ -80,17 +92,20 @@ flowchart TD
         ClassifierGraph["Intent & Risk Classification Graph"]
         ReplyGraph["Contextual Reply Generation Graph"]
         SafetyGate["Post-Generation Safety & Grounding Gate"]
+        EvidenceSvc["Statistical Evidence & BH-FDR Service"]
+        LearningSvc["Longitudinal Learning & Decay Service"]
+        RecEngine["Multi-Factor Recommendation Engine"]
     end
 
     subgraph Platform ["External Integrations"]
-        ThreadsAPI["Meta Threads Graph API"]
+        ThreadsAPI["Meta Threads Graph API & Insights"]
         GeminiAPI["Google Gemini 2.5 & Embeddings"]
     end
 
     subgraph Storage ["Persistence Layer"]
         Postgres[("PostgreSQL 16 + pgvector (Neon)")]
-        FSMs["14-State Interaction & 13-State Reply FSMs"]
-        CheckConstraints["8 SQL Check Constraints & Vector Memory"]
+        FSMs["Observation, Interaction & Reply FSMs"]
+        CheckConstraints["PostMetric Immutability & ON DELETE RESTRICT Constraints"]
     end
 
     UI -->|REST / HTTPS| API
@@ -99,12 +114,14 @@ flowchart TD
     API --> OAuth
     API --> ContentSvc
     API --> EngageCtrl
+    API --> AnalyticsCtrl
     EngageCtrl --> PersonalizeSvc
     
     API -->|Dispatch Jobs| BullMQ
     BullMQ --> QPublish
     BullMQ --> QEngage
     BullMQ --> QReply
+    BullMQ --> QAnalytics
     
     Worker --> IngestProc
     Worker --> PubProc
@@ -112,6 +129,10 @@ flowchart TD
     Worker --> EngageIngestProc
     Worker --> ReplyPubProc
     Worker --> EditorialProc
+    Worker --> AnalyticsSyncProc
+    Worker --> AnalyticsAggregateProc
+    Worker --> AnalyticsInsightsProc
+    Worker --> AnalyticsLearningProc
 
     Worker --> Intelligence
     StyleGraph --> GeminiRouter
@@ -123,6 +144,7 @@ flowchart TD
 
     PubProc --> ThreadsAPI
     ReplyPubProc --> ThreadsAPI
+    AnalyticsSyncProc --> ThreadsAPI
     IngestProc --> ThreadsAPI
     PubReconciler --> ThreadsAPI
 
@@ -303,7 +325,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## 🧪 Automated Testing & Verification
 
-ThreadPilot is thoroughly verified across unit, integration, live provider, and security layers with **290 automated tests (100% passing)**:
+ThreadPilot is thoroughly verified across unit, integration, live provider, and security layers with **327 automated tests across 11 packages (100% passing)** plus the Master E2E Verification Suite:
 
 ### 1. Monorepo Test Coverage Breakdown
 
@@ -319,14 +341,74 @@ pnpm test
 | **`@threadpilot/ai`** | **13** | `gemini-provider.spec.ts`, `gemini-live-smoke.spec.ts` | Stateless Interactions API (`store: false`), error classification (429 backoff, 4xx abort), Gemini Embedding 2 prefix pipeline, model fallback chain |
 | **`@threadpilot/agents`** | **11** | `engagement-agents.spec.ts`, `duplicate-calibration.spec.ts` | Style extraction graph, duplicate calibration (0.88 threshold), intent classification, reply generation graph, 500-code-unit safety gate |
 | **`@threadpilot/threads-client`** | **20** | `threads-api.client.spec.ts`, `token-refresh-concurrency.spec.ts`, `oauth-negative-paths.spec.ts`, `threads-live-contract.spec.ts` | OAuth 2.0 PKCE handshake, token encryption (AES-256-GCM), refresh concurrency locking, platform rate-limit error propagation |
-| **`@threadpilot/worker`** | **94** | `publishing-processor.spec.ts`, `publishing-reconciliation.spec.ts`, `engagement-ingest.spec.ts`, `engagement-classify.spec.ts`, `engagement-fenced-publish.spec.ts`, `engagement-acceptance-suite.spec.ts`, `editorial-personalization.spec.ts` | Two-phase publishing FSM, CAS lease claims, 3-scan feed reconciler, loop breaker invariant ($N \le 2$), intent triage, fenced CAS reply publisher, word diff extraction |
-| **`@threadpilot/api`** | **58** | `auth-service.spec.ts`, `cross-tenant-isolation.spec.ts`, `content-service.spec.ts`, `engagement-controller-gateway.spec.ts`, `engagement-service.spec.ts` | Argon2id auth, family-based refresh rotation, `WorkspaceScopeGuard` 403 enforcement, optimistic 409 conflict handling, SSE telemetry streaming |
-| **`@threadpilot/web`** | **61** | `engagement-review-deck.spec.ts`, `engagement-ui-integration.spec.ts`, `calendar-schedules.spec.ts`, `auth-client-security.spec.ts`, `timezone-display.spec.ts` | Community review deck tab filters, keyboard triage shortcuts (`a`, `d`, `r`, `e`), textarea shortcut suppression, calendar scheduling, in-memory token safety |
-| **Total Monorepo Suite** | **290** | **100% Passing Tests** | **Zero known flaky tests, strict database constraints, end-to-end multi-tenant isolation** |
+| **`@threadpilot/worker`** | **127** | `statistical-evidence.spec.ts`, `observation-fsm.spec.ts`, `dimension-resolvers.spec.ts`, `publishing-processor.spec.ts`, `publishing-reconciliation.spec.ts`, `engagement-ingest.spec.ts`, `engagement-classify.spec.ts`, `engagement-fenced-publish.spec.ts`, `engagement-acceptance-suite.spec.ts` | Welch's t-test, BH-FDR correction, observation FSM transitions, two-phase publishing FSM, CAS lease claims, 3-scan feed reconciler, loop breaker invariant ($N \le 2$), intent triage, fenced CAS reply publisher |
+| **`@threadpilot/api`** | **62** | `analytics-pipeline.spec.ts`, `analytics-service.spec.ts`, `auth-service.spec.ts`, `cross-tenant-isolation.spec.ts`, `content-service.spec.ts`, `engagement-controller-gateway.spec.ts`, `engagement-service.spec.ts` | Multi-dimensional aggregation, empirical optimal discovery, Argon2id auth, family-based refresh rotation, `WorkspaceScopeGuard` 403 enforcement, optimistic 409 conflict handling, SSE telemetry streaming |
+| **`@threadpilot/web`** | **61** | `analytics-ui-integration.spec.ts`, `engagement-review-deck.spec.ts`, `engagement-ui-integration.spec.ts`, `calendar-schedules.spec.ts`, `auth-client-security.spec.ts`, `timezone-display.spec.ts` | Analytics dimension formatting, optimal window badges, community review deck tab filters, keyboard triage shortcuts (`a`, `d`, `r`, `e`), calendar scheduling, in-memory token safety |
+| **Total Monorepo Suite** | **327** | **100% Passing Tests** | **Zero known flaky tests, strict database constraints, end-to-end multi-tenant isolation** |
 
 ---
 
-### 2. Live Gemini Interactions & Embedding Smoke Test
+### 2. Master End-to-End System Verification Suite
+
+Run the comprehensive master verification script across all 6 critical system domains:
+
+```bash
+npx tsx scripts/verify-full-system-e2e.ts
+```
+
+```text
+================================================================
+   THREADPILOT MASTER END-TO-END FEATURE & LIFECYCLE AUDIT      
+================================================================
+
+--- 1. Multi-Tenant Foundation & AES-256 Token Vault ---
+  [PASS] Token encrypted with AES-256-GCM format version 1
+  [PASS] Decrypted token matches raw secret byte-for-byte
+  [PASS] Tenant, encrypted social account, sync state, and scoring configuration initialized in PostgreSQL
+
+--- 2. Observation Scheduling, Metrics Ingestion & Aggregation ---
+  [PASS] Aggregated cohort persisted with Welch p-value: 0.00002 and FDR: PASS
+
+--- 3. Downstream Intelligence Chain & Outbox Execution ---
+  [PASS] Insights generated: 1
+  [PASS] Active Insight committed to database
+  [PASS] Insight assigned HIGH_SIGNAL grade
+  [PASS] Profile learning processed weights successfully
+  [PASS] LearnedDimensionWeight created for topic tech
+  [PASS] Decayed weight is positive
+  [PASS] Recommendations generated: 2
+  [PASS] Exposed recommendations found in database (2)
+
+--- 4. API Gateway Service Endpoints ---
+  [PASS] Overview reports views >= 12500
+  [PASS] Overview reports captured windows >= 1
+  [PASS] Aggregates endpoint returns cohorts
+  [PASS] Insights endpoint returns active insights
+  [PASS] Learning profile returns weights
+  [PASS] Recommendations endpoint returns candidate exposures
+
+--- 5. Closed-Loop Lifecycle & Attribution Feedback ---
+  [PASS] Recommendation status transitioned to ACCEPTED
+  [PASS] Draft successfully created with 1-to-1 linkage
+  [PASS] Recommendation transitioned to PUBLISHED and linked publishedPostId
+  [PASS] Recommendation transitioned to EVALUATED
+  [PASS] Observed lift accurately recorded: +195.2%
+  [PASS] ON DELETE RESTRICT prevented physical deletion of referenced Insight in attribution ledger
+
+--- 6. Community Engagement, Autonomy & Ambiguity Arbitration ---
+  [PASS] Optimistic concurrency detects version number mismatch (409 Conflict check)
+  [PASS] Draft version incremented to v2 with user edited text
+  [PASS] Operator ambiguity resolved with CONFIRMED_PUBLISHED
+  [PASS] Test workspace and all relational dependencies safely purged
+
+================================================================
+  MASTER E2E VERIFICATION RESULTS: 29 PASSED, 0 FAILED
+================================================================
+```
+
+---
+
+### 3. Live Gemini Interactions & Embedding Smoke Test
 
 Perform genuine live tests against Google's Gemini Interactions and Embedding APIs using your server-side API key:
 

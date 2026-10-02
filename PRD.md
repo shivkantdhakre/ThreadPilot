@@ -233,16 +233,51 @@ timeline
   - Autonomous Reply Engine telemetry widget in `/dashboard` displaying live monitoring state, queue count, and warning banners.
   - Autonomy Mode selector and Outbound Kill Switch toggle in `/settings`.
 
-### Phase 4: Performance Analytics & Intelligence Loop _(Future Phase)_
+### Phase 4: Performance Analytics & Intelligence Loop *(Implemented — Definitive Production Baseline, v17 Frozen)*
 
-- Periodic synchronization of platform performance metrics (impressions, views, likes, replies, reposts, quotes).
-- Multi-dimensional analytics aggregation:
-  - **Post Level:** Reach, virality rate, reply engagement.
-  - **Topic Level:** Performance by subject area (e.g. AI Agents vs Web Architecture).
-  - **Format Level:** Comparative performance of one-liners, tutorials, personal anecdotes, and threads.
-  - **Temporal Level:** Best posting hours and days per social account.
-- AI-driven correlation engine: extracts verifiable hypotheses (e.g., "Contrarian hooks generate 38% more replies on technical topics with $p < 0.05$").
-- Dynamic content recommendations: suggests upcoming topics and structural improvements based on empirical data.
+- **Phase 4A — Database Schema & Relational Integrity:**
+  - 11 specialized enums (`ObservationSlot` T_1H through T_30D, `ObservationStatus`, `AggregationGranularity`, `AggregationDimension`, `EvidenceGrade`, `AnalyticsOutboxType`, `OutboxStatus`, `RecommendationAttributionStatus`, `RecommendationProvenanceType`, `HookStyle`).
+  - 8 core relational models: `AnalyticsObservation`, `PostMetric`, `PerformanceAggregate`, `Insight`, `LearnedPerformanceProfile`, `LearnedDimensionWeight`, `RecommendationExposure`, `AnalyticsOutboxEvent`, `AnalyticsSyncState`, `FollowerSnapshot`, `RecommendationScoringConfig`.
+  - Database-engine immutability trigger on `post_metrics` rejecting `UPDATE` unconditionally and rejecting `DELETE` unless authorized via transaction-local purge session (`SET LOCAL threadpilot.allow_purge = 'on'`).
+  - Strict composite unique constraints and foreign keys `(workspace_id, social_account_id)` preventing cross-tenant leakage.
+  - Attribution ledger relational integrity enforcing `ON DELETE RESTRICT` on referenced `Insight` and `LearnedDimensionWeight` records to guarantee audit preservation.
+- **Phase 4B — Transactional Outbox with CAS Lease Fencing:**
+  - Asynchronous event bus via `AnalyticsOutboxEvent` with `FOR UPDATE SKIP LOCKED` atomic claiming and 60-second lease fencing (`leaseToken`, `leaseUntil`).
+  - Deduplication key enforcement preventing duplicate database event insertion.
+  - Isolated queue job IDs derived from entity IDs, dedupe keys, and incremented `deliveryGeneration` for audited replays.
+  - Background `AnalyticsOutboxDispatchService` running a 5-second polling loop with distributed Redis leader election.
+- **Phase 4C — Ingestion with Atomic Observation Fencing & Strict FSM:**
+  - Observation lifecycle: `SCHEDULED` $\rightarrow$ `PROCESSING` (60s lease) $\rightarrow$ `CAPTURED` / `MISSED` / `FAILED` / `RATE_LIMITED` / `DELETED` / `UNAVAILABLE`.
+  - 15-second HTTP timeout with non-overlapping active heartbeat renewing lease every 10 seconds.
+  - Window cutoff CAS check: if window closes in-flight, capture is rejected, transitioning atomically to `MISSED` with zero `PostMetric` rows written.
+  - Rate limits (429) transactionally enqueue `RETRY_OBSERVATION` outbox events with exponential backoff.
+  - Background `ExpiredObservationSweeperService` running every 60s to recover dead-worker leases.
+- **Phase 4D — Multi-Dimensional Aggregation Engine:**
+  - Independent-group CTE SQL aggregation computing subject vs complement cohorts with zero Cartesian products and zero pseudoreplication.
+  - Transaction-scoped PostgreSQL advisory locks (`pg_try_advisory_xact_lock`) preventing concurrent aggregation collisions.
+  - Ingestion generation tracking with overlapping generation detection at commit time.
+- **Phase 4E — Canonical Dimension Resolvers:**
+  - Evaluates cohorts across 7 orthogonal dimensions: `TOPIC`, `FORMAT`, `HOOK_STYLE`, `PUBLISH_HOUR_UTC`, `PUBLISH_DAY_OF_WEEK`, `POST_LENGTH_BUCKET`, and `MEDIA_TYPE`.
+- **Phase 4F — Statistical Evidence & Complete Family BH-FDR Correction:**
+  - Welch's t-test with unequal sample sizes and variances, Welch-Satterthwaite degrees of freedom, 95% confidence intervals, and Cohen's d effect sizes.
+  - Benjamini-Hochberg False Discovery Rate (BH-FDR) accounting for the complete family universe $|U| = m$.
+  - Four-tier evidence grading hierarchy: `INSUFFICIENT`, `EXPLORATORY`, `DIRECTIONAL`, `HIGH_SIGNAL`.
+  - `EvidenceGrade.HIGH_SIGNAL` strictly requires passing BH-FDR (`passesFDR === true`); failing FDR caps grade at `DIRECTIONAL`.
+- **Phase 4G — Longitudinal Multi-Bucket Profile Learning:**
+  - Aggregates evidence strictly across monthly granularity buckets to prevent duplicate weighting.
+  - Evidence-gated learning: only `DIRECTIONAL` and `HIGH_SIGNAL` aggregates influence learned weights.
+  - Exponential half-life decay ($T_{1/2} = 30$ days) using immutable canonical `asOf` timestamps.
+  - Stale dimension weights deactivated transactionally upon new revision computation.
+- **Phase 4H — Closed-Loop Recommendation Engine & 1:1 Attribution Ledger:**
+  - Multi-factor candidate scoring combining explicit creator preferences, learned dimension weights, and freshness decay.
+  - First-class 1:1 attribution ledger (`RecommendationExposure`) enforcing strict FSM transitions:
+    $$\text{EXPOSED} \longrightarrow \text{ACCEPTED} \longrightarrow \text{PUBLISHED} \longrightarrow \text{EVALUATED}$$
+    or terminal dismissal (`EXPOSED` / `ACCEPTED` $\rightarrow$ `DISMISSED`).
+  - Stage-mandatory field validation (`contentIdeaId`, `draftId`, `publishedPostId`, `evaluatedPostMetricId`, `observedLift`).
+  - Observed lift evaluation against historical baseline upon `T_24H` metric capture.
+- **Phase 4I — Frontend Analytics Dashboard & Recommendation Deck:**
+  - Next.js 15 analytics interface (`/analytics`) featuring KPI summary cards, pipeline diagnostic panel with historical backfill trigger, multi-dimensional cohort tabs, and empirical top-performer early signal fallbacks.
+  - Closed-loop intelligence deck (`/learning`) presenting active AI insights with FDR badge indicators, candidate recommendations with 1-click draft creation, and learned dimension weight distributions.
 
 ### Phase 5: Autonomous Social Operator & Content Experimentation _(Future Phase)_
 
@@ -350,27 +385,38 @@ timeline
 - **Self-Healing Watchdog:** [`EngagementReconciliationService`](file:///d:/Projects/threads-automation/apps/worker/src/services/engagement-reconciliation.service.ts) executing Scans 0 to 6 recovering lost BullMQ jobs, expired leases, stuck containers, and stale sync leases.
 - **Editorial Personalization & Contamination Guard:** [`EditorialPersonalizationService`](file:///d:/Projects/threads-automation/apps/worker/src/services/editorial-personalization.service.ts) logs word-level diffs (`EditorialFeedback`) on human edits, curating positive feedback into high-quality vector exemplars while sanitizing profanity, sensitive data, and prompt leaks.
 
-### Module 11: Analytics & Performance Engine
+### Module 11: Performance Analytics & Metric Ingestion Engine (Phase 4)
 
-- **Automated Metric Ingestion:** Ingests views, likes, replies, reposts, and quotes via Meta Threads Graph API.
-- **Time-Series Metric Snapshots:** Stores periodic snapshots allowing historical reach curves and virality tracking.
-- **Normalized Scoring:** Computes engagement rates adjusted for account follower count and posting time.
+- **Automated Observation Slots:** Schedules telemetry captures at 8 standardized temporal slots: `T_1H` (velocity), `T_6H` (early traction), `T_24H` (benchmark), `T_48H`, `T_72H` (stabilization), `T_7D` (mature engagement), `T_14D`, `T_30D` (long-tail ceiling).
+- **Strict Observation FSM:** Transitions: `SCHEDULED` $\rightarrow$ `PROCESSING` (fenced with 60-second CAS lease token) $\rightarrow$ `CAPTURED` (terminal success), `MISSED` (window expiry), `FAILED` (retry scheduled), `RATE_LIMITED` (429 exponential backoff), `DELETED` (post removed), or `UNAVAILABLE` (permission revoked).
+- **Platform Metric Ingestion & Invariant Immutability:** Ingests views, likes, replies, reposts, and quotes via Meta Threads Graph API. Raw records are persisted into `post_metrics` with database-engine immutability triggers rejecting `UPDATE` and non-purge `DELETE`.
+- **NULL Safety & Derived Metrics:** Computes engagement rates (by views and followers), like rate, reply rate, and repost rate without false-zero coercion (strictly preserving NULL when platform metric missing).
 
-### Module 12: Learning Engine & Style Adaptation
+### Module 12: Multi-Dimensional Statistical Evidence Engine (Phase 4)
 
-- **Pattern Extraction:** Correlates stylometric features (e.g., question frequency, sentence length) with performance metrics.
-- **Correlation Guardrails:** Clearly demarcates statistical correlation vs causation to prevent degenerate AI feedback loops.
-- **Profile Evolution:** Proposes quarterly or monthly profile micro-adjustments subject to user approval.
+- **Independent-Group CTE Aggregation:** Groups posts across 7 dimensions (`TOPIC`, `FORMAT`, `HOOK_STYLE`, `PUBLISH_HOUR_UTC`, `PUBLISH_DAY_OF_WEEK`, `POST_LENGTH_BUCKET`, `MEDIA_TYPE`) joined against independent complement sets with zero Cartesian products.
+- **Welch's t-Test & 95% Confidence Intervals:** Robust two-tailed unequal variance hypothesis testing with Welch-Satterthwaite degrees of freedom and small-sample precondition guards ($n \ge 3$, non-zero variance).
+- **Cohen's d Effect Size:** Standardized effect size computation over independent subject vs complement groups.
+- **Benjamini-Hochberg FDR Correction:** Controls False Discovery Rate across the complete hypothesis family universe ($|U| = m$) bounding false discoveries at $q \le 0.10$.
+- **Evidence Grading Hierarchy:** `INSUFFICIENT` ($n < 3$ or degenerate variance), `EXPLORATORY` (low sample or high uncertainty), `DIRECTIONAL` (meaningful effect + adequate sample), `HIGH_SIGNAL` (robust across all criteria AND passes BH-FDR correction).
 
-### Module 13: Content Insights & Strategy Recommendations
+### Module 13: Longitudinal Profile Learning & Closed-Loop Intelligence Loop (Phase 4)
 
-- **Weekly Executive Briefing:** Summarizes top-performing topics, winning hook formats, and engagement bottlenecks.
-- **Gap Analysis:** Identifies core expertise areas that have been neglected in the recent posting calendar.
+- **Longitudinal Monthly Aggregation:** Computes longitudinal weights across historical monthly buckets, eliminating multi-counting across daily/weekly snapshots.
+- **Evidence-Gated Weighting:** Restricts learned profile updates strictly to `DIRECTIONAL` and `HIGH_SIGNAL` evidence.
+- **Temporal Half-Life Decay:** Applies exponential time-decay ($T_{1/2} = 30$ days) evaluated against canonical, immutable `asOf` timestamps.
+- **Multi-Factor Recommendation Scoring:** Evaluates candidate ideas combining explicit creator preferences (0.50), learned dimension weights (0.35), and freshness decay (0.15).
+- **1:1 Attribution Ledger & Observed Lift Tracking:** Enforces first-class attribution in `RecommendationExposure` tracking the full lifecycle:
+  $$\text{EXPOSED} \longrightarrow \text{ACCEPTED} \longrightarrow \text{PUBLISHED} \longrightarrow \text{EVALUATED}$$
+  Upon `T_24H` metric capture of a recommended post, evaluates observed engagement lift against the baseline mean and records verified impact.
+- **Attribution Ledger Immutability:** Enforces composite foreign keys with `ON DELETE RESTRICT` on referenced insights and learned weights, preserving audit history against source entity deactivation.
 
-### Module 14: Experimentation & A/B Testing Framework
+### Module 14: Transactional Analytics Outbox & Sweeper Recovery (Phase 4)
 
-- **Variant Testing:** Enables users to test two hook styles (e.g., direct statement vs contrarian observation) across similar scheduled posts.
-- **Statistical Significance Engine:** Evaluates performance deltas across 14-day observation windows.
+- **Transactional Outbox Event Bus:** All state transitions that trigger downstream async stages write to `AnalyticsOutboxEvent` within the same database transaction.
+- **SKIP LOCKED Claiming:** Outbox dispatcher claims events using `FOR UPDATE SKIP LOCKED` with 60-second lease fencing.
+- **Audited Replay Path:** Replaying failed events increments `deliveryGeneration`, yielding fresh BullMQ job IDs isolated from previous attempts.
+- **Sweeper Recovery:** `ExpiredObservationSweeperService` scans for abandoned `PROCESSING` leases, transitioning expired records to `MISSED` or scheduling retries if windows remain open.
 
 ---
 
@@ -383,6 +429,20 @@ threadpilot/
 ├── apps/
 │   ├── api/                                      # NestJS 11 Gateway Service
 │   │   └── src/
+│   │       ├── auth/                             # User authentication, Argon2id, JWT rotation
+│   │       │   ├── auth.controller.ts            # POST /auth/login, /auth/register, /auth/refresh
+│   │       │   ├── auth.service.ts               # User creation, credential validation
+│   │       │   ├── password.service.ts           # Argon2id password hashing
+│   │       │   ├── refresh-token.service.ts      # Family-based refresh token rotation
+│   │       │   └── token.service.ts              # In-memory access token signing
+│   │       ├── common/                           # Cross-cutting decorators, guards, filters, redis
+│   │       │   ├── decorators/                   # @CurrentUser(), @CurrentWorkspace()
+│   │       ├── analytics/                        # [Phase 4] Analytics & Recommendation Gateway
+│   │       │   ├── analytics.controller.ts       # GET /analytics/overview, /aggregates, /insights, /learning
+│   │       │   ├── recommendations.controller.ts # GET /analytics/recommendations, POST accept/dismiss
+│   │       │   ├── analytics.service.ts          # Aggregates, insights, and recommendation service logic
+│   │       │   ├── recommendation-validator.ts   # Stage-mandatory attribution transition checks
+│   │       │   └── analytics.module.ts           # Analytics dependency injection & controller routing
 │   │       ├── auth/                             # User authentication, Argon2id, JWT rotation
 │   │       │   ├── auth.controller.ts            # POST /auth/login, /auth/register, /auth/refresh
 │   │       │   ├── auth.service.ts               # User creation, credential validation
@@ -419,11 +479,16 @@ threadpilot/
 │   │       ├── app/
 │   │       │   ├── (auth)/                       # Authentication views (login, register, callback)
 │   │       │   ├── (dashboard)/                  # Authenticated application shell
+│   │       │   │   ├── analytics/page.tsx        # [Phase 4] Analytics Dashboard & Pipeline Diagnostic
 │   │       │   │   ├── connect/page.tsx          # Connect Threads account interface
 │   │       │   │   ├── create/page.tsx           # Content generation studio, editor & preview
 │   │       │   │   ├── dashboard/page.tsx        # Overview, metrics, autonomous reply telemetry widget
+│   │       │   │   ├── learning/page.tsx         # [Phase 4] Closed-Loop Intelligence & Recs Deck
+│   │       │   │   ├── posts/page.tsx            # Historical and published posts library
 │   │       │   │   ├── profile/page.tsx          # Voice style card, 8 metrics, retrain button
+│   │       │   │   ├── queue/page.tsx            # Queue triage & attention management
 │   │       │   │   ├── replies/page.tsx          # [Phase 3] Community Review Deck
+│   │       │   │   ├── schedules/page.tsx        # Calendar & list scheduling views
 │   │       │   │   └── settings/page.tsx         # Workspace settings & emergency kill switch toggle
 │   │       │   ├── globals.css                   # Global styles & design system tokens
 │   │       │   └── layout.tsx                    # Root application layout
@@ -439,7 +504,7 @@ threadpilot/
 │   │       │   │   ├── OperatorResolveModal.tsx  # Operator manual confirmation modal
 │   │       │   │   └── RegenerateDraftModal.tsx  # Custom prompt instructions modal
 │   │       │   ├── profile/                      # Profile & voice components
-│   │       │   ├── Sidebar.tsx                   # Main navigation bar (includes /replies)
+│   │       │   ├── Sidebar.tsx                   # Main navigation bar (includes /replies, /analytics, /learning)
 │   │       │   └── TopBar.tsx                    # Header with workspace selector & status
 │   │       ├── hooks/                            # React hooks (useAuth, useJobProgress)
 │   │       └── lib/                              # Client utilities (api-client, sse)
@@ -448,6 +513,10 @@ threadpilot/
 │       └── src/
 │           ├── health/                           # Worker health & liveness checks
 │           ├── processors/                       # BullMQ queue consumers
+│           │   ├── analytics-aggregate.processor.ts # [Phase 4] Independent-group CTE aggregation & Welch/FDR
+│           │   ├── analytics-insights.processor.ts  # [Phase 4] Evidence-gated AI insight generator
+│           │   ├── analytics-learning.processor.ts  # [Phase 4] Longitudinal profile learning & weight decay
+│           │   ├── analytics-sync.processor.ts      # [Phase 4] Fenced observation fetch & metric capture
 │           │   ├── content.processor.ts          # Executes LangGraph ContentGenerationGraph
 │           │   ├── embedding.processor.ts        # Generates Google Gemini vector embeddings
 │           │   ├── engagement-classify.processor.ts # [Phase 3] Executes InteractionClassifierGraph
@@ -461,30 +530,28 @@ threadpilot/
 │           │   └── token-refresh.processor.ts    # Background OAuth token refresh cron
 │           ├── services/                         # Internal worker helper services
 │           │   ├── ai-factory.service.ts         # ModelRouter & Gemini adapter factory
+│           │   ├── analytics-outbox-dispatch.service.ts # [Phase 4] 5s polling outbox dispatcher
+│           │   ├── analytics-outbox.service.ts   # [Phase 4] Transactional outbox writer & claimer
 │           │   ├── editorial-personalization.service.ts # [Phase 3] Word-level diff & memory curation
 │           │   ├── embedding-reconciliation.service.ts # Heals missing vector embeddings
 │           │   ├── engagement-reconciliation.service.ts # [Phase 3] Watchdog Scans 0-6
+│           │   ├── expired-observation-sweeper.service.ts # [Phase 4] Dead worker observation lease reclaimer
 │           │   ├── job-progress.service.ts       # Emits Redis pub/sub progress events for SSE
+│           │   ├── learning-profile.service.ts   # [Phase 4] Longitudinal weight recomputation & decay
+│           │   ├── observation-fsm.service.ts    # [Phase 4] Strict observation state machine transitions
 │           │   ├── publishing-reconciliation.service.ts # [Phase 2] Watchdog Scans 1-6
-│           │   └── publishing.service.ts         # Encapsulates container creation/publish
+│           │   ├── publishing.service.ts         # Encapsulates container creation/publish
+│           │   ├── recommendation-engine.service.ts # [Phase 4] Candidate scoring & exposure ledger
+│           │   └── statistical-evidence.service.ts # [Phase 4] Welch's t-test, Cohen's d, and BH-FDR
 │           └── worker.module.ts                  # Worker application root module
 │
 ├── packages/
 │   ├── agents/                                   # LangGraph Workflow Graphs
-│   │   └── src/
-│   │       ├── content/content.graph.ts          # Content generation, evaluation & 500-char gate
-│   │       ├── engagement/                       # [Phase 3] Engagement Graphs
-│   │       │   ├── interaction-classifier.graph.ts # Intent, sentiment & safety classification
-│   │       │   ├── reply-generation.graph.ts     # Context-aware 500-code-unit reply synthesizer
-│   │       │   ├── post-generation-safety.graph.ts # Factuality, grounding & safety gate
-│   │       │   └── rules-v1.ts                   # Pre-generation policy rule catalog
-│   │       ├── profile/style-extraction.graph.ts # 8-point stylometric feature extractor
-│   │       └── state.ts                          # Agent state interfaces & type guards
 │   ├── ai/                                       # AI Providers & Model Routing
 │   ├── database/                                 # Prisma Schema & Vector Repository
 │   │   ├── prisma/
-│   │   │   ├── migrations/                       # SQL migrations (0001 to 0007_engagement_engine)
-│   │   │   └── schema.prisma                     # Authoritative schema (15 enums, 9 engagement models)
+│   │   │   ├── migrations/                       # SQL migrations (0001 to 0008_analytics_engine)
+│   │   │   └── schema.prisma                     # Authoritative schema (26 enums, 24 relational models)
 │   │   └── src/
 │   │       ├── index.ts                          # Exports PrismaClient instance
 │   │       └── memory.repository.ts              # pgvector raw SQL queries (cosine similarity)
@@ -523,6 +590,11 @@ ThreadPilot adheres strictly to Meta's published Threads API constraints and dev
 | **Loop Breaker Efficacy** | $100\%$ of self-replies intercepted before classification | Triple loop breaker assertions in `engagement-ingest.spec.ts` |
 | **Reply Length Bounds** | $100\%$ of generated replies $\le 500$ UTF-16 code units | Deterministic UTF-16 counting in `reply-generation.graph.ts` |
 | **Optimistic Concurrency** | $100\%$ deterministic HTTP 409 Conflict on stale edits | Keyset version checks in `EngagementService.updateDraft()` |
+| **Observation Capture Rate** | $> 95\%$ of scheduled observation windows captured within cutoff | Telemetry query in `AnalyticsObservation` (`status = 'CAPTURED'`) |
+| **FDR False Discovery Bound** | $q \le 0.10$ across all high-signal published insights | Benjamini-Hochberg rank-step gating verification in `statistical-evidence.spec.ts` |
+| **Attribution 1:1 Integrity** | $100\%$ 1-to-1 linkage across ideas, drafts, posts, and post-metrics | Database constraint `uq_recommendation_exposure_tenant` & `ON DELETE RESTRICT` checks |
+| **Deterministic asOf Decay** | $100\%$ identical weight recomputations across worker delays | Canonical `asOf` propagation test suite in `verify-full-system-e2e.ts` |
+| **Recommendation Lift** | Positively correlated observed engagement lift on accepted recs | Monitored `observedLift` tracking in `/analytics` overview |
 | **Daily Time Saved** | Reduce daily social management time from 45 min to $< 8$ min | User engagement session length tracking in `/replies` review deck |
 
 ---

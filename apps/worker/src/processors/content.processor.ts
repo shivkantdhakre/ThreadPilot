@@ -18,6 +18,9 @@ import { JobProgressService } from '../services/job-progress.service';
 import { AIFactoryService } from '../services/ai-factory.service';
 import { createHash } from 'crypto';
 
+// Helper to validate UUID strings
+const isUuid = (id: string): boolean => /^[0-9a-fA-F-]{36}$/.test(id);
+
 @Processor(QUEUES.CONTENT)
 export class ContentProcessor extends WorkerHost {
   private readonly logger = new Logger(ContentProcessor.name);
@@ -69,7 +72,7 @@ export class ContentProcessor extends WorkerHost {
       .digest('hex');
 
     // Crash-after-provider-call recovery: Check if a draft was already generated for this inputHash & job
-    if (existingJob?.id) {
+    if (existingJob?.id && isUuid(existingJob.id)) {
       const existingRun = await prisma.agentRun.findFirst({
         where: {
           workspaceId,
@@ -161,10 +164,11 @@ export class ContentProcessor extends WorkerHost {
       });
 
       // Persist AgentRun record for audit and tracing
+      const jobRecordId = existingJob && isUuid(existingJob.id) ? existingJob.id : null;
       await prisma.agentRun.create({
         data: {
           workspaceId,
-          jobRecordId: existingJob?.id ?? null,
+          jobRecordId,
           workflowId: executionContext.workflowId ?? 'content-generation',
           workflowVersion: executionContext.workflowVersion ?? '1.0.0',
           status: 'SUCCESS',
@@ -192,10 +196,11 @@ export class ContentProcessor extends WorkerHost {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error({ err, requestId }, `Content generation failed: ${msg}`);
 
+      const jobRecordId = existingJob && isUuid(existingJob.id) ? existingJob.id : null;
       await prisma.agentRun.create({
         data: {
           workspaceId,
-          jobRecordId: existingJob?.id ?? null,
+          jobRecordId,
           workflowId: executionContext.workflowId ?? 'content-generation',
           workflowVersion: executionContext.workflowVersion ?? '1.0.0',
           status: 'FAILED',
@@ -323,10 +328,11 @@ export class ContentProcessor extends WorkerHost {
         },
       });
 
+      const jobRecordId = existingJob && isUuid(existingJob.id) ? existingJob.id : null;
       await prisma.agentRun.create({
         data: {
           workspaceId,
-          jobRecordId: existingJob?.id ?? null,
+          jobRecordId,
           workflowId: 'content-improvement',
           workflowVersion: '1.0.0',
           status: 'SUCCESS',
