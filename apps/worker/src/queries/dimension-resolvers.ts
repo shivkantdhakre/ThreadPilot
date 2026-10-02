@@ -16,17 +16,17 @@ export function getDimensionResolver(
     case AggregationDimension.TOPIC:
       return {
         joinClause:
-          'JOIN content_drafts cd ON cd.id = pp.draft_id JOIN content_ideas ci ON ci.id = cd.idea_id',
-        expression: 'ci.topic',
-        filterClause: (val) => `ci.topic = ${val}`,
+          'LEFT JOIN content_drafts cd ON cd.id = pp.draft_id LEFT JOIN content_ideas ci ON ci.id = cd.idea_id',
+        expression: `COALESCE(ci.topic, 'General Discussion')`,
+        filterClause: (val) => `COALESCE(ci.topic, 'General Discussion') = ${val}`,
       };
 
     case AggregationDimension.FORMAT:
       return {
         joinClause:
-          'JOIN content_drafts cd ON cd.id = pp.draft_id JOIN content_ideas ci ON ci.id = cd.idea_id',
-        expression: 'ci.format',
-        filterClause: (val) => `ci.format = ${val}`,
+          'LEFT JOIN content_drafts cd ON cd.id = pp.draft_id LEFT JOIN content_ideas ci ON ci.id = cd.idea_id',
+        expression: `COALESCE(ci.format, 'SINGLE_POST')`,
+        filterClause: (val) => `COALESCE(ci.format, 'SINGLE_POST') = ${val}`,
       };
 
     case AggregationDimension.MEDIA_TYPE:
@@ -39,11 +39,12 @@ export function getDimensionResolver(
 
     case AggregationDimension.POST_LENGTH_BUCKET:
       return {
-        joinClause: 'JOIN content_versions cv ON cv.id = pp.published_version_id',
+        joinClause:
+          'LEFT JOIN content_versions cv ON cv.id = pp.published_version_id LEFT JOIN thread_posts tp ON tp.threads_post_id = pp.threads_post_id AND tp.social_account_id = pp.social_account_id',
         expression:
-          "CASE WHEN length(cv.body) < 100 THEN 'SHORT' WHEN length(cv.body) <= 280 THEN 'MEDIUM' ELSE 'LONG' END",
+          "CASE WHEN length(COALESCE(cv.body, tp.text, '')) < 100 THEN 'SHORT' WHEN length(COALESCE(cv.body, tp.text, '')) <= 280 THEN 'MEDIUM' ELSE 'LONG' END",
         filterClause: (val) =>
-          `(CASE WHEN length(cv.body) < 100 THEN 'SHORT' WHEN length(cv.body) <= 280 THEN 'MEDIUM' ELSE 'LONG' END) = ${val}`,
+          `(CASE WHEN length(COALESCE(cv.body, tp.text, '')) < 100 THEN 'SHORT' WHEN length(COALESCE(cv.body, tp.text, '')) <= 280 THEN 'MEDIUM' ELSE 'LONG' END) = ${val}`,
       };
 
     case AggregationDimension.PUBLISH_HOUR_UTC:

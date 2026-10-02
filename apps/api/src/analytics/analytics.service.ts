@@ -146,7 +146,7 @@ export class AnalyticsService {
         rateLimited: observationStatusCounts['RATE_LIMITED'] ?? 0,
       },
       attributionOverview: attributionStatusCounts,
-      optimalWindows: learnedProfile
+      optimalWindows: (learnedProfile && (learnedProfile.bestHourUtc != null || learnedProfile.bestDay != null || learnedProfile.bestTopic != null || learnedProfile.bestFormat != null))
         ? {
             bestTopic: learnedProfile.bestTopic,
             bestFormat: learnedProfile.bestFormat,
@@ -154,9 +154,55 @@ export class AnalyticsService {
             bestDay: learnedProfile.bestDay,
             lastComputedAt: learnedProfile.lastComputedAt,
             analyticsRevisionAtComputation: learnedProfile.analyticsRevisionAtComputation,
+            isEmpirical: false,
           }
-        : null,
+        : await this.getEmpiricalOptimalWindows(workspaceId, socialAccountId),
     };
+  }
+
+  private async getEmpiricalOptimalWindows(
+    workspaceId: string,
+    socialAccountId?: string | undefined,
+  ) {
+    const where: any = { workspaceId };
+    if (socialAccountId) where.socialAccountId = socialAccountId;
+
+    try {
+      const [bestHour, bestDay, bestLength, bestTopic] = await Promise.all([
+        this.db.performanceAggregate.findFirst({
+          where: { ...where, dimension: 'PUBLISH_HOUR_UTC', sampleSize: { gte: 1 } },
+          orderBy: { subjectAvgEngagementByViews: 'desc' },
+        }),
+        this.db.performanceAggregate.findFirst({
+          where: { ...where, dimension: 'PUBLISH_DAY_OF_WEEK', sampleSize: { gte: 1 } },
+          orderBy: { subjectAvgEngagementByViews: 'desc' },
+        }),
+        this.db.performanceAggregate.findFirst({
+          where: { ...where, dimension: 'POST_LENGTH_BUCKET', sampleSize: { gte: 1 } },
+          orderBy: { subjectAvgEngagementByViews: 'desc' },
+        }),
+        this.db.performanceAggregate.findFirst({
+          where: { ...where, dimension: 'TOPIC', sampleSize: { gte: 1 } },
+          orderBy: { subjectAvgEngagementByViews: 'desc' },
+        }),
+      ]);
+
+      if (!bestHour && !bestDay && !bestLength && !bestTopic) {
+        return null;
+      }
+
+      return {
+        bestTopic: bestTopic?.dimensionValue ?? 'General Discussion',
+        bestFormat: bestLength?.dimensionValue ? `${bestLength.dimensionValue} Post` : 'Single Post',
+        bestHourUtc: bestHour ? parseInt(bestHour.dimensionValue, 10) : null,
+        bestDay: bestDay ? parseInt(bestDay.dimensionValue, 10) : null,
+        isEmpirical: true,
+        lastComputedAt: new Date(),
+        analyticsRevisionAtComputation: 1,
+      };
+    } catch {
+      return null;
+    }
   }
 
   async getAggregates(workspaceId: string, params: AggregatesQueryDto) {
@@ -513,8 +559,20 @@ export class AnalyticsService {
             include: { oauthToken: true },
           });
 
-      if (activeAccount?.oauthToken?.scopes) {
-        missingInsightsPermission = !activeAccount.oauthToken.scopes.includes('threads_manage_insights');
+      const targetAccountId = activeAccount?.id || socialAccountId;
+      if (targetAccountId) {
+        const unavailableCount = await this.db.analyticsObservation.count({
+          where: {
+            socialAccountId: targetAccountId,
+            status: 'UNAVAILABLE',
+          },
+        });
+
+        if (unavailableCount > 0) {
+          missingInsightsPermission = true;
+        } else if (metricCount === 0 && activeAccount?.oauthToken?.scopes) {
+          missingInsightsPermission = !activeAccount.oauthToken.scopes.includes('threads_manage_insights');
+        }
       }
     } catch {
       // Ignore scope check errors

@@ -17,22 +17,61 @@ import {
   Activity,
   XCircle,
   ShieldAlert,
+  X,
 } from 'lucide-react';
 import { TopBar } from '../../../components/TopBar';
 import { apiClient } from '../../../lib/api-client';
 import { MetricCard } from '../../../components/ui/MetricCard';
 import { ThreadPilotLoader } from '../../../components/ui/ThreadPilotLoader';
 
+const DIMENSIONS = [
+  { key: 'PUBLISH_HOUR_UTC', label: 'Publish Hour' },
+  { key: 'PUBLISH_DAY_OF_WEEK', label: 'Day of Week' },
+  { key: 'POST_LENGTH_BUCKET', label: 'Post Length' },
+  { key: 'MEDIA_TYPE', label: 'Media Type' },
+  { key: 'TOPIC', label: 'Topic' },
+  { key: 'FORMAT', label: 'Format' },
+];
+
+function formatDimensionValue(dim: string, val: string): string {
+  if (!val) return '—';
+  if (dim === 'PUBLISH_HOUR_UTC') {
+    const h = parseInt(val, 10);
+    if (!isNaN(h)) {
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const h12 = h % 12 || 12;
+      return `${String(h).padStart(2, '0')}:00 UTC (${h12} ${ampm})`;
+    }
+  }
+  if (dim === 'PUBLISH_DAY_OF_WEEK') {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const d = parseInt(val, 10);
+    return days[d] ?? val;
+  }
+  if (dim === 'POST_LENGTH_BUCKET') {
+    if (val === 'SHORT') return 'Short (<100 chars)';
+    if (val === 'MEDIUM') return 'Medium (100–280 chars)';
+    if (val === 'LONG') return 'Long (>280 chars)';
+  }
+  if (dim === 'MEDIA_TYPE') {
+    if (val === 'TEXT_POST' || val === 'TEXT') return 'Text Post';
+    if (val === 'IMAGE') return 'Image Post';
+    if (val === 'VIDEO') return 'Video Post';
+  }
+  return val;
+}
+
 export default function AnalyticsPage() {
   const [overview, setOverview] = useState<any>(null);
   const [aggregates, setAggregates] = useState<any[]>([]);
   const [pipelineStatus, setPipelineStatus] = useState<any>(null);
-  const [selectedDimension, setSelectedDimension] = useState<string>('TOPIC');
+  const [selectedDimension, setSelectedDimension] = useState<string>('PUBLISH_HOUR_UTC');
   const [isLoading, setIsLoading] = useState(true);
   const [isBackfilling, setIsBackfilling] = useState(false);
   const [backfillResult, setBackfillResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [account, setAccount] = useState<any>(null);
+  const [isPermissionBannerDismissed, setIsPermissionBannerDismissed] = useState(false);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -104,7 +143,10 @@ export default function AnalyticsPage() {
     Math.max(0, (pipelineStatus?.ingestedPostCount ?? 0) - (pipelineStatus?.publishedPostCount ?? 0));
   const postsMissingObsCount = pipelineStatus?.postsMissingObsCount ?? 0;
   const needsSync = unbackfilledCount > 0 || postsMissingObsCount > 0 || (pipelineStatus?.metricCount ?? 0) === 0;
-  const isMissingPermission = Boolean(pipelineStatus?.missingInsightsPermission);
+  const isMissingPermission =
+    Boolean(pipelineStatus?.missingInsightsPermission) &&
+    !isPermissionBannerDismissed &&
+    (pipelineStatus?.metricCount ?? 0) === 0;
 
   const pipelineStage = !hasIngestedPosts && !hasPublishedPosts
     ? 'no_ingestion'
@@ -146,12 +188,22 @@ export default function AnalyticsPage() {
                 </p>
               </div>
             </div>
-            <Link
-              href="/connect"
-              className="btn-secondary text-xs py-1.5 px-3 shrink-0 whitespace-nowrap"
-            >
-              Reconnect with Insights
-            </Link>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link
+                href="/connect"
+                className="btn-secondary text-xs py-1.5 px-3 whitespace-nowrap"
+              >
+                Reconnect with Insights
+              </Link>
+              <button
+                type="button"
+                onClick={() => setIsPermissionBannerDismissed(true)}
+                className="p-1.5 rounded-lg text-amber-700/70 hover:text-amber-900 hover:bg-amber-100 transition-colors"
+                title="Dismiss warning"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
 
@@ -325,7 +377,9 @@ export default function AnalyticsPage() {
                 <Sparkles className="h-4 w-4 text-coral-500" />
                 Learned Optimal Parameters
               </h3>
-              <span className="badge-coral text-[10px]">Empirical</span>
+              <span className="badge-coral text-[10px]">
+                {windows?.isEmpirical ? 'Early Signal' : 'High Signal'}
+              </span>
             </div>
             <div className="space-y-3">
               {[
@@ -333,7 +387,9 @@ export default function AnalyticsPage() {
                 { label: 'Top Performing Format', value: windows?.bestFormat },
                 {
                   label: 'Best Publishing Hour (UTC)',
-                  value: windows?.bestHourUtc != null ? `${windows.bestHourUtc}:00 UTC` : null,
+                  value: windows?.bestHourUtc != null
+                    ? `${windows.bestHourUtc}:00 UTC (${windows.bestHourUtc % 12 || 12} ${windows.bestHourUtc >= 12 ? 'PM' : 'AM'})`
+                    : null,
                 },
                 {
                   label: 'Best Publishing Day',
@@ -387,18 +443,18 @@ export default function AnalyticsPage() {
                 Independent-group CTEs with Welch t-test &amp; Benjamini-Hochberg FDR correction
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              {['TOPIC', 'FORMAT', 'HOOK_STYLE'].map((dim) => (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {DIMENSIONS.map((dim) => (
                 <button
-                  key={dim}
-                  onClick={() => setSelectedDimension(dim)}
+                  key={dim.key}
+                  onClick={() => setSelectedDimension(dim.key)}
                   className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-                    selectedDimension === dim
+                    selectedDimension === dim.key
                       ? 'bg-ink-900 text-white'
                       : 'bg-canvas-subtle text-text-secondary hover:text-text-primary'
                   }`}
                 >
-                  {dim}
+                  {dim.label}
                 </button>
               ))}
             </div>
@@ -440,7 +496,7 @@ export default function AnalyticsPage() {
                     const isPositive = (row.absoluteDelta ?? 0) >= 0;
                     return (
                       <tr key={row.id} className="hover:bg-canvas-subtle/50 transition-colors">
-                        <td className="py-3 font-semibold text-text-primary">{row.dimensionValue}</td>
+                        <td className="py-3 font-semibold text-text-primary">{formatDimensionValue(selectedDimension, row.dimensionValue)}</td>
                         <td className="py-3 text-text-secondary">{row.sampleSize} posts</td>
                         <td className="py-3 font-medium text-text-primary">
                           {row.subjectAvgEngagementByViews != null ? `${row.subjectAvgEngagementByViews.toFixed(2)}%` : '—'}
