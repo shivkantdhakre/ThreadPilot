@@ -24,6 +24,7 @@ import { EditorialPersonalizationService } from './services/editorial-personaliz
 import { PublishingService } from './services/publishing.service';
 import { ObservationSchedulingService } from './services/observation-scheduler.service';
 import { AnalyticsOutboxService } from './services/analytics-outbox.service';
+import { AnalyticsOutboxDispatchService } from './services/analytics-outbox-dispatch.service';
 import { ExpiredObservationSweeperService } from './services/expired-observation-sweeper.service';
 import { AnalyticsSyncProcessor } from './processors/analytics-sync.processor';
 import { AnalyticsAggregateProcessor } from './processors/analytics-aggregate.processor.js';
@@ -93,6 +94,7 @@ import { resolveResilientRedisUrl, parseRedisUrl } from './redis/redis-helper';
     EditorialPersonalizationService,
     ObservationSchedulingService,
     AnalyticsOutboxService,
+    AnalyticsOutboxDispatchService,
     ExpiredObservationSweeperService,
     AnalyticsSyncProcessor,
     AnalyticsAggregateProcessor,
@@ -110,6 +112,7 @@ import { resolveResilientRedisUrl, parseRedisUrl } from './redis/redis-helper';
     EditorialPersonalizationService,
     ObservationSchedulingService,
     AnalyticsOutboxService,
+    AnalyticsOutboxDispatchService,
     ExpiredObservationSweeperService,
   ],
 })

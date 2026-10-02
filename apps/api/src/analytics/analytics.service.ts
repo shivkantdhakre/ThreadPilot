@@ -138,7 +138,8 @@ export class AnalyticsService {
       },
       observationHealth: {
         captured: observationStatusCounts['CAPTURED'] ?? 0,
-        pending: observationStatusCounts['PENDING'] ?? 0,
+        scheduled: observationStatusCounts['SCHEDULED'] ?? 0,
+        pending: observationStatusCounts['SCHEDULED'] ?? 0, // alias for frontend compat
         processing: observationStatusCounts['PROCESSING'] ?? 0,
         failed: observationStatusCounts['FAILED'] ?? 0,
         missed: observationStatusCounts['MISSED'] ?? 0,
@@ -558,7 +559,7 @@ export class AnalyticsService {
           const draft = await tx.contentDraft.create({
             data: {
               workspaceId,
-              status: 'PUBLISHED',
+              status: 'READY',
               generatedBy: 'BACKFILL',
             },
           });
