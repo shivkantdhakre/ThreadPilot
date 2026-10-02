@@ -104,6 +104,29 @@ export class AnalyticsController {
     return this.analyticsService.getRecommendations(workspaceId, params);
   }
 
+  @Get('pipeline-status')
+  async getPipelineStatus(
+    @WorkspaceId() workspaceId: string,
+    @Query('socialAccountId') socialAccountId?: string,
+  ) {
+    return this.analyticsService.getAnalyticsPipelineStatus(workspaceId, socialAccountId);
+  }
+
+  @Post('backfill')
+  async backfillAnalytics(
+    @WorkspaceId() workspaceId: string,
+    @Body() body: { socialAccountId: string; limit?: number },
+  ) {
+    if (!body.socialAccountId) {
+      throw new Error('socialAccountId is required for analytics backfill');
+    }
+    return this.analyticsService.backfillAnalytics(
+      workspaceId,
+      body.socialAccountId,
+      body.limit ?? 50,
+    );
+  }
+
   @Post('recommendations/:id/accept')
   async acceptRecommendation(
     @WorkspaceId() workspaceId: string,
