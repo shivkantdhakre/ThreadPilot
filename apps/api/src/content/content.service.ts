@@ -414,6 +414,7 @@ export class ContentService {
     workspaceId: string,
     userId: string,
     payload: {
+      requestId?: string;
       ideaId?: string;
       topic?: string;
       format?: string;
@@ -421,7 +422,7 @@ export class ContentService {
       additionalContext?: string;
     },
   ) {
-    const requestId = randomUUID();
+    const requestId = payload.requestId || randomUUID();
 
     await this.jobDispatcher.dispatchContentGeneration({
       requestId,

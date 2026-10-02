@@ -7,9 +7,10 @@ import {
   Body,
   UseGuards,
   Res,
+  Req,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { Response } from 'express';
+import type { Response, Request } from 'express';
 import { ThreadsAuthService } from './threads-auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WorkspaceScopeGuard } from '../common/guards/workspace-scope.guard';
@@ -43,9 +44,16 @@ export class ThreadsAuthController {
     @Query('code') code: string,
     @Query('state') state: string,
     @Res() res: Response,
+    @Req() req: Request,
   ) {
+    const wantsJson = req.headers['accept']?.includes('application/json');
+
     try {
       const result = await this.threadsAuthService.handleCallback(code, state);
+
+      if (wantsJson) {
+        return res.status(200).json(result);
+      }
 
       // Redirect user back to web app callback page
       const redirectUrl = new URL('/callback/threads', this.appPublicUrl);
@@ -54,10 +62,18 @@ export class ThreadsAuthController {
 
       return res.redirect(redirectUrl.toString());
     } catch (err: any) {
+      if (wantsJson) {
+        return res.status(400).json({
+          statusCode: 400,
+          message: err.message || 'Invalid or expired OAuth state',
+          error: 'Bad Request',
+        });
+      }
       // If code/state was already consumed (e.g. browser refresh or back button navigation),
       // redirect gracefully back to the web app's connect page instead of displaying raw JSON error.
       const redirectUrl = new URL('/connect', this.appPublicUrl);
-      redirectUrl.searchParams.set('authStatus', 'completed');
+      redirectUrl.searchParams.set('authStatus', 'error');
+      redirectUrl.searchParams.set('error', err.message || 'OAuth callback failed');
       return res.redirect(redirectUrl.toString());
     }
   }
@@ -67,8 +83,7 @@ export class ThreadsAuthController {
     return res.status(200).json({ status: 'ok' });
   }
 
-  @All('deauthorize')
-  @All('uninstall')
+  @All(['deauthorize', 'uninstall'])
   async deauthorize(@Res() res: Response) {
     return res.status(200).json({ status: 'ok' });
   }

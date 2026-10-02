@@ -108,6 +108,7 @@ export class ContentController {
     @CurrentUser('userId') userId: string,
     @Body()
     body: {
+      requestId?: string;
       ideaId?: string;
       topic?: string;
       format?: string;

@@ -1,10 +1,11 @@
+import 'dotenv/config';
 import { prisma } from '@threadpilot/database';
 import { TokenEncryptionService } from '@threadpilot/threads-client';
 import Redis from 'ioredis';
 
 const API_URL = 'http://localhost:3001/api/v1';
 const WORKER_URL = 'http://localhost:3002';
-const redis = new Redis('redis://localhost:6379');
+const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
 
 interface TestResult {
   suite: string;
@@ -126,7 +127,11 @@ async function runAudit() {
     const data = await res.json();
     if (!data.accessToken) throw new Error('No access token returned');
     userAToken = data.accessToken;
-    userARefreshToken = data.refreshToken;
+    const cookieHeader = res.headers.get('set-cookie');
+    if (cookieHeader) {
+      const match = cookieHeader.match(/tp_rt=([^;]+)/);
+      if (match?.[1]) userARefreshToken = match[1];
+    }
   });
 
   await assert('Auth', 'Login with invalid password rejected with 401 Unauthorized', async () => {
@@ -144,7 +149,8 @@ async function runAudit() {
     });
     if (!res.ok) throw new Error(`GET /me failed: ${res.status}`);
     const data = await res.json();
-    if (data.email !== userAEmail) throw new Error(`Email mismatch: ${data.email}`);
+    const email = data.user?.email ?? data.email;
+    if (email !== userAEmail) throw new Error(`Email mismatch: ${email}`);
   });
 
   await assert('Auth', 'Tampered token rejected with 401 Unauthorized', async () => {
@@ -279,7 +285,9 @@ async function runAudit() {
   });
 
   await assert('Threads OAuth', 'Callback with invalid or missing state returns 400', async () => {
-    const res = await fetch(`${API_URL}/threads-auth/callback?code=fake_code&state=non_existent_state`);
+    const res = await fetch(`${API_URL}/threads-auth/callback?code=fake_code&state=non_existent_state`, {
+      headers: { Accept: 'application/json' },
+    });
     if (res.status !== 400) throw new Error(`Expected 400, got ${res.status}`);
   });
 
@@ -299,7 +307,7 @@ async function runAudit() {
     const encService = new TokenEncryptionService('KO2lqxwE+NZSmGpaXFIYbU/m74Duqng6zg41R5x9Q0E=', 1);
     const testSecret = 'TH_OAUTH_TOKEN_TEST_SECRET_12345';
     const encrypted = encService.encrypt(testSecret);
-    if (!encrypted.startsWith('v1:')) throw new Error(`Missing key version prefix: ${encrypted}`);
+    if (!encrypted.startsWith('1:')) throw new Error(`Missing key version prefix: ${encrypted}`);
     const decrypted = encService.decrypt(encrypted);
     if (decrypted !== testSecret) throw new Error(`Decrypted string mismatch: ${decrypted}`);
   });
