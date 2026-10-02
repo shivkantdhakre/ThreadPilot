@@ -22,6 +22,13 @@ import { PublishingReconciliationService } from './services/publishing-reconcili
 import { EngagementReconciliationService } from './services/engagement-reconciliation.service';
 import { EditorialPersonalizationService } from './services/editorial-personalization.service';
 import { PublishingService } from './services/publishing.service';
+import { ObservationSchedulingService } from './services/observation-scheduler.service';
+import { AnalyticsOutboxService } from './services/analytics-outbox.service';
+import { ExpiredObservationSweeperService } from './services/expired-observation-sweeper.service';
+import { AnalyticsSyncProcessor } from './processors/analytics-sync.processor';
+import { AnalyticsAggregateProcessor } from './processors/analytics-aggregate.processor.js';
+import { AnalyticsInsightsProcessor } from './processors/analytics-insights.processor.js';
+import { AnalyticsLearningProcessor } from './processors/analytics-learning.processor.js';
 import { prisma, PrismaClient } from '@threadpilot/database';
 
 import { resolveResilientRedisUrl, parseRedisUrl } from './redis/redis-helper';
@@ -59,6 +66,10 @@ import { resolveResilientRedisUrl, parseRedisUrl } from './redis/redis-helper';
       { name: ENGAGEMENT_QUEUES.ENGAGEMENT_CLASSIFY },
       { name: ENGAGEMENT_QUEUES.REPLY_DRAFT },
       { name: ENGAGEMENT_QUEUES.REPLY_PUBLISH },
+      { name: QUEUES.ANALYTICS_SYNC },
+      { name: QUEUES.ANALYTICS_AGGREGATE },
+      { name: QUEUES.ANALYTICS_INSIGHTS },
+      { name: QUEUES.ANALYTICS_RECOMMENDATIONS },
     ),
   ],
   providers: [
@@ -80,6 +91,13 @@ import { resolveResilientRedisUrl, parseRedisUrl } from './redis/redis-helper';
     PublishingReconciliationService,
     EngagementReconciliationService,
     EditorialPersonalizationService,
+    ObservationSchedulingService,
+    AnalyticsOutboxService,
+    ExpiredObservationSweeperService,
+    AnalyticsSyncProcessor,
+    AnalyticsAggregateProcessor,
+    AnalyticsInsightsProcessor,
+    AnalyticsLearningProcessor,
     {
       provide: PrismaClient,
       useValue: prisma,
@@ -90,6 +108,9 @@ import { resolveResilientRedisUrl, parseRedisUrl } from './redis/redis-helper';
     PublishingReconciliationService,
     EngagementReconciliationService,
     EditorialPersonalizationService,
+    ObservationSchedulingService,
+    AnalyticsOutboxService,
+    ExpiredObservationSweeperService,
   ],
 })
 export class WorkerModule {}

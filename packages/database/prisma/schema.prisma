@@ -94,6 +94,17 @@ model Workspace {
   editorialFeedbacks   EditorialFeedback[]
   idempotencyRecords   IdempotencyRecord[]
 
+  // Phase 4 Analytics & Intelligence Relations
+  analyticsObservations    AnalyticsObservation[]
+  postMetrics              PostMetric[]
+  performanceAggregates    PerformanceAggregate[]
+  insights                 Insight[]
+  learnedProfiles          LearnedPerformanceProfile[]
+  learnedWeights           LearnedDimensionWeight[]
+  recommendationExposures  RecommendationExposure[]
+  analyticsOutboxEvents    AnalyticsOutboxEvent[]
+  analyticsSyncStates      AnalyticsSyncState[]
+
   @@map("workspaces")
 }
 
@@ -127,6 +138,19 @@ model SocialAccount {
   replyExecutions      ReplyExecution[]
   editorialFeedbacks   EditorialFeedback[]
 
+  // Phase 4 Analytics & Intelligence Relations
+  analyticsObservations    AnalyticsObservation[]
+  postMetrics              PostMetric[]
+  performanceAggregates    PerformanceAggregate[]
+  insights                 Insight[]
+  learnedProfile           LearnedPerformanceProfile?
+  learnedWeights           LearnedDimensionWeight[]
+  recommendationExposures  RecommendationExposure[]
+  analyticsOutboxEvents    AnalyticsOutboxEvent[]
+  analyticsSyncState       AnalyticsSyncState?
+  contentIdeas             ContentIdea[]
+
+  @@unique([id, workspaceId], name: "uq_social_account_workspace")
   @@unique([workspaceId, platform, externalId])
   @@index([workspaceId])
   @@map("social_accounts")
@@ -348,20 +372,29 @@ model MemoryEmbedding {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model ContentIdea {
-  id          String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  workspaceId String         @map("workspace_id") @db.Uuid
-  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  title       String
-  concept     String
-  reason      String
-  format      String
-  topic       String
-  confidence  Float
-  sources     String[]
-  drafts      ContentDraft[]
-  createdAt   DateTime       @default(now()) @map("created_at")
+  id              String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId     String         @map("workspace_id") @db.Uuid
+  workspace       Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId String         @map("social_account_id") @db.Uuid
+  socialAccount   SocialAccount  @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  title           String
+  concept         String
+  reason          String
+  format          String
+  topic           String
+  confidence      Float
+  sources         String[]
+  hookStyle       String?        @map("hook_style")
+  suggestedPrompt String?        @map("suggested_prompt")
+  predictedScore  Float?         @map("predicted_score")
+  status          String         @default("SUGGESTED")
+  drafts          ContentDraft[]
+  recommendationExposure RecommendationExposure?
+  createdAt       DateTime       @default(now()) @map("created_at")
 
+  @@unique([id, workspaceId, socialAccountId], name: "uq_content_idea_tenant")
   @@index([workspaceId])
+  @@index([socialAccountId])
   @@map("content_ideas")
 }
 
@@ -386,6 +419,7 @@ model ContentDraft {
   versions       ContentVersion[]
   scheduledPosts ScheduledPost[]
   publishedPosts PublishedPost[]
+  recommendationExposure RecommendationExposure?
   createdAt      DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
 
@@ -513,6 +547,12 @@ model PublishedPost {
   publishedAt         DateTime?      @map("published_at")
   publishedObservedAt DateTime       @default(now()) @map("published_observed_at")
 
+  // Phase 4 Analytics & Intelligence Relations
+  analyticsObservations AnalyticsObservation[]
+  postMetrics           PostMetric[]
+  recommendationExposure RecommendationExposure?
+
+  @@unique([id, workspaceId, socialAccountId], name: "uq_published_post_tenant")
   @@unique([socialAccountId, threadsPostId])
   @@unique([draftId, socialAccountId])
   @@unique([publishedVersionId, socialAccountId])
@@ -1145,4 +1185,454 @@ model IdempotencyRecord {
   @@unique([workspaceId, key, method, endpoint])
   @@index([workspaceId, key, createdAt])
   @@map("idempotency_records")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 4 — PERFORMANCE ANALYTICS & INTELLIGENCE LOOP
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ObservationSlot {
+  T_1H
+  T_6H
+  T_24H
+  T_7D
+  T_30D
+}
+
+enum ObservationStatus {
+  SCHEDULED
+  PROCESSING
+  CAPTURED
+  FAILED
+  RATE_LIMITED
+  MISSED
+  DELETED
+  UNAVAILABLE
+}
+
+enum AggregationDimension {
+  TOPIC
+  FORMAT
+  MEDIA_TYPE
+  POST_LENGTH_BUCKET
+  PUBLISH_HOUR_UTC
+  PUBLISH_DAY_OF_WEEK
+}
+
+enum AggregationGranularity {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  ALL_TIME
+}
+
+enum EvidenceGrade {
+  INSUFFICIENT_DATA
+  LOW_SIGNAL
+  DIRECTIONAL
+  HIGH_SIGNAL
+}
+
+enum RecommendationProvenanceType {
+  INSIGHT
+  LEARNED_WEIGHT
+  EXPLORATION
+}
+
+enum RecommendationAttributionStatus {
+  EXPOSED
+  ACCEPTED
+  DISMISSED
+  PUBLISHED
+  EVALUATED
+}
+
+enum AnalyticsOutboxType {
+  TRIGGER_OBSERVATION
+  RETRY_OBSERVATION
+  TRIGGER_AGGREGATION
+  TRIGGER_INSIGHTS
+  TRIGGER_PROFILE_LEARNING
+  TRIGGER_RECOMMENDATIONS
+}
+
+enum OutboxEventStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model AnalyticsObservation {
+  id                    String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String            @map("workspace_id") @db.Uuid
+  workspace             Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String            @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount     @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  publishedPostId       String            @map("published_post_id") @db.Uuid
+  publishedPost         PublishedPost     @relation(fields: [publishedPostId], references: [id], onDelete: Cascade)
+
+  observationSlot       ObservationSlot   @map("observation_slot")
+  scheduledFor          DateTime          @map("scheduled_for")
+  windowClosesAt        DateTime          @map("window_closes_at")
+  status                ObservationStatus @default(SCHEDULED)
+  attemptCount          Int               @default(0) @map("attempt_count")
+  maxAttempts           Int               @default(3) @map("max_attempts")
+  lastAttemptAt         DateTime?         @map("last_attempt_at")
+  leaseToken            String?           @map("lease_token")
+  leaseUntil            DateTime?         @map("lease_until")
+  capturedAt            DateTime?         @map("captured_at")
+  errorMessage          String?           @map("error_message")
+  postMetric            PostMetric?
+
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  @@unique([publishedPostId, observationSlot], name: "uq_observation_slot")
+  @@unique([id, workspaceId, socialAccountId], name: "uq_analytics_observation_tenant")
+  @@index([status, scheduledFor])
+  @@index([status, leaseUntil])
+  @@index([workspaceId, socialAccountId, status])
+  @@map("analytics_observations")
+}
+
+model PostMetric {
+  id                    String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String               @map("workspace_id") @db.Uuid
+  workspace             Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String               @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount        @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  publishedPostId       String               @map("published_post_id") @db.Uuid
+  publishedPost         PublishedPost        @relation(fields: [publishedPostId], references: [id], onDelete: Cascade)
+  observationId         String               @unique @map("observation_id") @db.Uuid
+  observation           AnalyticsObservation @relation(fields: [observationId], references: [id], onDelete: Cascade)
+
+  observationSlot       ObservationSlot      @map("observation_slot")
+  capturedAt            DateTime             @map("captured_at")
+  views                 Int?
+  likes                 Int?
+  replies               Int?
+  reposts               Int?
+  quotes                Int?
+  engagementRateByViews Float?               @map("engagement_rate_by_views")
+  likeRate              Float?               @map("like_rate")
+  replyRate             Float?               @map("reply_rate")
+  repostRate            Float?               @map("repost_rate")
+  quoteRate             Float?               @map("quote_rate")
+  followerCountAtPublish Int?                @map("follower_count_at_publish")
+  engagementRateByFollowers Float?           @map("engagement_rate_by_followers")
+  rawApiResponse        Json                 @map("raw_api_response")
+  metricFormulaVersion  String               @default("v1") @map("metric_formula_version")
+
+  recommendationExposure RecommendationExposure?
+
+  createdAt             DateTime             @default(now()) @map("created_at")
+
+  @@unique([publishedPostId, observationSlot], name: "uq_post_metric_slot")
+  @@unique([id, workspaceId, socialAccountId], name: "uq_post_metric_tenant")
+  @@index([workspaceId, socialAccountId, observationSlot, capturedAt])
+  @@index([publishedPostId, capturedAt])
+  @@map("post_metrics")
+}
+
+model PerformanceAggregate {
+  id                          String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId                 String                @map("workspace_id") @db.Uuid
+  workspace                   Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId             String                @map("social_account_id") @db.Uuid
+  socialAccount               SocialAccount         @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+
+  dimension                   AggregationDimension
+  dimensionValue              String                @map("dimension_value")
+  observationSlot             ObservationSlot       @map("observation_slot")
+  granularity                 AggregationGranularity
+  bucketDate                  DateTime              @map("bucket_date")
+  sampleSize                  Int                   @map("sample_size")
+  complementSize              Int                   @map("complement_size")
+
+  subjectAvgViews             Float?                @map("subject_avg_views")
+  subjectAvgLikes             Float?                @map("subject_avg_likes")
+  subjectAvgReplies           Float?                @map("subject_avg_replies")
+  subjectAvgEngagementByViews Float?                @map("subject_avg_engagement_by_views")
+  subjectStdDevEngagement     Float?                @map("subject_std_dev_engagement")
+
+  complementAvgEngagement     Float?                @map("complement_avg_engagement")
+  complementStdDevEngagement  Float?                @map("complement_std_dev_engagement")
+
+  absoluteDelta               Float?                @map("absolute_delta")
+  percentDelta                Float?                @map("percent_delta")
+  cohensD                     Float?                @map("cohens_d")
+  degreesOfFreedom            Float?                @map("degrees_of_freedom")
+  welchTStatistic             Float?                @map("welch_t_statistic")
+  welchPValue                 Float?                @map("welch_p_value")
+  ci95Lower                   Float?                @map("ci95_lower")
+  ci95Upper                   Float?                @map("ci95_upper")
+
+  hypothesisFamilyKey         String                @map("hypothesis_family_key")
+  hypothesisFamilyRevision    Int                   @map("hypothesis_family_revision")
+  hypothesisFamilySize        Int                   @map("hypothesis_family_size")
+  passesFDR                   Boolean?              @map("passes_fdr")
+  qValue                      Float?                @map("q_value")
+
+  aggregationVersion          String                @default("v1") @map("aggregation_version")
+  analyticsRevision           Int                   @map("analytics_revision")
+  computedAt                  DateTime              @default(now()) @map("computed_at")
+
+  insights                    Insight[]
+
+  @@unique([socialAccountId, dimension, dimensionValue, observationSlot, granularity, bucketDate, analyticsRevision], name: "uq_perf_aggregate")
+  @@unique([id, workspaceId, socialAccountId], name: "uq_performance_aggregate_tenant")
+  @@index([socialAccountId, observationSlot, granularity, bucketDate])
+  @@index([workspaceId, dimension, passesFDR])
+  @@map("performance_aggregates")
+}
+
+model Insight {
+  id                          String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId                 String                @map("workspace_id") @db.Uuid
+  workspace                   Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId             String                @map("social_account_id") @db.Uuid
+  socialAccount               SocialAccount         @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+
+  dimension                   AggregationDimension
+  dimensionValue              String                @map("dimension_value")
+  observationSlot             ObservationSlot       @map("observation_slot")
+  sampleSize                  Int                   @map("sample_size")
+  complementSize              Int                   @map("complement_size")
+  subjectAvgEngagement        Float?                @map("subject_avg_engagement")
+  complementAvgEngagement     Float?                @map("complement_avg_engagement")
+  absoluteDelta               Float?                @map("absolute_delta")
+  percentDelta                Float?                @map("percent_delta")
+  cohensD                     Float?                @map("cohens_d")
+  ci95Lower                   Float?                @map("ci95_lower")
+  ci95Upper                   Float?                @map("ci95_upper")
+  welchPValue                 Float?                @map("welch_p_value")
+  evidenceGrade               EvidenceGrade         @map("evidence_grade")
+
+  hypothesisFamilyKey         String                @map("hypothesis_family_key")
+  hypothesisFamilyRevision    Int                   @map("hypothesis_family_revision")
+  hypothesisFamilySize        Int                   @map("hypothesis_family_size")
+  passesFDR                   Boolean               @default(false) @map("passes_fdr")
+  qValue                      Float?                @map("q_value")
+
+  observation                 String
+  recommendation              String
+  generationModel             String                @map("generation_model")
+  promptVersion               String                @map("prompt_version")
+  aggregationVersion          String                @map("aggregation_version")
+  metricFormulaVersion        String                @map("metric_formula_version")
+  analyticsRevisionAtGeneration Int                 @map("analytics_revision_at_generation")
+  analysisWindowStart         DateTime              @map("analysis_window_start")
+  analysisWindowEnd           DateTime              @map("analysis_window_end")
+  idempotencyKey              String                @unique @map("idempotency_key")
+  isActive                    Boolean               @default(true) @map("is_active")
+
+  sourceAggregates            PerformanceAggregate[]
+  recommendationExposures     RecommendationExposure[]
+
+  createdAt                   DateTime              @default(now()) @map("created_at")
+  updatedAt                   DateTime              @updatedAt @map("updated_at")
+
+  @@unique([id, workspaceId, socialAccountId], name: "uq_insight_tenant")
+  @@index([socialAccountId, evidenceGrade, createdAt])
+  @@index([workspaceId, dimension, isActive])
+  @@map("insights")
+}
+
+model LearnedPerformanceProfile {
+  id                          String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId                 String                @map("workspace_id") @db.Uuid
+  workspace                   Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId             String                @unique @map("social_account_id") @db.Uuid
+  socialAccount               SocialAccount         @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+
+  bestTopic                   String?               @map("best_topic")
+  bestTopicWeight             Float?                @map("best_topic_weight")
+  bestTopicSampleSize         Int?                  @map("best_topic_sample_size")
+  bestTopicRevision           Int?                  @map("best_topic_revision")
+
+  bestFormat                  String?               @map("best_format")
+  bestFormatWeight            Float?                @map("best_format_weight")
+  bestFormatSampleSize        Int?                  @map("best_format_sample_size")
+  bestFormatRevision          Int?                  @map("best_format_revision")
+
+  bestLengthBucket            String?               @map("best_length_bucket")
+  bestLengthBucketWeight      Float?                @map("best_length_bucket_weight")
+  bestLengthBucketSampleSize  Int?                  @map("best_length_bucket_sample_size")
+  bestLengthBucketRevision    Int?                  @map("best_length_bucket_revision")
+
+  bestHourUtc                 Int?                  @map("best_hour_utc")
+  bestHourWeight              Float?                @map("best_hour_weight")
+  bestHourSampleSize          Int?                  @map("best_hour_sample_size")
+  bestHourRevision            Int?                  @map("best_hour_revision")
+
+  bestDay                     Int?                  @map("best_day")
+  bestDayWeight               Float?                @map("best_day_weight")
+  bestDaySampleSize           Int?                  @map("best_day_sample_size")
+  bestDayRevision             Int?                  @map("best_day_revision")
+
+  analyticsRevisionAtComputation Int                @map("analytics_revision_at_computation")
+  lastComputedAt              DateTime              @map("last_computed_at")
+  createdAt                   DateTime              @default(now()) @map("created_at")
+  updatedAt                   DateTime              @updatedAt @map("updated_at")
+
+  weights                     LearnedDimensionWeight[]
+
+  @@unique([id, workspaceId, socialAccountId], name: "uq_learned_profile_tenant")
+  @@map("learned_performance_profiles")
+}
+
+model LearnedDimensionWeight {
+  id                          String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId                 String                @map("workspace_id") @db.Uuid
+  workspace                   Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId             String                @map("social_account_id") @db.Uuid
+  socialAccount               SocialAccount         @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  profileId                   String                @map("profile_id") @db.Uuid
+  profile                     LearnedPerformanceProfile @relation(fields: [profileId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId], onDelete: Cascade)
+
+  dimension                   AggregationDimension
+  dimensionValue              String                @map("dimension_value")
+  rawWeight                   Float                 @map("raw_weight")
+  decayedWeight               Float                 @map("decayed_weight")
+  totalSampleSize             Int                   @map("total_sample_size")
+  eligibleBucketCount         Int                   @map("eligible_bucket_count")
+  evidenceBucketCount         Int                   @map("evidence_bucket_count")
+  highestEvidenceGrade        EvidenceGrade         @map("highest_evidence_grade")
+  observationSlot             ObservationSlot       @map("observation_slot")
+  isActive                    Boolean               @default(true) @map("is_active")
+  analyticsRevision           Int                   @map("analytics_revision")
+  computedAt                  DateTime              @map("computed_at")
+
+  recommendationExposures     RecommendationExposure[]
+
+  @@unique([socialAccountId, dimension, dimensionValue, observationSlot], name: "uq_learned_dim_weight")
+  @@unique([id, workspaceId, socialAccountId], name: "uq_learned_weight_tenant")
+  @@index([socialAccountId, dimension, isActive])
+  @@index([workspaceId, dimension, decayedWeight])
+  @@map("learned_dimension_weights")
+}
+
+model RecommendationExposure {
+  id                      String                        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId             String                        @map("workspace_id") @db.Uuid
+  workspace               Workspace                     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId         String                        @map("social_account_id") @db.Uuid
+  socialAccount           SocialAccount                 @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+
+  provenanceType          RecommendationProvenanceType  @default(INSIGHT) @map("provenance_type")
+
+  insightId               String?                       @map("insight_id") @db.Uuid
+  insight                 Insight?                      @relation(fields: [insightId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId], onDelete: Restrict)
+
+  learnedWeightId         String?                       @map("learned_weight_id") @db.Uuid
+  learnedWeight           LearnedDimensionWeight?       @relation(fields: [learnedWeightId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId], onDelete: Restrict)
+
+  explorationDimension    AggregationDimension?         @map("exploration_dimension")
+  explorationValue        String?                       @map("exploration_value")
+
+  contentIdeaId           String?                       @unique @map("content_idea_id") @db.Uuid
+  contentIdea             ContentIdea?                  @relation(fields: [contentIdeaId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId])
+
+  draftId                 String?                       @unique @map("draft_id") @db.Uuid
+  draft                   ContentDraft?                 @relation(fields: [draftId], references: [id])
+
+  publishedPostId         String?                       @unique @map("published_post_id") @db.Uuid
+  publishedPost           PublishedPost?                @relation(fields: [publishedPostId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId])
+
+  evaluatedPostMetricId   String?                       @unique @map("evaluated_post_metric_id") @db.Uuid
+  evaluatedPostMetric     PostMetric?                   @relation(fields: [evaluatedPostMetricId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId])
+  observedLift            Float?                        @map("observed_lift")
+
+  attributionStatus       RecommendationAttributionStatus @default(EXPOSED) @map("attribution_status")
+  analyticsRevisionAtGeneration Int                     @map("analytics_revision_at_generation")
+  cycleIdempotencyKey     String                        @unique @map("cycle_idempotency_key")
+
+  exposedAt               DateTime                      @default(now()) @map("exposed_at")
+  acceptedAt              DateTime?                     @map("accepted_at")
+  publishedAt             DateTime?                     @map("published_at")
+  evaluatedAt             DateTime?                     @map("evaluated_at")
+
+  createdAt               DateTime                      @default(now()) @map("created_at")
+  updatedAt               DateTime                      @updatedAt @map("updated_at")
+
+  @@unique([id, workspaceId, socialAccountId], name: "uq_recommendation_exposure_tenant")
+  @@unique([contentIdeaId, workspaceId, socialAccountId], name: "uq_exposure_content_idea")
+  @@unique([publishedPostId, workspaceId, socialAccountId], name: "uq_exposure_published_post")
+  @@unique([evaluatedPostMetricId, workspaceId, socialAccountId], name: "uq_exposure_evaluated_post_metric")
+  @@index([socialAccountId, attributionStatus])
+  @@index([workspaceId, attributionStatus, createdAt])
+  @@map("recommendation_exposures")
+}
+
+model RecommendationScoringConfig {
+  id                    String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  weightLearnedWeight   Float     @default(0.35) @map("weight_learned_weight")
+  weightFreshness       Float     @default(0.15) @map("weight_freshness")
+  weightExplicitPref    Float     @default(0.50) @map("weight_explicit_pref")
+  explorationFraction   Float     @default(0.20) @map("exploration_fraction")
+  halfLifeDays          Float     @default(30.0) @map("half_life_days")
+  maxCandidatesPerCycle Int       @default(4)    @map("max_candidates_per_cycle")
+  isActive              Boolean   @default(true) @map("is_active")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@map("recommendation_scoring_configs")
+}
+
+model AnalyticsOutboxEvent {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+
+  eventType             AnalyticsOutboxType @map("event_type")
+  status                OutboxEventStatus   @default(PENDING)
+  payload               Json
+  dedupeKey             String              @unique @map("dedupe_key")
+  deliveryGeneration    Int                 @default(1) @map("delivery_generation")
+  attemptCount          Int                 @default(0) @map("attempt_count")
+  maxAttempts           Int                 @default(5) @map("max_attempts")
+  leaseToken            String?             @map("lease_token")
+  leaseUntil            DateTime?           @map("lease_until")
+  executeAt             DateTime            @default(now()) @map("execute_at")
+  processedAt           DateTime?           @map("processed_at")
+  errorMessage          String?             @map("error_message")
+
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  @@index([status, executeAt])
+  @@index([status, leaseUntil])
+  @@index([workspaceId, socialAccountId, status])
+  @@map("analytics_outbox_events")
+}
+
+model AnalyticsSyncState {
+  id                    String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String        @map("workspace_id") @db.Uuid
+  workspace             Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String        @unique @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+
+  analyticsRevision     Int           @default(0) @map("analytics_revision")
+  ingestionGeneration   Int           @default(0) @map("ingestion_generation")
+  lastIngestionAt       DateTime?     @map("last_ingestion_at")
+  lastAggregationAt     DateTime?     @map("last_aggregation_at")
+
+  // Explicit editorial preferences
+  preferredTopics       String[]      @default([]) @map("preferred_topics")
+  avoidedTopics         String[]      @default([]) @map("avoided_topics")
+  preferredFormats      String[]      @default([]) @map("preferred_formats")
+  avoidedFormats        String[]      @default([]) @map("avoided_formats")
+
+  maxPendingRecommendations Int       @default(10) @map("max_pending_recommendations")
+  maxRecommendationsPerCycle Int      @default(4) @map("max_recommendations_per_cycle")
+
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  @@map("analytics_sync_states")
 }

@@ -13,6 +13,11 @@ export const QUEUES = {
   ENGAGEMENT_CLASSIFY: 'engagement-classify-queue',
   REPLY_DRAFT:         'reply-draft-queue',
   REPLY_PUBLISH:       'reply-publish-queue',
+  // Phase 4 Analytics Queues
+  ANALYTICS_SYNC:            'analytics-sync-queue',
+  ANALYTICS_AGGREGATE:       'analytics-aggregate-queue',
+  ANALYTICS_INSIGHTS:        'analytics-insights-queue',
+  ANALYTICS_RECOMMENDATIONS: 'analytics-recommendations-queue',
 } as const;
 
 export const ENGAGEMENT_QUEUES = {

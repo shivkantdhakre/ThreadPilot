@@ -214,12 +214,36 @@ export class ThreadsApiClient {
     return post;
   }
 
-  private async get<T>(url: string, accessToken: string, timeoutMs = 15_000): Promise<T> {
+  async getPostInsights(
+    accessToken: string,
+    threadsPostId: string,
+    options?: { signal?: AbortSignal; timeoutMs?: number },
+  ): Promise<{ data: Array<{ name: string; values: Array<{ value: number }> }> }> {
+    const metrics = 'views,likes,replies,reposts,quotes';
+    const url = `${this.baseUrl}/${threadsPostId}/insights?metric=${metrics}`;
+    return this.get<{ data: Array<{ name: string; values: Array<{ value: number }> }> }>(
+      url,
+      accessToken,
+      options?.timeoutMs ?? 15_000,
+      options?.signal,
+    );
+  }
+
+  private async get<T>(
+    url: string,
+    accessToken: string,
+    timeoutMs = 15_000,
+    externalSignal?: AbortSignal,
+  ): Promise<T> {
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const signal = externalSignal
+      ? AbortSignal.any([timeoutSignal, externalSignal])
+      : timeoutSignal;
     const response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
-      signal: AbortSignal.timeout(timeoutMs),
+      signal,
     });
     if (!response.ok) {
       const body = await response.text();

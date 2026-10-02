@@ -6,3 +6,4 @@ export * from './threads';
 export * from './agents';
 export * from './jobs';
 export * from './canonical';
+export * from './analytics';

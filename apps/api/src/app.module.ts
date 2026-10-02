@@ -12,6 +12,7 @@ import { ContentModule } from './content/content.module';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { EngagementModule } from './engagement/engagement.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { EngagementModule } from './engagement/engagement.module';
     IngestionModule,
     NotificationsModule,
     EngagementModule,
+    AnalyticsModule,
   ],
 })
 export class AppModule {}

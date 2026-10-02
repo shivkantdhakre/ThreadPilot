@@ -5,6 +5,7 @@ import { prisma, PrismaClient } from '@threadpilot/database';
 import { QUEUES, PublishJobPayload, canonicalOutboundText } from '@threadpilot/types';
 import { ThreadsApiError } from '@threadpilot/threads-client';
 import { PublishingService } from '../services/publishing.service';
+import { ObservationSchedulingService } from '../services/observation-scheduler.service';
 import { createHash, randomUUID } from 'crypto';
 
 export class FencingTokenExpiredException extends Error {
@@ -91,6 +92,7 @@ export class PublishingProcessor extends WorkerHost {
   constructor(
     private readonly publishingService: PublishingService,
     @Optional() private readonly db: PrismaClient = prisma,
+    @Optional() private readonly observationScheduler?: ObservationSchedulingService,
   ) {
     super();
   }
@@ -707,10 +709,46 @@ export class PublishingProcessor extends WorkerHost {
           },
         });
 
+        if (this.observationScheduler) {
+          await this.observationScheduler.scheduleObservations(tx, {
+            workspaceId: post.workspaceId,
+            socialAccountId: post.socialAccountId,
+            publishedPostId: publishedPost.id,
+            publishedAt: platformTimestamp ?? publishedObservedAt,
+          });
+        }
+
         await tx.contentDraft.update({
           where: { id: post.draftId },
           data: { status: 'ARCHIVED' },
         });
+
+        // P1 #3: Transition linked RecommendationExposure from ACCEPTED to PUBLISHED
+        try {
+          const linkedExposure = await tx.recommendationExposure.findFirst({
+            where: {
+              draftId: post.draftId,
+              attributionStatus: 'ACCEPTED',
+            },
+          });
+          if (linkedExposure) {
+            await tx.recommendationExposure.update({
+              where: { id: linkedExposure.id },
+              data: {
+                publishedPostId: publishedPost.id,
+                publishedAt: platformTimestamp ?? publishedObservedAt,
+                attributionStatus: 'PUBLISHED',
+              },
+            });
+            this.logger.log(
+              `Linked published post ${publishedPost.id} to recommendation exposure ${linkedExposure.id}`,
+            );
+          }
+        } catch (expErr: any) {
+          this.logger.warn(
+            `Non-fatal recommendation exposure publish linkage error: ${expErr?.message || expErr}`,
+          );
+        }
 
         await tx.eventOutbox.create({
           data: {

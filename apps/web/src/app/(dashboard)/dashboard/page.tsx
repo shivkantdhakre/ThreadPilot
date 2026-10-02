@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   PenSquare,
   Sparkles,
@@ -57,8 +58,12 @@ export default function DashboardPage() {
     autoReplied: number;
     replied: number;
   } | null>(null);
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [insights, setInsights] = useState<any[]>([]);
+  const [acceptingRecId, setAcceptingRecId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const router = useRouter();
 
   // Time-aware greeting
   const [greeting, setGreeting] = useState('Your Threads system is ready');
@@ -73,13 +78,15 @@ export default function DashboardPage() {
   const loadData = async (silent = false) => {
     if (!silent) setIsRefreshing(true);
     try {
-      const [profRes, draftsRes, ingestRes, accountsRes, notifRes, engRes] = await Promise.allSettled([
+      const [profRes, draftsRes, ingestRes, accountsRes, notifRes, engRes, recsRes, insRes] = await Promise.allSettled([
         apiClient.get<UserProfileDto>('/profile'),
         apiClient.get<{ data: any[] }>('/content/drafts?limit=5'),
         apiClient.get<any>('/ingestion/status'),
         apiClient.get<{ accounts: any[] }>('/threads-auth/status'),
         apiClient.get<{ notifications: any[] }>('/notifications?limit=4'),
         apiClient.get<any>('/engagement/stats'),
+        apiClient.get<any>('/recommendations?status=EXPOSED&limit=2'),
+        apiClient.get<any>('/analytics/insights?isActive=true&limit=2'),
       ]);
 
       if (profRes.status === 'fulfilled') setProfile(profRes.value);
@@ -88,6 +95,14 @@ export default function DashboardPage() {
       if (accountsRes.status === 'fulfilled') setAccount(accountsRes.value.accounts?.[0] ?? null);
       if (notifRes.status === 'fulfilled') setRecentActivity(notifRes.value.notifications ?? []);
       if (engRes.status === 'fulfilled' && engRes.value) setEngagementStats(engRes.value);
+      if (recsRes.status === 'fulfilled') {
+        const data = Array.isArray(recsRes.value) ? recsRes.value : recsRes.value?.data || [];
+        setRecommendations(data);
+      }
+      if (insRes.status === 'fulfilled') {
+        const data = Array.isArray(insRes.value) ? insRes.value : insRes.value?.data || [];
+        setInsights(data);
+      }
 
       let upcoming: any[] = [];
       let published: any[] = [];
@@ -557,46 +572,122 @@ export default function DashboardPage() {
 
           {/* Side Column (4 cols): Contextual Intelligence & Activity */}
           <div className="lg:col-span-4 space-y-6">
-            {/* AI Recommendations Panel */}
+            {/* AI Recommendations & Empirical Insights Panel */}
             <div className="card-paper p-6 space-y-4">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-600">
-                  <BrainCircuit className="h-4 w-4" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-600">
+                    <BrainCircuit className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-text-primary">
+                      AI Recommendations
+                    </h4>
+                    <p className="text-[11px] text-text-muted">Derived from your empirical signals</p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-text-primary">
-                    AI Recommendations
-                  </h4>
-                  <p className="text-[11px] text-text-muted">Derived from your writing signals</p>
-                </div>
+                <span className="badge-lime text-[9px] font-bold">Closed-Loop</span>
               </div>
 
               <div className="space-y-3">
-                <div className="rounded-xl border border-canvas-border bg-white p-3.5 space-y-1.5 shadow-subtle">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="badge-violet text-[10px]">Cadence Signal</span>
-                    <span className="text-text-muted font-mono">Insight</span>
-                  </div>
-                  <p className="text-xs font-semibold text-text-primary">
-                    Short opening hook sentences drive higher read-through on Threads.
-                  </p>
-                  <p className="text-[11px] text-text-secondary leading-relaxed">
-                    Target under 14 words on line 1 before diving into deeper nuances.
-                  </p>
-                </div>
+                {recommendations.length > 0 ? (
+                  recommendations.map((rec) => {
+                    const idea = rec.contentIdea;
+                    const isExploration = rec.provenanceType === 'EXPLORATION';
+                    return (
+                      <div
+                        key={rec.id}
+                        className="rounded-xl border border-canvas-border bg-white p-3.5 space-y-2 shadow-subtle hover:border-canvas-border-muted transition-all"
+                      >
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span
+                            className={`text-[9px] font-bold px-2 py-0.2 rounded-full ${
+                              isExploration ? 'badge-cyan' : 'badge-coral'
+                            }`}
+                          >
+                            {isExploration ? 'EXPLORATION' : 'RECOMMENDED'}
+                          </span>
+                          <span className="text-text-muted font-mono font-semibold">
+                            {((idea?.predictedScore ?? 0.5) * 100).toFixed(0)}% Score
+                          </span>
+                        </div>
 
-                <div className="rounded-xl border border-canvas-border bg-white p-3.5 space-y-1.5 shadow-subtle">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="badge-coral text-[10px]">Publishing Window</span>
-                    <span className="text-text-muted font-mono">Suggested</span>
+                        <p className="text-xs font-semibold text-text-primary line-clamp-1">
+                          {idea?.topic ? `Topic: ${idea.topic}` : 'Strategic Content Direction'}
+                        </p>
+                        <p className="text-[11px] text-text-secondary leading-relaxed line-clamp-2">
+                          {idea?.suggestedPrompt || 'Evidence-derived candidate for upcoming post.'}
+                        </p>
+
+                        <div className="pt-2 border-t border-canvas-border/50 flex items-center justify-between">
+                          <span className="text-[10px] text-text-muted font-mono">
+                            {rec.insight?.dimension ? `${rec.insight.dimension}: ${rec.insight.dimensionValue}` : 'Multi-Armed Bandit'}
+                          </span>
+                          <button
+                            onClick={async () => {
+                              setAcceptingRecId(rec.id);
+                              try {
+                                const res = await apiClient.post<any>(`/recommendations/${rec.id}/accept`);
+                                if (res?.draft?.id) {
+                                  router.push(`/create?draftId=${res.draft.id}`);
+                                } else {
+                                  loadData(true);
+                                }
+                              } catch (err) {
+                                console.error('Failed to accept recommendation', err);
+                              } finally {
+                                setAcceptingRecId(null);
+                              }
+                            }}
+                            disabled={acceptingRecId === rec.id}
+                            className="text-[11px] font-semibold text-coral-600 hover:text-coral-700 inline-flex items-center gap-1 transition-colors"
+                          >
+                            {acceptingRecId === rec.id ? (
+                              <RefreshCw className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Sparkles className="h-3 w-3" />
+                            )}
+                            <span>Draft & Review &rarr;</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : insights.length > 0 ? (
+                  insights.map((ins) => (
+                    <div
+                      key={ins.id}
+                      className="rounded-xl border border-canvas-border bg-white p-3.5 space-y-1.5 shadow-subtle"
+                    >
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span
+                          className={`text-[9px] font-bold px-2 py-0.2 rounded-full ${
+                            ins.evidenceGrade === 'HIGH_SIGNAL' ? 'badge-lime' : 'badge-coral'
+                          }`}
+                        >
+                          {ins.evidenceGrade}
+                        </span>
+                        <span className="text-text-muted font-mono">
+                          {ins.passesFDR ? 'FDR Verified' : 'Directional'}
+                        </span>
+                      </div>
+                      <p className="text-xs font-semibold text-text-primary line-clamp-1">
+                        {ins.dimension}: {ins.dimensionValue}
+                      </p>
+                      <p className="text-[11px] text-text-secondary leading-relaxed line-clamp-2">
+                        {ins.observation}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-canvas-border bg-white p-4 text-center space-y-2 shadow-subtle">
+                    <Sparkles className="h-5 w-5 text-text-muted mx-auto" />
+                    <p className="text-xs font-semibold text-text-primary">Calibrating Strategy Models</p>
+                    <p className="text-[11px] text-text-secondary leading-relaxed">
+                      Publish posts and trigger aggregation to populate empirical recommendations.
+                    </p>
                   </div>
-                  <p className="text-xs font-semibold text-text-primary">
-                    High engagement corridor: 8:00 AM – 10:30 AM
-                  </p>
-                  <p className="text-[11px] text-text-secondary leading-relaxed">
-                    Queue drafts to deploy during morning reading habits.
-                  </p>
-                </div>
+                )}
               </div>
 
               <Link

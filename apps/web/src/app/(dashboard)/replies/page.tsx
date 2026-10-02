@@ -293,6 +293,95 @@ export default function RepliesPage() {
     );
   });
 
+  // Global Community Review Deck Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const hasActiveModal =
+        isAutonomyModalOpen ||
+        isRegenerateModalOpen ||
+        isDismissModalOpen ||
+        isResolveModalOpen;
+
+      if (hasActiveModal) {
+        if (e.key === 'Escape') {
+          setIsAutonomyModalOpen(false);
+          setIsRegenerateModalOpen(false);
+          setIsDismissModalOpen(false);
+          setIsResolveModalOpen(false);
+        }
+        return;
+      }
+
+      // Check if user is typing into an input or textarea
+      const target = e.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      if (tagName === 'input' || tagName === 'textarea' || target?.isContentEditable) {
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+
+      // Navigation: j/ArrowDown (next), k/ArrowUp (prev)
+      if (e.key === 'ArrowDown' || key === 'j') {
+        e.preventDefault();
+        const currentIndex = filteredInteractions.findIndex((i) => i.id === selectedInteractionId);
+        const nextItem = filteredInteractions[currentIndex + 1];
+        if (nextItem) {
+          setSelectedInteractionId(nextItem.id);
+        }
+        return;
+      }
+      if (e.key === 'ArrowUp' || key === 'k') {
+        e.preventDefault();
+        const currentIndex = filteredInteractions.findIndex((i) => i.id === selectedInteractionId);
+        const prevItem = filteredInteractions[currentIndex - 1];
+        if (prevItem) {
+          setSelectedInteractionId(prevItem.id);
+        }
+        return;
+      }
+
+      // Action: Approve
+      if (key === 'a' || e.key === 'Enter') {
+        if (selectedInteraction && selectedInteraction.status === 'REVIEW_REQUIRED' && !isApproving) {
+          e.preventDefault();
+          handleApprove(selectedInteraction.id, selectedInteraction.replyDraft?.currentVersionId || undefined);
+        }
+        return;
+      }
+
+      // Action: Regenerate
+      if (key === 'r') {
+        if (selectedInteraction) {
+          e.preventDefault();
+          setIsRegenerateModalOpen(true);
+        }
+        return;
+      }
+
+      // Action: Dismiss
+      if (key === 'd') {
+        if (selectedInteraction) {
+          e.preventDefault();
+          setIsDismissModalOpen(true);
+        }
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    isAutonomyModalOpen,
+    isRegenerateModalOpen,
+    isDismissModalOpen,
+    isResolveModalOpen,
+    selectedInteraction,
+    selectedInteractionId,
+    filteredInteractions,
+    isApproving,
+  ]);
+
   // Collect any ambiguous executions across loaded items
   const ambiguousExecutions: Array<{
     execution: ReplyExecutionData;
@@ -456,6 +545,10 @@ export default function RepliesPage() {
               <option value="REQUEST">Requests</option>
               <option value="TROLLING">Trolling / Toxic</option>
             </select>
+
+            <span className="hidden xl:inline-flex items-center text-[10px] text-text-muted font-mono bg-canvas-subtle border border-canvas-border px-2.5 py-1 rounded-lg">
+              Shortcuts: <kbd className="font-bold text-text-primary ml-1">[A]</kbd>&nbsp;Approve · <kbd className="font-bold text-text-primary">[R]</kbd>&nbsp;Regen · <kbd className="font-bold text-text-primary">[D]</kbd>&nbsp;Dismiss · <kbd className="font-bold text-text-primary">[J/K]</kbd>&nbsp;Navigate
+            </span>
           </div>
         </div>
 
