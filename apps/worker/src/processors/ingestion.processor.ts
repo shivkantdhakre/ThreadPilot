@@ -2,7 +2,13 @@ import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { prisma, MemoryRepository } from '@threadpilot/database';
+import {
+  prisma,
+  MemoryRepository,
+  ObservationSlot,
+  ObservationStatus,
+  AnalyticsOutboxType,
+} from '@threadpilot/database';
 import {
   QUEUES,
   IngestionJobPayload,
@@ -320,6 +326,22 @@ export class IngestionProcessor extends WorkerHost {
         });
       }
 
+      // Automatically register ingested posts for analytics tracking
+      if (totalIngested > 0) {
+        try {
+          const registered = await this.registerIngestedPostsForAnalytics(workspaceId, socialAccountId);
+          if (registered > 0) {
+            this.logger.log(
+              `Automatically registered ${registered} ingested posts for analytics tracking (socialAccount: ${socialAccountId})`,
+            );
+          }
+        } catch (analyticsErr: any) {
+          this.logger.warn(
+            `Could not auto-register ingested posts for analytics: ${analyticsErr.message}`,
+          );
+        }
+      }
+
       await this.progressService.update(requestId, {
         status: 'COMPLETE',
         progress: 100,
@@ -338,5 +360,135 @@ export class IngestionProcessor extends WorkerHost {
       });
       throw err;
     }
+  }
+
+  /**
+   * Helper to automatically register unlinked historical ThreadPosts for analytics.
+   * Creates synthetic Draft + Version + PublishedPost records with valid future observation windows
+   * and triggers the outbox pipeline.
+   */
+  private async registerIngestedPostsForAnalytics(
+    workspaceId: string,
+    socialAccountId: string,
+  ): Promise<number> {
+    const unlinkedPosts = await prisma.threadPost.findMany({
+      where: {
+        socialAccountId,
+        publishedPostId: null,
+      },
+      orderBy: { postedAt: 'desc' },
+      take: 200,
+    });
+
+    if (unlinkedPosts.length === 0) return 0;
+
+    await prisma.analyticsSyncState.upsert({
+      where: { socialAccountId },
+      create: { workspaceId, socialAccountId, analyticsRevision: 0, ingestionGeneration: 0 },
+      update: {},
+    });
+
+    let registeredCount = 0;
+    const now = new Date();
+    const windowClosesAt = new Date(now.getTime() + 7 * 24 * 3600 * 1000);
+    const slots = [ObservationSlot.T_24H, ObservationSlot.T_30D];
+
+    for (const tp of unlinkedPosts) {
+      try {
+        await prisma.$transaction(async (tx) => {
+          const postText =
+            tp.text || `Historical Threads post from ${tp.postedAt?.toISOString() ?? 'unknown date'}`;
+
+          const draft = await tx.contentDraft.create({
+            data: {
+              workspaceId,
+              status: 'READY',
+              generatedBy: 'BACKFILL',
+            },
+          });
+
+          const version = await tx.contentVersion.create({
+            data: {
+              draftId: draft.id,
+              version: 1,
+              body: postText.slice(0, 500),
+              hook: postText.split('\n')[0]?.slice(0, 100) ?? null,
+              editedBy: 'BACKFILL',
+            },
+          });
+
+          const publishedPost = await tx.publishedPost.create({
+            data: {
+              workspaceId,
+              socialAccountId,
+              draftId: draft.id,
+              publishedVersionId: version.id,
+              threadsPostId: tp.threadsPostId,
+              publishedAt: tp.postedAt ?? now,
+              publishedObservedAt: now,
+            },
+          });
+
+          await tx.threadPost.update({
+            where: { id: tp.id },
+            data: { publishedPostId: publishedPost.id },
+          });
+
+          for (const slot of slots) {
+            const dedupeKey = `backfill_obs:${publishedPost.id}:${slot}`;
+            const obs = await tx.analyticsObservation.upsert({
+              where: {
+                uq_observation_slot: { publishedPostId: publishedPost.id, observationSlot: slot },
+              },
+              create: {
+                workspaceId,
+                socialAccountId,
+                publishedPostId: publishedPost.id,
+                observationSlot: slot,
+                scheduledFor: now,
+                windowClosesAt,
+                status: ObservationStatus.SCHEDULED,
+              },
+              update: {
+                scheduledFor: now,
+                windowClosesAt,
+                status: ObservationStatus.SCHEDULED,
+              },
+            });
+
+            await tx.analyticsOutboxEvent.upsert({
+              where: { dedupeKey },
+              create: {
+                workspaceId,
+                socialAccountId,
+                dedupeKey,
+                eventType: AnalyticsOutboxType.TRIGGER_OBSERVATION,
+                executeAt: now,
+                payload: {
+                  observationId: obs.id,
+                  workspaceId,
+                  socialAccountId,
+                  publishedPostId: publishedPost.id,
+                  slot,
+                },
+              },
+              update: {
+                status: 'PENDING',
+                executeAt: now,
+                errorMessage: null,
+              },
+            });
+          }
+
+          registeredCount++;
+        });
+      } catch (err: any) {
+        this.logger.warn(
+          `Skipping auto-analytics registration for post ${tp.threadsPostId}: ${err?.message}`,
+        );
+      }
+    }
+
+    return registeredCount;
   }
 }

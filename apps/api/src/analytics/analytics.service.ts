@@ -448,6 +448,8 @@ export class AnalyticsService {
     const [
       ingestedPostCount,
       publishedPostCount,
+      unbackfilledPostCount,
+      postsMissingObsCount,
       pendingObsCount,
       capturedObsCount,
       metricCount,
@@ -466,6 +468,20 @@ export class AnalyticsService {
             },
       }),
       this.db.publishedPost.count({ where }),
+      this.db.threadPost.count({
+        where: socialAccountId
+          ? { socialAccountId, publishedPostId: null }
+          : {
+              socialAccount: { workspaceId },
+              publishedPostId: null,
+            },
+      }),
+      this.db.publishedPost.count({
+        where: {
+          ...where,
+          analyticsObservations: { none: {} },
+        },
+      }),
       this.db.analyticsObservation.count({
         where: { ...where, status: { in: ['SCHEDULED', 'PROCESSING'] } },
       }),
@@ -484,12 +500,35 @@ export class AnalyticsService {
       }),
     ]);
 
+    // Check if connected account is missing the threads_manage_insights scope
+    let missingInsightsPermission = false;
+    try {
+      const activeAccount = socialAccountId
+        ? await this.db.socialAccount.findUnique({
+            where: { id: socialAccountId },
+            include: { oauthToken: true },
+          })
+        : await this.db.socialAccount.findFirst({
+            where: { workspaceId, isConnected: true },
+            include: { oauthToken: true },
+          });
+
+      if (activeAccount?.oauthToken?.scopes) {
+        missingInsightsPermission = !activeAccount.oauthToken.scopes.includes('threads_manage_insights');
+      }
+    } catch {
+      // Ignore scope check errors
+    }
+
     const isPopulated = metricCount > 0;
     const hasPendingWork = pendingObsCount > 0 || outboxPendingCount > 0;
 
     return {
       ingestedPostCount,
       publishedPostCount,
+      unbackfilledPostCount,
+      postsMissingObsCount,
+      missingInsightsPermission,
       pendingObsCount,
       capturedObsCount,
       metricCount,
@@ -504,44 +543,17 @@ export class AnalyticsService {
   }
 
   /**
-   * Backfills analytics data by creating PublishedPost records from
-   * ingested ThreadPost records that don't have analytics yet.
-   * Also creates immediate observation windows and outbox events to
-   * trigger the analytics sync worker.
+   * Backfills analytics data by:
+   * 1. Scheduling observations for existing PublishedPosts that lack them (e.g. published prior to Phase 4).
+   * 2. Creating PublishedPost + observation records from unlinked ThreadPosts (e.g. historical posts posted before connection).
+   * All observation windows are given a valid future windowClosesAt (now + 7 days) and immediate outbox trigger events.
    */
   async backfillAnalytics(
     workspaceId: string,
     socialAccountId: string,
-    limit = 50,
+    limit = 500,
   ): Promise<{ backfilledCount: number; alreadyTracked: number; message: string }> {
-    // 1. Find ingested ThreadPosts that have no corresponding PublishedPost
-    const ingestedPosts = await this.db.threadPost.findMany({
-      where: {
-        socialAccount: { workspaceId },
-        socialAccountId,
-        sourceType: 'INGESTED',
-        publishedPostId: null, // no PublishedPost yet
-      },
-      orderBy: { postedAt: 'desc' },
-      take: limit,
-    });
-
-    if (ingestedPosts.length === 0) {
-      // Check how many already have analytics
-      const alreadyTracked = await this.db.publishedPost.count({
-        where: { workspaceId, socialAccountId },
-      });
-      return {
-        backfilledCount: 0,
-        alreadyTracked,
-        message:
-          alreadyTracked > 0
-            ? `All ${alreadyTracked} published posts are already being tracked for analytics.`
-            : 'No ingested posts found. Run ingestion first via the Profile > Train Voice Model section.',
-      };
-    }
-
-    // 2. Ensure AnalyticsSyncState exists
+    // 1. Ensure AnalyticsSyncState exists
     await this.db.analyticsSyncState.upsert({
       where: { socialAccountId },
       create: { workspaceId, socialAccountId, analyticsRevision: 0, ingestionGeneration: 0 },
@@ -549,13 +561,91 @@ export class AnalyticsService {
     });
 
     let backfilledCount = 0;
+    const now = new Date();
+    // Window must be open in the future so workers and sweepers do not mark it MISSED
+    const windowClosesAt = new Date(now.getTime() + 7 * 24 * 3600 * 1000);
 
-    for (const tp of ingestedPosts) {
+    // 2. Schedule missing observations for existing PublishedPost records that have none
+    const publishedWithoutObs = await this.db.publishedPost.findMany({
+      where: {
+        workspaceId,
+        socialAccountId,
+        analyticsObservations: { none: {} },
+      },
+    });
+
+    for (const pp of publishedWithoutObs) {
+      try {
+        await this.db.$transaction(async (tx) => {
+          for (const slot of BACKFILL_SLOTS) {
+            const dedupeKey = `backfill_obs:${pp.id}:${slot}`;
+            const obs = await tx.analyticsObservation.upsert({
+              where: {
+                uq_observation_slot: { publishedPostId: pp.id, observationSlot: slot },
+              },
+              create: {
+                workspaceId,
+                socialAccountId,
+                publishedPostId: pp.id,
+                observationSlot: slot,
+                scheduledFor: now,
+                windowClosesAt,
+                status: ObservationStatus.SCHEDULED,
+              },
+              update: {
+                scheduledFor: now,
+                windowClosesAt,
+                status: ObservationStatus.SCHEDULED,
+              },
+            });
+
+            await tx.analyticsOutboxEvent.upsert({
+              where: { dedupeKey },
+              create: {
+                workspaceId,
+                socialAccountId,
+                dedupeKey,
+                eventType: AnalyticsOutboxType.TRIGGER_OBSERVATION,
+                executeAt: now,
+                payload: {
+                  observationId: obs.id,
+                  workspaceId,
+                  socialAccountId,
+                  publishedPostId: pp.id,
+                  slot,
+                },
+              },
+              update: {
+                status: 'PENDING',
+                executeAt: now,
+                errorMessage: null,
+              },
+            });
+          }
+          backfilledCount++;
+        });
+      } catch (err: any) {
+        this.logger.warn(`Skipping observation schedule for PublishedPost ${pp.id}: ${err?.message}`);
+      }
+    }
+
+    // 3. Find unlinked ThreadPosts (historical posts posted before account was connected)
+    const unlinkedPosts = await this.db.threadPost.findMany({
+      where: {
+        socialAccount: { workspaceId },
+        socialAccountId,
+        publishedPostId: null,
+      },
+      orderBy: { postedAt: 'desc' },
+      take: limit,
+    });
+
+    for (const tp of unlinkedPosts) {
       try {
         await this.db.$transaction(async (tx) => {
           const postText = tp.text || `Threads post from ${tp.postedAt?.toISOString() ?? 'unknown date'}`;
 
-          // 3. Create synthetic ContentDraft + ContentVersion (tagged as BACKFILL)
+          // Create synthetic ContentDraft + ContentVersion (tagged as BACKFILL)
           const draft = await tx.contentDraft.create({
             data: {
               workspaceId,
@@ -574,7 +664,7 @@ export class AnalyticsService {
             },
           });
 
-          // 4. Create PublishedPost record
+          // Create PublishedPost record
           const publishedPost = await tx.publishedPost.create({
             data: {
               workspaceId,
@@ -582,19 +672,18 @@ export class AnalyticsService {
               draftId: draft.id,
               publishedVersionId: version.id,
               threadsPostId: tp.threadsPostId,
-              publishedAt: tp.postedAt ?? new Date(),
-              publishedObservedAt: new Date(),
+              publishedAt: tp.postedAt ?? now,
+              publishedObservedAt: now,
             },
           });
 
-          // 5. Update ThreadPost to link back to PublishedPost
+          // Update ThreadPost to link back to PublishedPost
           await tx.threadPost.update({
             where: { id: tp.id },
             data: { publishedPostId: publishedPost.id },
           });
 
-          // 6. Schedule immediate observation windows (backdated — capturable now)
-          const publishedAt = tp.postedAt ?? new Date();
+          // Schedule immediate observation windows with FUTURE windowClosesAt
           for (const slot of BACKFILL_SLOTS) {
             const dedupeKey = `backfill_obs:${publishedPost.id}:${slot}`;
             const obs = await tx.analyticsObservation.upsert({
@@ -606,14 +695,18 @@ export class AnalyticsService {
                 socialAccountId,
                 publishedPostId: publishedPost.id,
                 observationSlot: slot,
-                scheduledFor: publishedAt,
-                windowClosesAt: new Date(publishedAt.getTime() + 24 * 3600 * 1000),
+                scheduledFor: now,
+                windowClosesAt,
                 status: ObservationStatus.SCHEDULED,
               },
-              update: {},
+              update: {
+                scheduledFor: now,
+                windowClosesAt,
+                status: ObservationStatus.SCHEDULED,
+              },
             });
 
-            // 7. Add outbox event to trigger analytics sync
+            // Add outbox event to trigger analytics sync
             await tx.analyticsOutboxEvent.upsert({
               where: { dedupeKey },
               create: {
@@ -621,7 +714,7 @@ export class AnalyticsService {
                 socialAccountId,
                 dedupeKey,
                 eventType: AnalyticsOutboxType.TRIGGER_OBSERVATION,
-                executeAt: new Date(), // immediately
+                executeAt: now, // immediately
                 payload: {
                   observationId: obs.id,
                   workspaceId,
@@ -630,14 +723,17 @@ export class AnalyticsService {
                   slot,
                 },
               },
-              update: {},
+              update: {
+                status: 'PENDING',
+                executeAt: now,
+                errorMessage: null,
+              },
             });
           }
 
           backfilledCount++;
         });
       } catch (err: any) {
-        // Log and continue: skip posts that can't be backfilled (e.g. duplicate threadsPostId)
         this.logger.warn(
           `Skipping backfill for ThreadPost ${tp.id} (${tp.threadsPostId}): ${err?.message}`,
         );
@@ -653,8 +749,8 @@ export class AnalyticsService {
       alreadyTracked,
       message:
         backfilledCount > 0
-          ? `Successfully backfilled ${backfilledCount} posts. Analytics sync will run within the next few minutes.`
-          : 'No new posts were backfilled. All ingested posts may already be tracked.',
+          ? `Successfully synced ${backfilledCount} posts for analytics tracking. Metric sync queued.`
+          : `All ${alreadyTracked} published posts are already tracked for analytics.`,
     };
   }
 }

@@ -287,11 +287,19 @@ export default function ConnectPage() {
           </div>
           <p className="text-xs text-text-secondary leading-relaxed font-normal">
             ThreadPilot adheres strictly to least-privilege access rules. Tokens are
-            encrypted at rest via AES-256-GCM with key versioning. ThreadPilot only requests{' '}
+            encrypted at rest via AES-256-GCM with key versioning. ThreadPilot requests{' '}
             <code className="rounded-md bg-white border border-canvas-border px-1.5 py-0.5 font-mono text-coral-700 font-semibold">
               threads_basic
+            </code>
+            ,{' '}
+            <code className="rounded-md bg-white border border-canvas-border px-1.5 py-0.5 font-mono text-coral-700 font-semibold">
+              threads_content_publish
+            </code>
+            , and{' '}
+            <code className="rounded-md bg-white border border-canvas-border px-1.5 py-0.5 font-mono text-coral-700 font-semibold">
+              threads_manage_insights
             </code>{' '}
-            and publishing scopes necessary for automated scheduling.
+            to enable autonomous publishing, reply handling, and real-time engagement telemetry.
           </p>
         </div>
       </div>

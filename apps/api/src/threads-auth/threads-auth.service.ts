@@ -28,7 +28,10 @@ export class ThreadsAuthService {
         appId: this.config.get<string>('THREADS_APP_ID', ''),
         appSecret: this.config.get<string>('THREADS_APP_SECRET', ''),
         redirectUri: this.config.get<string>('THREADS_REDIRECT_URI', 'http://localhost:3001/api/v1/threads-auth/callback'),
-        scopes: this.config.get<string>('THREADS_SCOPES', 'threads_basic,threads_content_publish'),
+        scopes: this.config.get<string>(
+          'THREADS_SCOPES',
+          'threads_basic,threads_content_publish,threads_manage_insights,threads_manage_replies',
+        ),
         stateTtlSeconds: Number(this.config.get<number>('THREADS_OAUTH_STATE_TTL_SECONDS', 300)),
       },
     );
@@ -54,7 +57,7 @@ export class ThreadsAuthService {
 
       const rawScopes = this.config.get<string>(
         'THREADS_SCOPES',
-        'threads_basic,threads_content_publish',
+        'threads_basic,threads_content_publish,threads_manage_insights,threads_manage_replies',
       );
       const parsedScopes = rawScopes
         .split(',')

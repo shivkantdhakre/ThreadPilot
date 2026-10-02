@@ -371,8 +371,8 @@ export async function aggregateAccountPerformance(
       };
     },
     {
-      timeout: 60000,
-      maxWait: 10000,
+      timeout: 300000,
+      maxWait: 30000,
       isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
     },
   );

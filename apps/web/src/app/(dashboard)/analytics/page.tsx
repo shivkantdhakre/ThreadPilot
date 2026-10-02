@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
@@ -16,6 +16,7 @@ import {
   Database,
   Activity,
   XCircle,
+  ShieldAlert,
 } from 'lucide-react';
 import { TopBar } from '../../../components/TopBar';
 import { apiClient } from '../../../lib/api-client';
@@ -79,7 +80,7 @@ export default function AnalyticsPage() {
     try {
       const res = await apiClient.post<any>('/analytics/backfill', {
         socialAccountId: account.id,
-        limit: 100,
+        limit: 500,
       });
       setBackfillResult(res.message || `Backfilled ${res.backfilledCount} posts.`);
       setTimeout(() => loadData(), 2000);
@@ -98,11 +99,17 @@ export default function AnalyticsPage() {
   const isDataEmpty = !overview || (totals.views === 0 && totals.likes === 0);
   const hasIngestedPosts = (pipelineStatus?.ingestedPostCount ?? 0) > 0;
   const hasPublishedPosts = (pipelineStatus?.publishedPostCount ?? 0) > 0;
+  const unbackfilledCount =
+    pipelineStatus?.unbackfilledPostCount ??
+    Math.max(0, (pipelineStatus?.ingestedPostCount ?? 0) - (pipelineStatus?.publishedPostCount ?? 0));
+  const postsMissingObsCount = pipelineStatus?.postsMissingObsCount ?? 0;
+  const needsSync = unbackfilledCount > 0 || postsMissingObsCount > 0 || (pipelineStatus?.metricCount ?? 0) === 0;
+  const isMissingPermission = Boolean(pipelineStatus?.missingInsightsPermission);
 
-  const pipelineStage = !hasIngestedPosts
+  const pipelineStage = !hasIngestedPosts && !hasPublishedPosts
     ? 'no_ingestion'
-    : !hasPublishedPosts
-    ? 'needs_backfill'
+    : needsSync && (pipelineStatus?.metricCount ?? 0) === 0
+    ? 'needs_sync'
     : (pipelineStatus?.metricCount ?? 0) === 0
     ? 'pending_sync'
     : (pipelineStatus?.aggregateCount ?? 0) === 0
@@ -127,6 +134,26 @@ export default function AnalyticsPage() {
       />
 
       <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-8">
+
+        {isMissingPermission && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start justify-between gap-3 shadow-subtle">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-amber-900">Threads Insights Permission Required</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  Your connected Threads account needs the <code>threads_manage_insights</code> scope to retrieve view counts and post engagement metrics from Meta.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/connect"
+              className="btn-secondary text-xs py-1.5 px-3 shrink-0 whitespace-nowrap"
+            >
+              Reconnect with Insights
+            </Link>
+          </div>
+        )}
 
         {error && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 flex items-start gap-3">
@@ -154,7 +181,7 @@ export default function AnalyticsPage() {
                 <p className="text-xs text-text-secondary mt-1 leading-relaxed">
                   {pipelineStage === 'no_ingestion'
                     ? 'No historical posts found. Run voice model ingestion first to import your Threads posts.'
-                    : pipelineStage === 'needs_backfill'
+                    : pipelineStage === 'needs_sync'
                     ? `Found ${pipelineStatus?.ingestedPostCount ?? 0} ingested posts. Click "Sync Analytics" to register them for tracking and fetch their engagement metrics.`
                     : pipelineStage === 'pending_sync'
                     ? `${pipelineStatus?.publishedPostCount ?? 0} posts registered. Waiting for analytics sync worker (${pipelineStatus?.pendingObsCount ?? 0} observations pending).`
@@ -192,7 +219,7 @@ export default function AnalyticsPage() {
                     </Link>
                   )}
 
-                  {pipelineStage === 'needs_backfill' && (
+                  {(needsSync || pipelineStage === 'needs_sync' || unbackfilledCount > 0 || (pipelineStatus?.metricCount ?? 0) === 0) && (
                     <button
                       onClick={handleBackfill}
                       disabled={isBackfilling}
@@ -203,7 +230,13 @@ export default function AnalyticsPage() {
                       ) : (
                         <Zap className="h-3.5 w-3.5" />
                       )}
-                      <span>{isBackfilling ? 'Syncing...' : 'Sync Analytics from Ingested Posts'}</span>
+                      <span>
+                        {isBackfilling
+                          ? 'Syncing All Posts...'
+                          : unbackfilledCount > 0
+                          ? `Sync Analytics for All Posts (${unbackfilledCount} unsynced)`
+                          : 'Sync Analytics for All Posts'}
+                      </span>
                     </button>
                   )}
 
@@ -382,7 +415,7 @@ export default function AnalyticsPage() {
               <p className="text-xs text-text-secondary max-w-md mx-auto">
                 {pipelineStage === 'no_ingestion'
                   ? 'Run ingestion to import your historical posts, then sync analytics to populate cohort data.'
-                  : pipelineStage === 'needs_backfill'
+                  : pipelineStage === 'needs_sync'
                   ? 'Use "Sync Analytics from Ingested Posts" above to register your posts for tracking.'
                   : `Aggregation worker will compute cohorts after metrics are captured for ${selectedDimension} dimension.`}
               </p>
