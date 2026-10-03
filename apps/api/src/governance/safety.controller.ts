@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Param,
+  Query,
   Body,
   UseGuards,
   BadRequestException,
@@ -21,7 +22,7 @@ export class SafetyController {
   @Get('audits')
   async listAudits(
     @WorkspaceId() workspaceId: string,
-    @Body('socialAccountId') socialAccountId?: string,
+    @Query('socialAccountId') socialAccountId?: string,
   ): Promise<any[]> {
     return this.governanceService.listSafetyAudits(workspaceId, socialAccountId);
   }

@@ -51,12 +51,14 @@ export function ScheduleModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [failedAuditId, setFailedAuditId] = useState<string | null>(null);
 
   // Initialize defaults on open
   useEffect(() => {
     if (!isOpen) {
       setErrorMsg(null);
       setSuccessMsg(null);
+      setFailedAuditId(null);
       return;
     }
 
@@ -186,6 +188,12 @@ export function ScheduleModal({
       }, 1000);
     } catch (err: any) {
       const msg = err.message || err.response?.data?.message || 'Failed to schedule post';
+      const extractedAuditId =
+        err.auditId ||
+        err.response?.data?.auditId ||
+        msg.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0] ||
+        null;
+      setFailedAuditId(extractedAuditId);
       setErrorMsg(msg);
     } finally {
       setIsSubmitting(false);
@@ -229,10 +237,10 @@ export function ScheduleModal({
                 errorMsg.toLowerCase().includes('flagged') ||
                 errorMsg.toLowerCase().includes('audit')) && (
                 <a
-                  href="/governance"
+                  href={`/governance?tab=safety${failedAuditId ? `&auditId=${encodeURIComponent(failedAuditId)}` : ''}`}
                   className="inline-flex items-center gap-1 text-[11px] font-bold text-coral-600 hover:text-coral-700 ml-6"
                 >
-                  <span>Open Safety & Governance Hub &rarr;</span>
+                  <span>Open Safety Gate & Review Override &rarr;</span>
                 </a>
               )}
             </div>

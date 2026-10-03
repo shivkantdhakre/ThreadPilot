@@ -274,22 +274,17 @@ export class GovernanceService {
   async createExperiment(
     workspaceId: string,
     socialAccountId: string,
-    data: {
-      name: string;
-      hypothesis: string;
-      dimension: AggregationDimension;
-      primaryMetric?: ExperimentMetric;
-      effectType?: ExperimentEffectType;
-      targetObservationSlot?: ObservationSlot;
-      direction?: OptimizationDirection;
-      minPracticalEffect?: number;
-      minSampleSizePerArm?: number;
-      durationDays?: number;
-      controlDimensionValue: string;
-      treatmentDimensionValue: string;
-    },
+    data: any,
   ): Promise<any> {
-    CreateExperimentRequestSchema.parse(data);
+    // Validate against the canonical Zod schema (variants[] format)
+    const parsed = CreateExperimentRequestSchema.parse(data);
+
+    const controlVariant = parsed.variants.find((v) => v.isControl);
+    const treatmentVariant = parsed.variants.find((v) => !v.isControl);
+
+    if (!controlVariant || !treatmentVariant) {
+      throw new BadRequestException('Experiment must have exactly one control and one treatment variant');
+    }
 
     const randomizationSeed = randomUUID();
 
@@ -298,16 +293,16 @@ export class GovernanceService {
         data: {
           workspaceId,
           socialAccountId,
-          name: data.name,
-          hypothesis: data.hypothesis,
-          dimension: data.dimension,
-          primaryMetric: data.primaryMetric ?? 'ENGAGEMENT_RATE_BY_VIEWS',
-          effectType: data.effectType ?? 'RELATIVE',
-          targetObservationSlot: data.targetObservationSlot ?? 'T_24H',
-          direction: data.direction ?? 'MAXIMIZE',
-          minPracticalEffect: data.minPracticalEffect ?? 0.05,
-          minSampleSizePerArm: data.minSampleSizePerArm ?? 10,
-          durationDays: data.durationDays ?? 14,
+          name: parsed.name,
+          hypothesis: parsed.hypothesis,
+          dimension: parsed.dimension as AggregationDimension,
+          primaryMetric: (parsed.primaryMetric ?? 'ENGAGEMENT_RATE_BY_VIEWS') as ExperimentMetric,
+          effectType: (parsed.effectType ?? 'RELATIVE') as ExperimentEffectType,
+          targetObservationSlot: (parsed.targetObservationSlot ?? 'T_24H') as ObservationSlot,
+          direction: 'MAXIMIZE' as OptimizationDirection,
+          minPracticalEffect: parsed.minPracticalEffect ?? 0.05,
+          minSampleSizePerArm: parsed.minSampleSizePerArm ?? 10,
+          durationDays: parsed.durationDays ?? 14,
           randomizationSeed,
           status: 'DRAFT',
         },
@@ -320,7 +315,7 @@ export class GovernanceService {
           experimentId: exp.id,
           variantKey: 'A',
           isControl: true,
-          dimensionValue: data.controlDimensionValue,
+          dimensionValue: controlVariant.dimensionValue,
         },
       });
 
@@ -331,7 +326,7 @@ export class GovernanceService {
           experimentId: exp.id,
           variantKey: 'B',
           isControl: false,
-          dimensionValue: data.treatmentDimensionValue,
+          dimensionValue: treatmentVariant.dimensionValue,
         },
       });
 
