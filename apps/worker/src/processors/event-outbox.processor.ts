@@ -80,7 +80,8 @@ export class EventOutboxProcessor implements OnModuleInit, OnModuleDestroy {
         SET status = 'PROCESSING',
             lease_token = uuid_generate_v4(),
             lease_until = NOW() + INTERVAL '60 seconds',
-            attempt_count = e.attempt_count + 1
+            attempt_count = e.attempt_count + 1,
+            updated_at = NOW()
         FROM claimable
         WHERE e.id = claimable.id
         RETURNING e.id, e.workspace_id, e.event_type, e.payload, e.attempt_count, e.lease_token;
@@ -123,7 +124,8 @@ export class EventOutboxProcessor implements OnModuleInit, OnModuleDestroy {
                 processed_at = NOW(),
                 lease_token = NULL,
                 lease_until = NULL,
-                last_error = NULL
+                last_error = NULL,
+                updated_at = NOW()
             WHERE id = ${event.id}::uuid
               AND status = 'PROCESSING'
               AND lease_token = ${event.lease_token}::uuid
@@ -145,7 +147,8 @@ export class EventOutboxProcessor implements OnModuleInit, OnModuleDestroy {
               SET status = 'FAILED',
                   last_error = ${err?.message || 'Exceeded max processing attempts'},
                   lease_token = NULL,
-                  lease_until = NULL
+                  lease_until = NULL,
+                  updated_at = NOW()
               WHERE id = ${event.id}::uuid
                 AND status = 'PROCESSING'
                 AND lease_token = ${event.lease_token}::uuid
@@ -157,7 +160,8 @@ export class EventOutboxProcessor implements OnModuleInit, OnModuleDestroy {
               SET status = 'PENDING',
                   last_error = ${err?.message || 'Processing failed; retryable'},
                   lease_token = NULL,
-                  lease_until = NULL
+                  lease_until = NULL,
+                  updated_at = NOW()
               WHERE id = ${event.id}::uuid
                 AND status = 'PROCESSING'
                 AND lease_token = ${event.lease_token}::uuid

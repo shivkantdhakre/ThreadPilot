@@ -517,10 +517,10 @@ export class ContentService {
       where: { id: draftId, workspaceId },
       include: { versions: { orderBy: { version: 'desc' }, take: 1 } },
     });
-    // Multi-Account Draft Reuse Support:
-    // Allow scheduling drafts that are READY or ARCHIVED (e.g. cross-posting an already-published draft to another Threads account)
-    if (!draft || !['READY', 'ARCHIVED'].includes(draft.status)) {
-      throw new BadRequestException('Draft must exist and have status READY or ARCHIVED to be scheduled');
+    // Multi-Account Draft Reuse Support & Operator Lifecycle:
+    // Allow scheduling drafts that are DRAFT (promoted to READY upon scheduling), READY, or ARCHIVED (e.g. cross-posting an already-published draft to another Threads account)
+    if (!draft || !['DRAFT', 'READY', 'ARCHIVED'].includes(draft.status)) {
+      throw new BadRequestException('Draft must exist and have status DRAFT, READY, or ARCHIVED to be scheduled');
     }
     const latestVersion = draft.versions[0];
     if (!latestVersion) {
@@ -588,6 +588,13 @@ export class ContentService {
 
     try {
       const res = await this.db.$transaction(async (tx: any) => {
+        if (draft.status === 'DRAFT') {
+          await tx.contentDraft.update({
+            where: { id: draftId },
+            data: { status: 'READY' },
+          });
+        }
+
         const sp = await tx.scheduledPost.create({
           data: {
             workspaceId,

@@ -6,6 +6,7 @@ import {
   Query,
   Body,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WorkspaceScopeGuard } from '../common/guards/workspace-scope.guard';
@@ -118,7 +119,7 @@ export class AnalyticsController {
     @Body() body: { socialAccountId: string; limit?: number },
   ) {
     if (!body.socialAccountId) {
-      throw new Error('socialAccountId is required for analytics backfill');
+      throw new BadRequestException('socialAccountId is required for analytics backfill');
     }
     return this.analyticsService.backfillAnalytics(
       workspaceId,

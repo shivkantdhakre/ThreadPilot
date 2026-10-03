@@ -167,6 +167,9 @@ describe('ContentService Phase 2 Scheduling & Resolution Tests', () => {
                 ...data,
               }),
             },
+            contentDraft: {
+              update: async () => ({}),
+            },
           };
           return fn(tx);
         },
@@ -190,6 +193,79 @@ describe('ContentService Phase 2 Scheduling & Resolution Tests', () => {
       assert.ok(addedJob);
       assert.strictEqual(addedJob.opts.jobId, 'publish-sched-1');
       assert.strictEqual(addedJob.payload.scheduledPostId, 'sched-1');
+    });
+
+    it('successfully schedules a draft with status DRAFT and promotes it to READY', async () => {
+      const futureTime = new Date(Date.now() + 3600_000).toISOString();
+      let draftUpdatedStatus: string | null = null;
+      const mockPublishQueue = {
+        add: async () => ({ id: 'job-1' }),
+        getJob: async () => null,
+      };
+
+      const mockDb: any = {
+        socialAccount: {
+          findFirst: async () => ({ id: 'acc-1', workspaceId: 'ws-1', isConnected: true }),
+        },
+        contentDraft: {
+          findFirst: async () => ({
+            id: 'draft-draft',
+            status: 'DRAFT',
+            versions: [
+              {
+                id: 'ver-1',
+                body: 'Fresh authoring draft',
+                hook: 'Hook',
+                cta: 'CTA',
+              },
+            ],
+          }),
+        },
+        publishedPost: {
+          findUnique: async () => null,
+        },
+        scheduledPost: {
+          findFirst: async () => null,
+          update: async () => ({}),
+        },
+        scheduledPostDispatch: {
+          update: async () => ({}),
+        },
+        $transaction: async (fn: any) => {
+          const tx = {
+            contentDraft: {
+              update: async ({ data }: any) => {
+                draftUpdatedStatus = data.status;
+                return {};
+              },
+            },
+            scheduledPost: {
+              create: async ({ data }: any) => ({
+                id: 'sched-2',
+                ...data,
+              }),
+            },
+            scheduledPostDispatch: {
+              create: async ({ data }: any) => ({
+                id: 'disp-2',
+                ...data,
+              }),
+            },
+          };
+          return fn(tx);
+        },
+      };
+
+      const service = createService({ db: mockDb, publishQueue: mockPublishQueue });
+      const result = await service.scheduleDraft('ws-1', 'draft-draft', {
+        scheduledAt: futureTime,
+        timezone: 'UTC',
+        socialAccountId: 'acc-1',
+      });
+
+      assert.strictEqual(result.id, 'sched-2');
+      assert.strictEqual(result.status, 'SCHEDULED');
+      assert.strictEqual(draftUpdatedStatus, 'READY');
     });
   });
 

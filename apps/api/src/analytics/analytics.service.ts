@@ -139,7 +139,6 @@ export class AnalyticsService {
       observationHealth: {
         captured: observationStatusCounts['CAPTURED'] ?? 0,
         scheduled: observationStatusCounts['SCHEDULED'] ?? 0,
-        pending: observationStatusCounts['SCHEDULED'] ?? 0, // alias for frontend compat
         processing: observationStatusCounts['PROCESSING'] ?? 0,
         failed: observationStatusCounts['FAILED'] ?? 0,
         missed: observationStatusCounts['MISSED'] ?? 0,
@@ -198,7 +197,7 @@ export class AnalyticsService {
         bestDay: bestDay ? parseInt(bestDay.dimensionValue, 10) : null,
         isEmpirical: true,
         lastComputedAt: new Date(),
-        analyticsRevisionAtComputation: 1,
+        analyticsRevisionAtComputation: null,
       };
     } catch {
       return null;

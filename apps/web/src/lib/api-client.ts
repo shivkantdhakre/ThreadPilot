@@ -12,8 +12,9 @@ class ApiClient {
   private refreshSubscribers: Array<(token: string) => void> = [];
 
   private onRefreshed(token: string) {
-    this.refreshSubscribers.forEach((cb) => cb(token));
+    const subscribers = this.refreshSubscribers;
     this.refreshSubscribers = [];
+    subscribers.forEach((cb) => cb(token));
   }
 
   private addRefreshSubscriber(cb: (token: string) => void) {
@@ -74,11 +75,13 @@ class ApiClient {
       } else {
         this.token = null;
         this.isRefreshing = false;
+        this.onRefreshed(''); // Unblock all queued subscribers on failure
         return null;
       }
     } catch {
       this.isRefreshing = false;
       this.token = null;
+      this.onRefreshed(''); // Unblock all queued subscribers on network error
       return null;
     }
   }
