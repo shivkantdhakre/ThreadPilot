@@ -219,9 +219,22 @@ export function ScheduleModal({
         {/* Content Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {errorMsg && (
-            <div className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 font-medium">
-              <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
-              <div className="flex-1">{errorMsg}</div>
+            <div className="flex flex-col gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 font-medium">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                <div className="flex-1">{errorMsg}</div>
+              </div>
+              {(errorMsg.toLowerCase().includes('safety') ||
+                errorMsg.toLowerCase().includes('override') ||
+                errorMsg.toLowerCase().includes('flagged') ||
+                errorMsg.toLowerCase().includes('audit')) && (
+                <a
+                  href="/governance"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-coral-600 hover:text-coral-700 ml-6"
+                >
+                  <span>Open Safety & Governance Hub &rarr;</span>
+                </a>
+              )}
             </div>
           )}
 

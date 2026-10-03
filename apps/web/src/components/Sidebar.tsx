@@ -19,6 +19,7 @@ import {
   ChevronDown,
   Check,
   Share2,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import Logo from './ui/Logo';
@@ -44,6 +45,7 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: { mobileOpen?: bo
     { name: 'Analytics', href: '/analytics', icon: BarChart3 },
     { name: 'Replies', href: '/replies', icon: MessageSquare },
     { name: 'Learning', href: '/learning', icon: BrainCircuit },
+    { name: 'Governance', href: '/governance', icon: ShieldCheck },
     { name: 'Profile', href: '/profile', icon: Sparkles },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];

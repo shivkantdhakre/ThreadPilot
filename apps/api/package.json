@@ -5,7 +5,7 @@
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",
-    "test": "node --experimental-strip-types --test test/cross-tenant-isolation.spec.ts test/content-service.spec.ts test/ingestion-service.spec.ts test/health-controller.spec.ts test/redis-helper.spec.ts test/engagement-service.spec.ts test/auth-service.spec.ts test/threads-auth-service.spec.ts test/engagement-controller-gateway.spec.ts test/analytics-service.spec.ts test/analytics-pipeline.spec.ts",
+    "test": "node --experimental-strip-types --test test/cross-tenant-isolation.spec.ts test/content-service.spec.ts test/ingestion-service.spec.ts test/health-controller.spec.ts test/redis-helper.spec.ts test/engagement-service.spec.ts test/auth-service.spec.ts test/threads-auth-service.spec.ts test/engagement-controller-gateway.spec.ts test/analytics-service.spec.ts test/analytics-pipeline.spec.ts test/governance-controller.spec.ts",
     "lint": "tsc --noEmit"
   },
 

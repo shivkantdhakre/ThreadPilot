@@ -31,8 +31,9 @@ model User {
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
 
-  workspaces    Workspace[]
-  refreshTokens RefreshToken[]
+  workspaces       Workspace[]
+  workspaceMembers WorkspaceMember[]
+  refreshTokens    RefreshToken[]
 
   @@map("users")
 }
@@ -105,6 +106,26 @@ model Workspace {
   analyticsOutboxEvents    AnalyticsOutboxEvent[]
   analyticsSyncStates      AnalyticsSyncState[]
 
+  // Phase 5 Autonomous Operator, Rules, Safety & Experimentation Relations
+  workspaceMembers            WorkspaceMember[]
+  scheduledPostQuotas         ScheduledPostQuota[]
+  automationRules             AutomationRule[]
+  ruleExecutionBudgets        RuleExecutionBudget[]
+  ruleExecutionLogs           RuleExecutionLog[]
+  ruleActionExecutions        RuleActionExecution[]
+  safetyPolicyConfigs         SafetyPolicyConfig[]
+  prePublishSafetyAudits      PrePublishSafetyAudit[]
+  safetyOverrideLogs          SafetyOverrideLog[]
+  experiments                 Experiment[]
+  experimentVariants          ExperimentVariant[]
+  experimentBlockAllocations  ExperimentBlockAllocation[]
+  experimentPostAssignments   ExperimentPostAssignment[]
+  profileAdaptationProposals  ProfileAdaptationProposal[]
+  autonomousOperatorConfigs   AutonomousOperatorConfig[]
+  autonomousOperatorLeases    AutonomousOperatorLease[]
+  autonomousOperatorRuns      AutonomousOperatorRun[]
+  autonomousOperatorCandidates AutonomousOperatorCandidate[]
+
   @@map("workspaces")
 }
 
@@ -149,6 +170,25 @@ model SocialAccount {
   analyticsOutboxEvents    AnalyticsOutboxEvent[]
   analyticsSyncState       AnalyticsSyncState?
   contentIdeas             ContentIdea[]
+
+  // Phase 5 Autonomous Operator, Rules, Safety & Experimentation Relations
+  scheduledPostQuotas         ScheduledPostQuota[]
+  automationRules             AutomationRule[]
+  ruleExecutionBudgets        RuleExecutionBudget[]
+  ruleExecutionLogs           RuleExecutionLog[]
+  ruleActionExecutions        RuleActionExecution[]
+  safetyPolicyConfigs         SafetyPolicyConfig[]
+  prePublishSafetyAudits      PrePublishSafetyAudit[]
+  safetyOverrideLogs          SafetyOverrideLog[]
+  experiments                 Experiment[]
+  experimentVariants          ExperimentVariant[]
+  experimentBlockAllocations  ExperimentBlockAllocation[]
+  experimentPostAssignments   ExperimentPostAssignment[]
+  profileAdaptationProposals  ProfileAdaptationProposal[]
+  autonomousOperatorConfig    AutonomousOperatorConfig?
+  autonomousOperatorLease     AutonomousOperatorLease?
+  autonomousOperatorRuns      AutonomousOperatorRun[]
+  autonomousOperatorCandidates AutonomousOperatorCandidate[]
 
   @@unique([id, workspaceId], name: "uq_social_account_workspace")
   @@unique([workspaceId, platform, externalId])
@@ -420,8 +460,11 @@ model ContentDraft {
   scheduledPosts ScheduledPost[]
   publishedPosts PublishedPost[]
   recommendationExposure RecommendationExposure?
-  createdAt      DateTime         @default(now()) @map("created_at")
-  updatedAt     DateTime         @updatedAt @map("updated_at")
+  safetyAudits           PrePublishSafetyAudit[]
+  experimentAssignments  ExperimentPostAssignment[]
+  operatorCandidates     AutonomousOperatorCandidate[]
+  createdAt              DateTime         @default(now()) @map("created_at")
+  updatedAt              DateTime         @updatedAt @map("updated_at")
 
   @@index([workspaceId, status])
   @@map("content_drafts")
@@ -441,6 +484,7 @@ model ContentVersion {
 
   scheduledPosts ScheduledPost[]
   publishedPosts PublishedPost[]
+  safetyAudits   PrePublishSafetyAudit[]
 
   @@unique([draftId, version])
   @@index([draftId])
@@ -505,11 +549,15 @@ model ScheduledPost {
   lastErrorMsg        String?         @map("last_error_msg")
   bullJobId           String?         @map("bull_job_id")
 
-  dispatchRecord      ScheduledPostDispatch?
-  createdAt           DateTime        @default(now()) @map("created_at")
-  updatedAt           DateTime        @updatedAt @map("updated_at")
+  dispatchRecord         ScheduledPostDispatch?
+  experimentAssignments  ExperimentPostAssignment[]
+  operatorCandidates     AutonomousOperatorCandidate[]
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
 
   @@unique([workspaceId, idempotencyKey], name: "unique_workspace_idempotency_key")
+  @@unique([socialAccountId, scheduledAt], name: "uq_scheduled_post_account_slot")
+  @@unique([id, workspaceId, socialAccountId], name: "uq_scheduled_post_tenant")
   @@index([workspaceId, status, scheduledAt])
   @@index([status, scheduledAt])
   @@index([status, leaseUntil])
@@ -551,6 +599,7 @@ model PublishedPost {
   analyticsObservations AnalyticsObservation[]
   postMetrics           PostMetric[]
   recommendationExposure RecommendationExposure?
+  experimentAssignments  ExperimentPostAssignment[]
 
   @@unique([id, workspaceId, socialAccountId], name: "uq_published_post_tenant")
   @@unique([socialAccountId, threadsPostId])
@@ -1232,6 +1281,7 @@ enum EvidenceGrade {
   LOW_SIGNAL
   DIRECTIONAL
   HIGH_SIGNAL
+  ACTION_PROPOSED
 }
 
 enum RecommendationProvenanceType {
@@ -1326,6 +1376,7 @@ model PostMetric {
   metricFormulaVersion  String               @default("v1") @map("metric_formula_version")
 
   recommendationExposure RecommendationExposure?
+  experimentAssignments  ExperimentPostAssignment[]
 
   createdAt             DateTime             @default(now()) @map("created_at")
 
@@ -1472,12 +1523,14 @@ model LearnedPerformanceProfile {
   bestDaySampleSize           Int?                  @map("best_day_sample_size")
   bestDayRevision             Int?                  @map("best_day_revision")
 
+  profileVersion              Int                   @default(1) @map("profile_version")
   analyticsRevisionAtComputation Int                @map("analytics_revision_at_computation")
   lastComputedAt              DateTime              @map("last_computed_at")
   createdAt                   DateTime              @default(now()) @map("created_at")
   updatedAt                   DateTime              @updatedAt @map("updated_at")
 
   weights                     LearnedDimensionWeight[]
+  adaptationProposals         ProfileAdaptationProposal[]
 
   @@unique([id, workspaceId, socialAccountId], name: "uq_learned_profile_tenant")
   @@map("learned_performance_profiles")
@@ -1553,6 +1606,8 @@ model RecommendationExposure {
   acceptedAt              DateTime?                     @map("accepted_at")
   publishedAt             DateTime?                     @map("published_at")
   evaluatedAt             DateTime?                     @map("evaluated_at")
+
+  operatorCandidates      AutonomousOperatorCandidate[]
 
   createdAt               DateTime                      @default(now()) @map("created_at")
   updatedAt               DateTime                      @updatedAt @map("updated_at")
@@ -1635,4 +1690,597 @@ model AnalyticsSyncState {
   updatedAt             DateTime      @updatedAt @map("updated_at")
 
   @@map("analytics_sync_states")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 5: ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum RuleTriggerType {
+  POST_PUBLISHED
+  METRIC_OBSERVED
+  INSIGHT_GENERATED
+  SCHEDULE_TIME_REACHED
+  SAFETY_AUDIT_FAILED
+  MANUAL_TRIGGER
+}
+
+enum RuleExecutionStatus {
+  CLAIMED
+  EXECUTING
+  EXECUTED
+  SKIPPED_CONDITION
+  SKIPPED_BUDGET
+  FAILED
+}
+
+enum SafetyAuditStatus {
+  PENDING
+  RUNNING
+  PASSED
+  FLAGGED_APPROVAL_REQUIRED
+  BLOCKED_POLICY_VIOLATION
+  EXPIRED
+}
+
+enum SafetyWallType {
+  CLAIM_HALLUCINATION
+  TOXICITY_BRAND_SAFETY
+  POLICY_COMPLIANCE
+  SENSITIVE_TOPIC_RATE
+}
+
+enum OverrideStatus {
+  OVERRIDE_REQUESTED
+  OVERRIDDEN
+  REJECTED
+  EXPIRED
+}
+
+enum ExperimentStatus {
+  DRAFT
+  ACTIVE
+  COLLECTING_DATA
+  ANALYSIS_LOCKED
+  CONCLUDED
+  ARCHIVED
+}
+
+enum ExperimentMetric {
+  ENGAGEMENT_RATE_BY_VIEWS
+  LIKE_RATE
+  REPLY_RATE
+  REPOST_RATE
+  TOTAL_VIEWS
+}
+
+enum ExperimentEffectType {
+  RELATIVE
+  ABSOLUTE
+}
+
+enum OptimizationDirection {
+  MAXIMIZE
+  MINIMIZE
+}
+
+enum AdaptationProposalStatus {
+  PENDING_REVIEW
+  APPLIED
+  REJECTED
+  SUPERSEDED
+}
+
+enum AutonomyLevel {
+  MANUAL
+  SEMI_AUTONOMOUS
+  FULL_AUTONOMOUS
+  PAUSED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WORKSPACE MEMBERSHIP (Multi-user tenant & actor authorization)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model WorkspaceMember {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId                String              @map("user_id") @db.Uuid
+  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role                  String              @default("MEMBER") // OWNER | ADMIN | MEMBER
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  safetyOverrides       SafetyOverrideLog[]
+
+  @@unique([workspaceId, userId], name: "uq_workspace_member")
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CENTRALIZED SCHEDULING QUOTA (Hard ISO calendar week limit across all paths)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ScheduledPostQuota {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  weekWindow            String              @map("week_window") // Format: YYYY-Www in account timezone
+  maxWeeklyPosts        Int                 @map("max_weekly_posts") // Snapshotted from config
+  claimedPosts          Int                 @default(0) @map("claimed_posts")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  @@unique([socialAccountId, weekWindow], name: "uq_scheduled_post_quota")
+  @@unique([id, workspaceId, socialAccountId], name: "uq_scheduled_post_quota_tenant")
+  @@index([socialAccountId, weekWindow])
+  @@map("scheduled_post_quotas")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE 1: AUTOMATION RULES ENGINE
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AutomationRule {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  name                  String
+  description           String?
+  triggerType           RuleTriggerType     @map("trigger_type")
+  astConditions         Json                @map("ast_conditions") // Validated RuleConditionAST
+  actions               Json                @map("actions")        // Validated RuleAction[]
+  priority              Int                 @default(100)
+  maxDailyExecutions    Int                 @default(10) @map("max_daily_executions")
+  isActive              Boolean             @default(true) @map("is_active")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  budgets               RuleExecutionBudget[]
+  executionLogs         RuleExecutionLog[]
+
+  @@unique([id, workspaceId, socialAccountId], name: "uq_automation_rule_tenant")
+  @@index([socialAccountId, triggerType, isActive])
+  @@index([workspaceId, isActive])
+  @@map("automation_rules")
+}
+
+model RuleExecutionBudget {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  ruleId                String              @map("rule_id") @db.Uuid
+  rule                  AutomationRule      @relation(fields: [ruleId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId], onDelete: Cascade)
+
+  executionWindow       String              @map("execution_window") // Format: YYYY-MM-DD
+  maxExecutions         Int                 @map("max_executions")   // Snapshotted at creation
+  claimedExecutions     Int                 @default(0) @map("claimed_executions")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  @@unique([ruleId, executionWindow], name: "uq_rule_budget_window")
+  @@unique([id, workspaceId, socialAccountId], name: "uq_rule_budget_tenant")
+  @@index([socialAccountId, executionWindow])
+  @@map("rule_execution_budgets")
+}
+
+model RuleExecutionLog {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  ruleId                String              @map("rule_id") @db.Uuid
+  rule                  AutomationRule      @relation(fields: [ruleId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId], onDelete: Cascade)
+
+  executionWindow       String              @map("execution_window") // Format: YYYY-MM-DD
+  executionKey          String              @map("execution_key")    // Idempotency token (e.g., entityId-triggerType)
+  status                RuleExecutionStatus @default(CLAIMED)
+  leaseToken            String?             @map("lease_token")
+  leaseUntil            DateTime?           @map("lease_until")
+  evaluatedContext      Json                @map("evaluated_context")
+  actionResults         Json?               @map("action_results")
+  errorMessage          String?             @map("error_message")
+  executedAt            DateTime?           @map("executed_at")
+  createdAt             DateTime            @default(now()) @map("created_at")
+
+  actionExecutions      RuleActionExecution[]
+
+  @@unique([ruleId, executionWindow, executionKey], name: "uq_rule_execution_log_idempotency")
+  @@unique([id, workspaceId, socialAccountId], name: "uq_rule_execution_log_tenant")
+  @@index([socialAccountId, executionWindow, status])
+  @@map("rule_execution_logs")
+}
+
+model RuleActionExecution {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  logId                 String              @map("log_id") @db.Uuid
+  log                   RuleExecutionLog    @relation(fields: [logId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId], onDelete: Cascade)
+
+  actionIndex           Int                 @map("action_index")
+  actionType            String              @map("action_type")
+  actionExecutionKey    String              @unique @map("action_execution_key")
+  status                String              @default("EXECUTED") // EXECUTED | FAILED
+  resultPayload         Json?               @map("result_payload")
+  executedAt            DateTime            @default(now()) @map("executed_at")
+
+  @@unique([id, workspaceId, socialAccountId], name: "uq_rule_action_execution_tenant")
+  @@map("rule_action_executions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE 2: PRE-PUBLISH SAFETY GATE & IMMUTABLE POLICIES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SafetyPolicyConfig {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  policyVersion         String              @map("policy_version") // Immutable version stamp
+  hallucinationThreshold Float              @default(0.30) @map("hallucination_threshold")
+  toxicityThreshold     Float               @default(0.15) @map("toxicity_threshold")
+  prohibitedTopics      String[]            @default([]) @map("prohibited_topics")
+  flaggedTopics         String[]            @default([]) @map("flagged_topics")
+  requireClaimSources   Boolean             @default(true) @map("require_claim_sources")
+  maxConsecutiveClaims  Int                 @default(3) @map("max_consecutive_claims")
+  auditTtlSeconds       Int                 @default(86400) @map("audit_ttl_seconds") // 24 hours
+  isActive              Boolean             @default(true) @map("is_active")
+  createdAt             DateTime            @default(now()) @map("created_at")
+
+  @@unique([socialAccountId, policyVersion], name: "uq_safety_policy_version")
+  @@unique([id, workspaceId, socialAccountId], name: "uq_safety_policy_tenant")
+  @@map("safety_policy_configs")
+}
+
+model PrePublishSafetyAudit {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  draftId               String              @map("draft_id") @db.Uuid
+  draft                 ContentDraft        @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  contentVersionId      String              @map("content_version_id") @db.Uuid
+  contentVersion        ContentVersion      @relation(fields: [contentVersionId], references: [id], onDelete: Cascade)
+  contentHash           String              @map("content_hash") // SHA-256 of normalized text
+
+  status                SafetyAuditStatus   @default(PENDING) // Fail-closed default
+  policyVersion         String              @map("policy_version")
+  evaluatorVersion      String              @default("1.1.0") @map("evaluator_version")
+  modelVersion          String              @default("gemini-2.5-flash") @map("model_version")
+
+  hallucinationScore    Float?              @map("hallucination_score")
+  toxicityScore         Float?              @map("toxicity_score")
+  failedWalls           SafetyWallType[]    @default([]) @map("failed_walls")
+  auditDetails          Json                @map("audit_details") // Wall-by-wall findings
+
+  evaluatedAt           DateTime?           @map("evaluated_at")
+  expiresAt             DateTime            @map("expires_at")
+  createdAt             DateTime            @default(now()) @map("created_at")
+
+  overrideLog           SafetyOverrideLog?
+
+  @@unique([id, workspaceId, socialAccountId], name: "uq_safety_audit_tenant")
+  @@unique([contentVersionId, policyVersion], name: "uq_safety_audit_version")
+  @@index([draftId, status])
+  @@index([workspaceId, status, expiresAt])
+  @@map("pre_publish_safety_audits")
+}
+
+model SafetyOverrideLog {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  auditId               String              @unique @map("audit_id") @db.Uuid
+  audit                 PrePublishSafetyAudit @relation(fields: [auditId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId], onDelete: Cascade)
+
+  status                OverrideStatus      @default(OVERRIDE_REQUESTED)
+  actorId               String              @map("actor_id") @db.Uuid
+  actorRoleSnapshot     String              @map("actor_role_snapshot") // Snapshotted OWNER | ADMIN
+  actorMembership       WorkspaceMember     @relation(fields: [workspaceId, actorId], references: [workspaceId, userId], onDelete: Restrict)
+
+  reason                String              // Mandatory human explanation (>= 10 chars)
+  riskAcknowledged      Boolean             @map("risk_acknowledged")
+  oneTimeToken          String              @unique @map("one_time_token") @db.Uuid
+  consumedAt            DateTime?           @map("consumed_at") // Single-use consumption
+  consumedBy            String?             @map("consumed_by") // ScheduledPost ID that consumed token
+  expiresAt             DateTime            @map("expires_at")  // Matches audit.expiresAt
+  overriddenAt          DateTime            @default(now()) @map("overridden_at")
+
+  @@unique([auditId, workspaceId, socialAccountId], name: "uq_safety_override_audit_tenant")
+  @@unique([id, workspaceId, socialAccountId], name: "uq_safety_override_tenant")
+  @@map("safety_override_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE 3: CONTENT EXPERIMENTATION ENGINE (Strictly Two-Arm A/B)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Experiment {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  name                  String
+  hypothesis            String
+  dimension             AggregationDimension
+  status                ExperimentStatus    @default(DRAFT)
+
+  // Primary statistical contract
+  primaryMetric         ExperimentMetric    @default(ENGAGEMENT_RATE_BY_VIEWS) @map("primary_metric")
+  effectType            ExperimentEffectType @default(RELATIVE) @map("effect_type")
+  targetObservationSlot ObservationSlot     @default(T_24H) @map("target_observation_slot")
+  direction             OptimizationDirection @default(MAXIMIZE)
+  minPracticalEffect    Float               @default(0.05) @map("min_practical_effect") // e.g. 5% relative lift
+  minSampleSizePerArm   Int                 @default(10) @map("min_sample_size_per_arm")
+  durationDays          Int                 @default(14) @map("duration_days")
+  randomizationSeed     String              @map("randomization_seed")
+
+  // Sample maturity tracking
+  eligibleArmSampleSize Int                 @default(0) @map("eligible_arm_sample_size") // Published posts assigned
+  matureArmSampleSize   Int                 @default(0) @map("mature_arm_sample_size")   // Captured T_24H metrics
+
+  // Enrollment and analysis horizons
+  activatedAt           DateTime?           @map("activated_at")
+  enrollmentEndAt       DateTime?           @map("enrollment_end_at")   // activatedAt + durationDays
+  plannedAnalysisAt     DateTime?           @map("planned_analysis_at") // enrollmentEndAt + 30h buffer
+  canonicalAnalysisAsOf DateTime?           @map("canonical_analysis_as_of")
+  analysisCutoff        DateTime?           @map("analysis_cutoff")
+  analysisLockedAt      DateTime?           @map("analysis_locked_at")
+  hypothesisFamilyKey   String?             @map("hypothesis_family_key")
+  hypothesisFamilyRevision Int?             @map("hypothesis_family_revision")
+  hypothesisFamilySize  Int?                @map("hypothesis_family_size")
+
+  // Welch's two-sample t-test and FDR outcomes (frozen)
+  welchTStatistic       Float?              @map("welch_t_statistic")
+  welchPValue           Float?              @map("welch_p_value")
+  cohensD               Float?              @map("cohens_d")
+  ci95Lower             Float?              @map("ci95_lower")
+  ci95Upper             Float?              @map("ci95_upper")
+  qValue                Float?              @map("q_value")
+  passesFDR             Boolean?            @map("passes_fdr")
+  observedRelativeLift  Float?              @map("observed_relative_lift")
+
+  winningVariantId      String?             @map("winning_variant_id") @db.Uuid
+  winningVariant        ExperimentVariant?  @relation("ExperimentWinner", fields: [winningVariantId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId])
+
+  variants              ExperimentVariant[] @relation("ExperimentVariants") // Exactly 2 variants
+  blockAllocations      ExperimentBlockAllocation[]
+  assignments           ExperimentPostAssignment[]
+  adaptationProposals   ProfileAdaptationProposal[]
+
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  @@unique([id, workspaceId, socialAccountId], name: "uq_experiment_tenant")
+  @@index([socialAccountId, status])
+  @@index([workspaceId, dimension, status])
+  @@map("experiments")
+}
+
+model ExperimentVariant {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  experimentId          String              @map("experiment_id") @db.Uuid
+  experiment            Experiment          @relation("ExperimentVariants", fields: [experimentId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId], onDelete: Cascade)
+
+  variantKey            String              @map("variant_key") // "A" (Control) or "B" (Treatment)
+  isControl             Boolean             @default(false) @map("is_control")
+  dimensionValue        String              @map("dimension_value")
+  sampleCount           Int                 @default(0) @map("sample_count")
+  meanPrimaryMetric     Float?              @map("mean_primary_metric")
+  stdDevPrimaryMetric   Float?              @map("std_dev_primary_metric")
+
+  wonExperiments        Experiment[]        @relation("ExperimentWinner")
+  assignments           ExperimentPostAssignment[]
+
+  @@unique([experimentId, variantKey], name: "uq_experiment_variant_key")
+  @@unique([id, workspaceId, socialAccountId], name: "uq_experiment_variant_tenant")
+  @@index([socialAccountId, experimentId])
+  @@map("experiment_variants")
+}
+
+model ExperimentBlockAllocation {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  experimentId          String              @map("experiment_id") @db.Uuid
+  experiment            Experiment          @relation(fields: [experimentId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId], onDelete: Cascade)
+
+  temporalBlockKey      String              @map("temporal_block_key") // e.g. "America/New_York-2-09"
+  blockSize             Int                 @default(4) @map("block_size")
+  currentBlockNumber    Int                 @default(0) @map("current_block_number")
+  permutedSequence      String[]            @map("permuted_sequence") // e.g. ["A", "B", "B", "A"]
+  sequenceIndexInBlock  Int                 @default(0) @map("sequence_index_in_block")
+  totalAssignedCount    Int                 @default(0) @map("total_assigned_count")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  @@unique([experimentId, temporalBlockKey], name: "uq_experiment_block_allocation")
+  @@unique([id, workspaceId, socialAccountId], name: "uq_block_allocation_tenant")
+  @@map("experiment_block_allocations")
+}
+
+model ExperimentPostAssignment {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  experimentId          String              @map("experiment_id") @db.Uuid
+  experiment            Experiment          @relation(fields: [experimentId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId], onDelete: Cascade)
+  variantId             String              @map("variant_id") @db.Uuid
+  variant               ExperimentVariant   @relation(fields: [variantId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId], onDelete: Cascade)
+
+  temporalBlockKey      String              @map("temporal_block_key")
+  blockNumber           Int                 @map("block_number")
+  sequencePosition      Int                 @map("sequence_position")
+  draftId               String              @unique @map("draft_id") @db.Uuid
+  draft                 ContentDraft        @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  scheduledPostId       String?             @unique @map("scheduled_post_id") @db.Uuid
+  scheduledPost         ScheduledPost?      @relation(fields: [scheduledPostId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId])
+  publishedPostId       String?             @unique @map("published_post_id") @db.Uuid
+  publishedPost         PublishedPost?      @relation(fields: [publishedPostId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId])
+  postMetricId          String?             @unique @map("post_metric_id") @db.Uuid
+  postMetric            PostMetric?         @relation(fields: [postMetricId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId])
+
+  assignedAt            DateTime            @default(now()) @map("assigned_at")
+
+  @@unique([id, workspaceId, socialAccountId], name: "uq_experiment_post_assignment_tenant")
+  @@index([experimentId, variantId])
+  @@map("experiment_post_assignments")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE 4: CLOSED-LOOP PROFILE ADAPTATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ProfileAdaptationProposal {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  profileId             String              @map("profile_id") @db.Uuid
+  profile               LearnedPerformanceProfile @relation(fields: [profileId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId], onDelete: Cascade)
+  experimentId          String?             @map("experiment_id") @db.Uuid
+  experiment            Experiment?         @relation(fields: [experimentId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId])
+  actionExecutionKey    String?             @unique @map("action_execution_key") // Deterministic idempotency key if initiated by rule action
+
+  sourceProfileVersion  Int                 @map("source_profile_version")
+  dimension             AggregationDimension
+  dimensionValue        String              @map("dimension_value")
+  observedRawLift       Float               @map("observed_raw_lift")
+  winsorizedLift        Float               @map("winsorized_lift") // Clamped to [-0.50, +0.50]
+  priorWeight           Float               @map("prior_weight")
+  proposedWeight        Float               @map("proposed_weight")
+  sampleEvidenceSize    Int                 @map("sample_evidence_size")
+  evidenceGrade         EvidenceGrade       @map("evidence_grade")
+
+  status                AdaptationProposalStatus @default(PENDING_REVIEW)
+  appliedAt             DateTime?           @map("applied_at")
+  rejectionReason       String?             @map("rejection_reason")
+  createdAt             DateTime            @default(now()) @map("created_at")
+
+  @@unique([id, workspaceId, socialAccountId], name: "uq_adaptation_proposal_tenant")
+  @@index([socialAccountId, status])
+  @@map("profile_adaptation_proposals")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE 5: AUTONOMOUS OPERATOR & DISTRIBUTED LEASING
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AutonomousOperatorConfig {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @unique @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  autonomyLevel         AutonomyLevel       @default(SEMI_AUTONOMOUS) @map("autonomy_level")
+  maxWeeklyPosts        Int                 @default(14) @map("max_weekly_posts")
+  minHoursBetweenPosts  Int                 @default(4) @map("min_hours_between_posts")
+  targetPostingHours    Int[]               @default([9, 12, 17, 20]) @map("target_posting_hours") // Account local hours
+  planningHorizonDays   Int                 @default(7) @map("planning_horizon_days")
+  enableExperiments     Boolean             @default(true) @map("enable_experiments")
+
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  @@unique([socialAccountId, workspaceId], name: "uq_operator_config_account_workspace")
+  @@unique([id, workspaceId, socialAccountId], name: "uq_operator_config_tenant")
+  @@map("autonomous_operator_configs")
+}
+
+model AutonomousOperatorLease {
+  socialAccountId       String              @id @map("social_account_id") @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  leaseToken            String?             @map("lease_token")
+  leaseUntil            DateTime?           @map("lease_until")
+  cycleId               String?             @map("cycle_id") @db.Uuid
+  heartbeatAt           DateTime?           @map("heartbeat_at")
+
+  @@unique([socialAccountId, workspaceId], name: "uq_operator_lease_tenant")
+  @@map("autonomous_operator_leases")
+}
+
+model AutonomousOperatorRun {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  cycleId               String              @unique @map("cycle_id") @db.Uuid
+  status                String              @default("RUNNING") // RUNNING | COMPLETED | HALTED_KILL_SWITCH | FAILED
+  candidatesEvaluated   Int                 @default(0) @map("candidates_evaluated")
+  candidatesScheduled   Int                 @default(0) @map("candidates_scheduled")
+  safetyFlaggedCount    Int                 @default(0) @map("safety_flagged_count")
+  summary               Json                @map("summary")
+  startedAt             DateTime            @default(now()) @map("started_at")
+  completedAt           DateTime?           @map("completed_at")
+
+  candidates            AutonomousOperatorCandidate[]
+
+  @@unique([id, workspaceId, socialAccountId], name: "uq_operator_run_tenant")
+  @@index([socialAccountId, startedAt])
+  @@map("autonomous_operator_runs")
+}
+
+model AutonomousOperatorCandidate {
+  id                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workspaceId           String              @map("workspace_id") @db.Uuid
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId       String              @map("social_account_id") @db.Uuid
+  socialAccount         SocialAccount       @relation(fields: [socialAccountId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  runId                 String              @map("run_id") @db.Uuid
+  run                   AutonomousOperatorRun @relation(fields: [runId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId], onDelete: Cascade)
+
+  recommendationId      String?             @map("recommendation_id") @db.Uuid
+  recommendation        RecommendationExposure? @relation(fields: [recommendationId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId])
+  draftId               String              @map("draft_id") @db.Uuid
+  draft                 ContentDraft        @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  scheduledSlot         DateTime            @map("scheduled_slot")
+  scheduledPostId       String?             @unique @map("scheduled_post_id") @db.Uuid
+  scheduledPost         ScheduledPost?      @relation(fields: [scheduledPostId, workspaceId, socialAccountId], references: [id, workspaceId, socialAccountId])
+  status                String              // SELECTED | SAFETY_BLOCKED | SCHEDULED | SKIPPED_BUDGET
+  rejectionReason       String?             @map("rejection_reason")
+  createdAt             DateTime            @default(now()) @map("created_at")
+
+  @@unique([id, workspaceId, socialAccountId], name: "uq_operator_candidate_tenant")
+  @@index([runId, status])
+  @@map("autonomous_operator_candidates")
 }

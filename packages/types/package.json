@@ -6,7 +6,11 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "test": "tsc && node --experimental-strip-types --test test/phase5-types.spec.ts",
     "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@threadpilot/config": "workspace:*",

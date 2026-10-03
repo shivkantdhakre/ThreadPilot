@@ -18,6 +18,11 @@ export const QUEUES = {
   ANALYTICS_AGGREGATE:       'analytics-aggregate-queue',
   ANALYTICS_INSIGHTS:        'analytics-insights-queue',
   ANALYTICS_RECOMMENDATIONS: 'analytics-recommendations-queue',
+  // Phase 5 Autonomous Operator & Governance Queues
+  AUTOMATION_RULES:          'automation-rules-queue',
+  SAFETY_EVALUATION:         'safety-evaluation-queue',
+  EXPERIMENT_ANALYSIS:       'experiment-analysis-queue',
+  AUTONOMOUS_OPERATOR:       'autonomous-operator-queue',
 } as const;
 
 export const ENGAGEMENT_QUEUES = {
@@ -43,7 +48,11 @@ export type JobType =
   | 'ENGAGEMENT_SYNC'
   | 'ENGAGEMENT_CLASSIFY'
   | 'REPLY_DRAFT'
-  | 'REPLY_PUBLISH';
+  | 'REPLY_PUBLISH'
+  | 'AUTOMATION_RULES'
+  | 'SAFETY_EVALUATION'
+  | 'EXPERIMENT_ANALYSIS'
+  | 'AUTONOMOUS_OPERATOR';
 
 export interface ExecutionContext {
   requestId: string;
@@ -141,6 +150,35 @@ export interface ReplyDraftJobPayload extends BaseJobPayload {
 export interface ReplyPublishJobPayload extends BaseJobPayload {
   replyExecutionId: string;
   interactionId: string;
+}
+
+// ─── Phase 5 Job Payloads ─────────────────────────────────────────────────────
+
+export interface AutomationRuleJobPayload extends BaseJobPayload {
+  socialAccountId: string;
+  triggerType: string;
+  triggerContext: Record<string, unknown>;
+  ruleId?: string;
+  executionKey: string;
+}
+
+export interface SafetyEvaluationJobPayload extends BaseJobPayload {
+  socialAccountId: string;
+  draftId: string;
+  contentVersionId: string;
+  policyVersion?: string;
+}
+
+export interface ExperimentAnalysisJobPayload extends BaseJobPayload {
+  socialAccountId: string;
+  experimentId: string;
+  forcedCutoff?: boolean;
+}
+
+export interface AutonomousOperatorJobPayload extends BaseJobPayload {
+  socialAccountId: string;
+  cycleId: string;
+  dryRun?: boolean;
 }
 
 // ─── Job status response ──────────────────────────────────────────────────────

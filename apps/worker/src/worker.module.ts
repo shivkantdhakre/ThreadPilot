@@ -34,6 +34,16 @@ import { prisma, PrismaClient } from '@threadpilot/database';
 
 import { resolveResilientRedisUrl, parseRedisUrl } from './redis/redis-helper';
 
+import { RulesEngineService } from './services/rules-engine.service.js';
+import { SafetyGateService } from './services/safety-gate.service.js';
+import { ExperimentationService } from './services/experimentation.service.js';
+import { ProfileAdaptationService } from './services/profile-adaptation.service.js';
+import { AutonomousOperatorService } from './services/autonomous-operator.service.js';
+import { RulesProcessor } from './processors/rules.processor.js';
+import { SafetyProcessor } from './processors/safety.processor.js';
+import { ExperimentProcessor } from './processors/experiment.processor.js';
+import { OperatorProcessor } from './processors/operator.processor.js';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -71,6 +81,10 @@ import { resolveResilientRedisUrl, parseRedisUrl } from './redis/redis-helper';
       { name: QUEUES.ANALYTICS_AGGREGATE },
       { name: QUEUES.ANALYTICS_INSIGHTS },
       { name: QUEUES.ANALYTICS_RECOMMENDATIONS },
+      { name: QUEUES.AUTOMATION_RULES },
+      { name: QUEUES.SAFETY_EVALUATION },
+      { name: QUEUES.EXPERIMENT_ANALYSIS },
+      { name: QUEUES.AUTONOMOUS_OPERATOR },
     ),
   ],
   providers: [
@@ -100,6 +114,15 @@ import { resolveResilientRedisUrl, parseRedisUrl } from './redis/redis-helper';
     AnalyticsAggregateProcessor,
     AnalyticsInsightsProcessor,
     AnalyticsLearningProcessor,
+    RulesEngineService,
+    SafetyGateService,
+    ExperimentationService,
+    ProfileAdaptationService,
+    AutonomousOperatorService,
+    RulesProcessor,
+    SafetyProcessor,
+    ExperimentProcessor,
+    OperatorProcessor,
     {
       provide: PrismaClient,
       useValue: prisma,
@@ -114,6 +137,11 @@ import { resolveResilientRedisUrl, parseRedisUrl } from './redis/redis-helper';
     AnalyticsOutboxService,
     AnalyticsOutboxDispatchService,
     ExpiredObservationSweeperService,
+    RulesEngineService,
+    SafetyGateService,
+    ExperimentationService,
+    ProfileAdaptationService,
+    AutonomousOperatorService,
   ],
 })
 export class WorkerModule {}

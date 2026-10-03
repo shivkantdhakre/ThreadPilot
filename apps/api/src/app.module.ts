@@ -13,6 +13,7 @@ import { IngestionModule } from './ingestion/ingestion.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { EngagementModule } from './engagement/engagement.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { GovernanceModule } from './governance/governance.module.js';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     NotificationsModule,
     EngagementModule,
     AnalyticsModule,
+    GovernanceModule,
   ],
 })
 export class AppModule {}

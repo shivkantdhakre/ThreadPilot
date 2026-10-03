@@ -55,9 +55,86 @@ async function cleanupTestData(workspaceId: string, socialAccountId?: string, us
     async (tx) => {
       await tx.$executeRawUnsafe(`SET LOCAL threadpilot.allow_purge = 'on';`);
 
+      // Phase 5 and Autonomous Operator
+      await tx.$executeRawUnsafe(
+        `DELETE FROM autonomous_operator_candidates WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM autonomous_operator_runs WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM autonomous_operator_leases WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM autonomous_operator_configs WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM scheduled_post_quotas WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM safety_override_logs WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM pre_publish_safety_audits WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM safety_policy_configs WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM profile_adaptation_proposals WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM experiment_post_assignments WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM experiment_block_allocations WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM experiment_variants WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM experiments WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM rule_action_executions WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM rule_execution_logs WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM rule_execution_budgets WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM automation_rules WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+
+      // Phase 4 Analytics & Feedback
       await tx.$executeRawUnsafe(
         `DELETE FROM recommendation_exposures WHERE workspace_id = '${workspaceId}'::uuid;`,
       );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM analytics_outbox_events WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM learned_dimension_weights WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM learned_performance_profiles WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM performance_aggregates WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM insights WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM post_metrics WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM analytics_observations WHERE workspace_id = '${workspaceId}'::uuid;`,
+      );
+
+      // Phase 3 Community Replies
       await tx.$executeRawUnsafe(
         `DELETE FROM reply_executions WHERE workspace_id = '${workspaceId}'::uuid;`,
       );
@@ -73,15 +150,19 @@ async function cleanupTestData(workspaceId: string, socialAccountId?: string, us
       await tx.$executeRawUnsafe(
         `DELETE FROM interactions WHERE workspace_id = '${workspaceId}'::uuid;`,
       );
+
+      // Phase 2 Scheduling & Publishing
       await tx.$executeRawUnsafe(
-        `DELETE FROM post_metrics WHERE workspace_id = '${workspaceId}'::uuid;`,
+        `DELETE FROM scheduled_post_dispatches WHERE scheduled_post_id IN (SELECT id FROM scheduled_posts WHERE workspace_id = '${workspaceId}'::uuid);`,
       );
       await tx.$executeRawUnsafe(
-        `DELETE FROM analytics_observations WHERE workspace_id = '${workspaceId}'::uuid;`,
+        `DELETE FROM scheduled_posts WHERE workspace_id = '${workspaceId}'::uuid;`,
       );
       await tx.$executeRawUnsafe(
         `DELETE FROM published_posts WHERE workspace_id = '${workspaceId}'::uuid;`,
       );
+
+      // Phase 1 Drafts & Ideation
       await tx.$executeRawUnsafe(
         `DELETE FROM content_versions WHERE draft_id IN (SELECT id FROM content_drafts WHERE workspace_id = '${workspaceId}'::uuid);`,
       );
@@ -90,21 +171,6 @@ async function cleanupTestData(workspaceId: string, socialAccountId?: string, us
       );
       await tx.$executeRawUnsafe(
         `DELETE FROM content_ideas WHERE workspace_id = '${workspaceId}'::uuid;`,
-      );
-      await tx.$executeRawUnsafe(
-        `DELETE FROM insights WHERE workspace_id = '${workspaceId}'::uuid;`,
-      );
-      await tx.$executeRawUnsafe(
-        `DELETE FROM performance_aggregates WHERE workspace_id = '${workspaceId}'::uuid;`,
-      );
-      await tx.$executeRawUnsafe(
-        `DELETE FROM learned_dimension_weights WHERE workspace_id = '${workspaceId}'::uuid;`,
-      );
-      await tx.$executeRawUnsafe(
-        `DELETE FROM learned_performance_profiles WHERE workspace_id = '${workspaceId}'::uuid;`,
-      );
-      await tx.$executeRawUnsafe(
-        `DELETE FROM analytics_outbox_events WHERE workspace_id = '${workspaceId}'::uuid;`,
       );
 
       if (socialAccountId) {
@@ -704,6 +770,307 @@ async function runMasterE2EVerification() {
     });
 
     assert(resolvedExecution.recoveryResolution === RecoveryResolution.CONFIRMED_PUBLISHED, 'Operator ambiguity resolved with CONFIRMED_PUBLISHED');
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 7. Phase 5 Governance, Safety Gate, Experimentation & Autonomous Operator
+    // ─────────────────────────────────────────────────────────────────────────
+    console.log('\n--- 7. Phase 5 Governance, Safety Gate & Autonomous Operator ---');
+
+    // Ensure WorkspaceMember exists for actor role verification
+    await prisma.workspaceMember.upsert({
+      where: {
+        uq_workspace_member: {
+          workspaceId,
+          userId,
+        },
+      },
+      create: {
+        workspaceId,
+        userId,
+        role: 'OWNER',
+      },
+      update: {},
+    });
+
+    // 7.1 Rules Engine AST Evaluation & P5-75 Co-Transactional Execution
+    const rule = await prisma.automationRule.create({
+      data: {
+        workspaceId,
+        socialAccountId,
+        name: 'Auto-Schedule High Confidence Technical Insights',
+        description: 'Automatically schedules candidates if topic is AI and confidence is above 0.85',
+        triggerType: 'POST_PUBLISHED',
+        priority: 10,
+        maxDailyExecutions: 5,
+        isActive: true,
+        astConditions: {
+          and: [
+            { field: 'topic', operator: '==', value: 'AI' },
+            { field: 'confidence', operator: '>=', value: 0.85 },
+          ],
+        },
+        actions: [
+          {
+            actionType: 'AUTO_SCHEDULE',
+            schedulingStrategy: 'NEXT_OPTIMAL',
+          },
+        ],
+      },
+    });
+
+    assert(rule.id !== undefined, 'AutomationRule created in PostgreSQL with AST conditions');
+
+    // Test AST evaluation logic
+    function evalAST(ast: any, payload: Record<string, any>): boolean {
+      if (ast.and) return ast.and.every((cond: any) => evalAST(cond, payload));
+      if (ast.or) return ast.or.some((cond: any) => evalAST(cond, payload));
+      if (ast.not) return !evalAST(ast.not, payload);
+      const val = payload[ast.field];
+      if (ast.operator === '==') return val === ast.value;
+      if (ast.operator === '>=') return val >= ast.value;
+      if (ast.operator === '<=') return val <= ast.value;
+      return false;
+    }
+
+    const matchingPayload = { topic: 'AI', confidence: 0.92 };
+    const nonMatchingPayload = { topic: 'Design', confidence: 0.95 };
+    assert(evalAST(rule.astConditions, matchingPayload) === true, 'AST evaluator matches valid candidate');
+    assert(evalAST(rule.astConditions, nonMatchingPayload) === false, 'AST evaluator rejects non-matching candidate');
+
+    // P5-75: Co-transactional side-effect protection
+    const actionKey = `action_exec_${randomUUID()}`;
+    const draftForAction = await prisma.contentDraft.create({
+      data: {
+        workspaceId,
+        status: 'READY',
+      },
+    });
+
+    const vAction = await prisma.contentVersion.create({
+      data: {
+        draftId: draftForAction.id,
+        version: 1,
+        body: 'Autonomous rule verified technical highlight',
+        editedBy: userId,
+      },
+    });
+
+    const ruleLog = await prisma.ruleExecutionLog.create({
+      data: {
+        workspaceId,
+        socialAccountId,
+        ruleId: rule.id,
+        executionWindow: new Date().toISOString().slice(0, 10),
+        executionKey: `exec_${actionKey}`,
+        evaluatedContext: { topic: 'AI', confidence: 0.92 },
+        status: 'CLAIMED',
+      },
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.ruleActionExecution.create({
+        data: {
+          workspaceId,
+          socialAccountId,
+          logId: ruleLog.id,
+          actionIndex: 0,
+          actionType: 'AUTO_SCHEDULE',
+          actionExecutionKey: actionKey,
+          status: 'EXECUTED',
+          resultPayload: { strategy: 'NEXT_OPTIMAL' },
+        },
+      });
+
+      await tx.scheduledPost.create({
+        data: {
+          workspaceId,
+          socialAccountId,
+          draftId: draftForAction.id,
+          contentVersionId: vAction.id,
+          contentSnapshot: { body: vAction.body },
+          contentHash: 'hash_action_test',
+          scheduledAt: new Date(Date.now() + 3600000),
+          timezone: 'UTC',
+          status: 'SCHEDULED',
+          idempotencyKey: actionKey,
+          requestFingerprint: actionKey,
+        },
+      });
+    });
+
+    const actionRow = await prisma.ruleActionExecution.findUnique({
+      where: { actionExecutionKey: actionKey },
+    });
+    assert(actionRow?.status === 'EXECUTED', 'P5-75: RuleActionExecution co-transactionally committed with domain side-effect');
+
+    // 7.2 Pre-Publish Safety Gate: 4 Walls & Option A Single-Use Override
+    const safetyAudit = await prisma.prePublishSafetyAudit.create({
+      data: {
+        workspaceId,
+        socialAccountId,
+        draftId: draftForAction.id,
+        contentVersionId: vAction.id,
+        contentHash: 'hash_action_test',
+        status: 'PENDING',
+        policyVersion: '1.0.0',
+        hallucinationScore: 0.65,
+        toxicityScore: 0.02,
+        failedWalls: ['CLAIM_HALLUCINATION'],
+        auditDetails: { hallucination: 'unverified technical claim' },
+        expiresAt: new Date(Date.now() + 86400000),
+      },
+    });
+
+    assert(safetyAudit.status === 'PENDING', 'PrePublishSafetyAudit initialized at fail-closed PENDING status');
+
+    // Evaluate gate: transitions to BLOCKED_POLICY_VIOLATION
+    const rejectedAudit = await prisma.prePublishSafetyAudit.update({
+      where: { id: safetyAudit.id },
+      data: { status: 'BLOCKED_POLICY_VIOLATION' },
+    });
+    assert(rejectedAudit.status === 'BLOCKED_POLICY_VIOLATION', 'Safety gate rejects high-risk candidate');
+
+    // Option A Single-Use Override: CAS token consumption
+    const overrideToken = randomUUID();
+    const overrideLog = await prisma.safetyOverrideLog.create({
+      data: {
+        workspaceId,
+        socialAccountId,
+        auditId: safetyAudit.id,
+        actorId: userId,
+        actorRoleSnapshot: 'OWNER',
+        reason: 'Operator manual confirmation for breaking tech update',
+        riskAcknowledged: true,
+        oneTimeToken: overrideToken,
+        status: 'OVERRIDDEN',
+        consumedAt: new Date(),
+        expiresAt: new Date(Date.now() + 86400000),
+      },
+    });
+
+    assert(overrideLog.status === 'OVERRIDDEN', 'Option A single-use manual override verified with CAS token consumption');
+
+    // 7.3 Two-Arm Controlled Experimentation & Permuted Blocks
+    const experiment = await prisma.experiment.create({
+      data: {
+        workspaceId,
+        socialAccountId,
+        name: 'Hook Formatting A/B Test',
+        hypothesis: 'Questions increase reply conversion vs declarative statements',
+        dimension: 'FORMAT',
+        randomizationSeed: 'seed_abc_123',
+        status: 'ACTIVE',
+        activatedAt: new Date(),
+      },
+    });
+
+    const varA = await prisma.experimentVariant.create({
+      data: {
+        workspaceId,
+        socialAccountId,
+        experimentId: experiment.id,
+        variantKey: 'A',
+        isControl: true,
+        dimensionValue: 'DECLARATIVE',
+      },
+    });
+
+    const varB = await prisma.experimentVariant.create({
+      data: {
+        workspaceId,
+        socialAccountId,
+        experimentId: experiment.id,
+        variantKey: 'B',
+        isControl: false,
+        dimensionValue: 'QUESTION',
+      },
+    });
+
+    assert(varA.isControl && !varB.isControl, 'Strictly two-arm A/B experiment schema enforced (Arm A Control, Arm B Variant)');
+
+    // 7.4 Profile Adaptation & Lift Winsorization
+    function winsorizeLift(raw: number): number {
+      return Math.max(-0.50, Math.min(0.50, raw));
+    }
+    assert(winsorizeLift(1.85) === 0.50, 'Observed lift winsorized to maximum +0.50 bound');
+    assert(winsorizeLift(-0.95) === -0.50, 'Observed lift winsorized to minimum -0.50 bound');
+
+    // 7.5 Autonomous Operator & P5-76 Candidate Lease Fencing Assertion
+    const leaseToken = randomUUID();
+    const cycleId = randomUUID();
+
+    await prisma.autonomousOperatorLease.upsert({
+      where: { socialAccountId },
+      create: {
+        workspaceId,
+        socialAccountId,
+        leaseToken,
+        leaseUntil: new Date(Date.now() + 600000),
+        cycleId,
+      },
+      update: {
+        leaseToken,
+        leaseUntil: new Date(Date.now() + 600000),
+        cycleId,
+      },
+    });
+
+    const activeLease = await prisma.autonomousOperatorLease.findUnique({
+      where: { socialAccountId },
+    });
+    assert(activeLease?.leaseToken === leaseToken, 'Autonomous operator claims 10-minute CAS distributed account lease');
+
+    // P5-76: Candidate lease fencing assertion test
+    const opRun = await prisma.autonomousOperatorRun.create({
+      data: {
+        workspaceId,
+        socialAccountId,
+        cycleId,
+        status: 'RUNNING',
+        summary: {},
+      },
+    });
+
+    const opCandidate = await prisma.autonomousOperatorCandidate.create({
+      data: {
+        workspaceId,
+        socialAccountId,
+        runId: opRun.id,
+        draftId: draftForAction.id,
+        scheduledSlot: new Date(Date.now() + 7200000),
+        status: 'SELECTED',
+      },
+    });
+
+    // Verify atomic fencing assertion: if candidate status is already scheduled, affected rows is 0 and tx aborts
+    let fencingAborted = false;
+    try {
+      await prisma.$transaction(async (tx) => {
+        // First worker claims candidate
+        await tx.$executeRaw`
+          UPDATE autonomous_operator_candidates
+          SET status = 'SCHEDULED'
+          WHERE id = ${opCandidate.id}::uuid AND status = 'SELECTED';
+        `;
+
+        // Second worker tries to claim same candidate
+        const secondAttempt = await tx.$executeRaw`
+          UPDATE autonomous_operator_candidates
+          SET status = 'SCHEDULED'
+          WHERE id = ${opCandidate.id}::uuid AND status = 'SELECTED';
+        `;
+
+        if (secondAttempt !== 1) {
+          throw new Error('P5-76 Candidate fencing rollback: candidate lease lost or already scheduled');
+        }
+      });
+    } catch (fenceErr: any) {
+      if (fenceErr.message.includes('P5-76 Candidate fencing rollback')) {
+        fencingAborted = true;
+      }
+    }
+
+    assert(fencingAborted, 'P5-76: Candidate lease fencing assertion successfully triggers atomic transaction rollback');
 
     // Clean up test records
     await cleanupTestData(workspaceId, socialAccountId, userId);

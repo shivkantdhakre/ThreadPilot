@@ -17,6 +17,7 @@ const EVIDENCE_GRADE_WEIGHTS: Record<EvidenceGrade, number> = {
   [EvidenceGrade.DIRECTIONAL]: 0.6,
   [EvidenceGrade.LOW_SIGNAL]: 0.0,
   [EvidenceGrade.INSUFFICIENT_DATA]: 0.0,
+  [EvidenceGrade.ACTION_PROPOSED]: 0.0,
 };
 
 export interface RecomputeLearnedProfileResult {
