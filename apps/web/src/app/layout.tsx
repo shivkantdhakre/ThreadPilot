@@ -15,10 +15,10 @@ export const metadata: Metadata = {
   description: 'AI-powered personal social-media operating system for Meta Threads. Autonomous drafting, style learning, intelligent scheduling, and conversational replies.',
   icons: {
     icon: [
-      { url: '/favicon.ico', sizes: 'any' },
       { url: '/favicon-32x32.png', type: 'image/png', sizes: '32x32' },
       { url: '/favicon-16x16.png', type: 'image/png', sizes: '16x16' },
-      { url: '/assets/logo.png', type: 'image/png', sizes: '1024x929' },
+      { url: '/icon.png', type: 'image/png', sizes: '192x192' },
+      { url: '/favicon.ico', sizes: 'any' },
     ],
     apple: [
       { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
