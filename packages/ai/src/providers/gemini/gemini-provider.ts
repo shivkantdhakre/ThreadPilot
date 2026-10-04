@@ -44,6 +44,33 @@ export function formatGeminiEmbeddingInput(
 }
 
 /**
+ * Sanitizes OpenAPI / JSON Schema objects for Google Gemini Interactions and Models API.
+ * Google Gemini's schema parser strictly rejects fields like:
+ * - exclusiveMinimum / exclusiveMaximum (unsupported boolean or syntax in OpenAPI 3.0)
+ * - $schema (meta-schema uri)
+ * - additionalProperties
+ */
+export function sanitizeSchemaForGemini(schema: unknown): unknown {
+  if (!schema || typeof schema !== 'object') return schema;
+  if (Array.isArray(schema)) {
+    return schema.map((item) => sanitizeSchemaForGemini(item));
+  }
+  const copy: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema as Record<string, unknown>)) {
+    if (
+      key === 'exclusiveMinimum' ||
+      key === 'exclusiveMaximum' ||
+      key === '$schema' ||
+      key === 'additionalProperties'
+    ) {
+      continue;
+    }
+    copy[key] = sanitizeSchemaForGemini(value);
+  }
+  return copy;
+}
+
+/**
  * Classifies an AI error into retryable vs non-retryable categories per
  * Google Gemini troubleshooting specifications:
  * - Exponential backoff for 429/503
@@ -217,6 +244,9 @@ export class GeminiProvider implements AIProvider {
     let jsonSchema: Record<string, unknown> | undefined = request.jsonSchema;
     if (!jsonSchema && request.outputSchema) {
       jsonSchema = zodToJsonSchema(request.outputSchema as any, { target: 'openApi3' }) as Record<string, unknown>;
+    }
+    if (jsonSchema) {
+      jsonSchema = sanitizeSchemaForGemini(jsonSchema) as Record<string, unknown>;
     }
 
     // Modern Interactions API call via client.interactions.create

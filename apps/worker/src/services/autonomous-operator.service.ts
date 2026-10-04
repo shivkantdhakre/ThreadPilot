@@ -512,12 +512,11 @@ export class AutonomousOperatorService {
 
         if (candidateSlot <= now) continue;
 
-        // Check slot collision: unique slot constraint
+        // Check slot collision: database unique constraint @@unique([socialAccountId, scheduledAt])
         const existingSlot = await prisma.scheduledPost.findFirst({
           where: {
             socialAccountId,
             scheduledAt: candidateSlot,
-            status: { notIn: ['CANCELLED', 'EXPIRED'] },
           },
         });
 
