@@ -41,6 +41,35 @@ export class RulesController {
     return this.governanceService.listRules(workspaceId, socialAccountId);
   }
 
+  @Get('executions')
+  async listAllRuleExecutions(
+    @WorkspaceId() workspaceId: string,
+    @Query('socialAccountId') socialAccountId?: string,
+    @Query('limit') limit?: string,
+  ): Promise<any[]> {
+    return this.governanceService.listRuleExecutions(
+      workspaceId,
+      socialAccountId,
+      undefined,
+      limit ? parseInt(limit, 10) : 50,
+    );
+  }
+
+  @Get(':id/executions')
+  async listRuleExecutions(
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+    @Query('socialAccountId') socialAccountId?: string,
+    @Query('limit') limit?: string,
+  ): Promise<any[]> {
+    return this.governanceService.listRuleExecutions(
+      workspaceId,
+      socialAccountId,
+      id,
+      limit ? parseInt(limit, 10) : 50,
+    );
+  }
+
   @Put(':id')
   async updateRule(
     @WorkspaceId() workspaceId: string,

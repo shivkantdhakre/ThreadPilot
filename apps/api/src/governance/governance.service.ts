@@ -131,6 +131,33 @@ export class GovernanceService {
     });
   }
 
+  async listRuleExecutions(
+    workspaceId: string,
+    socialAccountId?: string,
+    ruleId?: string,
+    limit = 50,
+  ): Promise<any[]> {
+    return prisma.ruleExecutionLog.findMany({
+      where: {
+        workspaceId,
+        ...(socialAccountId ? { socialAccountId } : {}),
+        ...(ruleId ? { ruleId } : {}),
+      },
+      include: {
+        rule: {
+          select: {
+            id: true,
+            name: true,
+            triggerType: true,
+          },
+        },
+        actionExecutions: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(limit, 100),
+    });
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // 2. PRE-PUBLISH SAFETY GATE
   // ─────────────────────────────────────────────────────────────────────────────

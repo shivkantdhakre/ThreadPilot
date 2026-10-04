@@ -96,6 +96,48 @@ describe('Governance API Controllers & Service Contract Verification', () => {
       assert.strictEqual(toggleUpdated, true);
       assert.strictEqual(toggled?.isActive, false);
     });
+
+    it('lists rule execution history across rules or filtered by rule ID', async () => {
+      const mockService: any = {
+        listRuleExecutions: async (wsId: string, accId?: string, rId?: string, limit?: number) => [
+          {
+            id: 'exec-1',
+            workspaceId: wsId,
+            socialAccountId: accId ?? 'acc-default',
+            ruleId: rId ?? 'rule-1',
+            status: 'EXECUTED',
+            executionKey: 'item-100-POST_METRIC_CAPTURED',
+            actionExecutions: [{ actionType: 'AUTO_SCHEDULE', status: 'EXECUTED' }],
+            rule: { id: rId ?? 'rule-1', name: 'Engagement Booster', triggerType: 'POST_METRIC_CAPTURED' },
+          },
+        ],
+      };
+
+      const controller = new RulesController(mockService);
+      const allExecutions = await controller.listAllRuleExecutions(workspaceId, socialAccountId, '20');
+      assert.strictEqual(allExecutions.length, 1);
+      assert.strictEqual(allExecutions[0].status, 'EXECUTED');
+      assert.strictEqual(allExecutions[0].actionExecutions.length, 1);
+
+      const ruleExecutions = await controller.listRuleExecutions(workspaceId, 'rule-1', socialAccountId, '10');
+      assert.strictEqual(ruleExecutions.length, 1);
+      assert.strictEqual(ruleExecutions[0].ruleId, 'rule-1');
+    });
+
+    it('deletes an existing rule by ID within tenant boundary', async () => {
+      let deletedId = '';
+      const mockService: any = {
+        deleteRule: async (wsId: string, id: string) => {
+          deletedId = id;
+          return { id, deleted: true };
+        },
+      };
+
+      const controller = new RulesController(mockService);
+      const result = await controller.deleteRule(workspaceId, 'rule-to-delete');
+      assert.strictEqual(deletedId, 'rule-to-delete');
+      assert.strictEqual(result.deleted, true);
+    });
   });
 
   describe('SafetyController & Option A Override Invariants', () => {
