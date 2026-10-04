@@ -108,6 +108,7 @@ interface AdaptationProposalItem {
     hypothesis: string;
   } | null;
   appliedAt?: string | null;
+  rejectionReason?: string | null;
   createdAt: string;
 }
 
@@ -164,6 +165,7 @@ function GovernanceDashboardContent() {
   const [isTogglingOperator, setIsTogglingOperator] = useState(false);
   const [activatingExpId, setActivatingExpId] = useState<string | null>(null);
   const [isApplyingProposalId, setIsApplyingProposalId] = useState<string | null>(null);
+  const [isRejectingProposalId, setIsRejectingProposalId] = useState<string | null>(null);
   const [isDeletingRuleId, setIsDeletingRuleId] = useState<string | null>(null);
 
   // Option A Override Modal state
@@ -732,7 +734,33 @@ function GovernanceDashboardContent() {
     }
   };
 
-  // Handler: Autonomous Operator Emergency Pause / Resume
+  // Handler: Reject Profile Adaptation Proposal
+  const handleRejectProposal = async (proposalId: string) => {
+    const reason = window.prompt('Please enter a reason for rejecting this adaptation proposal:');
+    if (reason === null) return;
+    setIsRejectingProposalId(proposalId);
+    try {
+      await apiClient.post(`/adaptation/proposals/${proposalId}/reject`, {
+        reason: reason.trim() || 'Rejected by operator',
+      });
+      setProposals((prev) =>
+        prev.map((p) =>
+          p.id === proposalId
+            ? {
+                ...p,
+                status: 'REJECTED',
+                rejectionReason: reason.trim() || 'Rejected by operator',
+              }
+            : p
+        )
+      );
+    } catch (err: any) {
+      console.error('Failed to reject adaptation proposal', err);
+      alert(err?.message || 'Failed to reject adaptation proposal');
+    } finally {
+      setIsRejectingProposalId(null);
+    }
+  };
   const handleToggleOperator = async () => {
     if (!selectedAccountId) return;
     const nextResume = !operatorStatus.active;
@@ -1349,10 +1377,16 @@ function GovernanceDashboardContent() {
                             ? 'badge-lime'
                             : prop.status === 'PENDING_REVIEW'
                             ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                            : 'badge-coral'
+                            : prop.status === 'REJECTED'
+                            ? 'bg-coral-50 text-coral-800 border border-coral-200'
+                            : 'badge-neutral'
                         }`}
                       >
-                        {prop.status === 'PENDING_REVIEW' ? 'Pending Review' : prop.status}
+                        {prop.status === 'PENDING_REVIEW'
+                          ? 'Pending Review'
+                          : prop.status === 'REJECTED'
+                          ? 'Rejected'
+                          : prop.status}
                       </span>
                     </div>
 
@@ -1399,24 +1433,44 @@ function GovernanceDashboardContent() {
                       </span>
 
                       {prop.status === 'PENDING_REVIEW' && (
-                        <button
-                          onClick={() => handleApplyProposal(prop.id)}
-                          disabled={isApplyingProposalId === prop.id}
-                          className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5 shadow-sm font-bold"
-                        >
-                          {isApplyingProposalId === prop.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Sparkles className="h-3.5 w-3.5" />
-                          )}
-                          <span>Apply Weight Update</span>
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleRejectProposal(prop.id)}
+                            disabled={isRejectingProposalId === prop.id || isApplyingProposalId === prop.id}
+                            className="text-xs py-1.5 px-3 rounded-xl border border-canvas-border hover:bg-coral-50 hover:text-coral-600 transition-colors font-semibold text-text-secondary"
+                          >
+                            {isRejectingProposalId === prop.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <span>Reject</span>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleApplyProposal(prop.id)}
+                            disabled={isApplyingProposalId === prop.id || isRejectingProposalId === prop.id}
+                            className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5 shadow-sm font-bold"
+                          >
+                            {isApplyingProposalId === prop.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Sparkles className="h-3.5 w-3.5" />
+                            )}
+                            <span>Apply Weight Update</span>
+                          </button>
+                        </div>
                       )}
 
                       {prop.status === 'APPLIED' && (
                         <span className="flex items-center gap-1 text-lime-700 font-bold text-xs bg-lime-50 px-2.5 py-1 rounded-xl border border-lime-200">
                           <CheckCircle2 className="h-3.5 w-3.5 text-lime-600" />
                           Active Profile Weight
+                        </span>
+                      )}
+
+                      {prop.status === 'REJECTED' && (
+                        <span className="flex items-center gap-1 text-coral-700 font-bold text-xs bg-coral-50 px-2.5 py-1 rounded-xl border border-coral-200">
+                          <XCircle className="h-3.5 w-3.5 text-coral-600" />
+                          Rejected: {prop.rejectionReason || 'Operator dismissed'}
                         </span>
                       )}
                     </div>

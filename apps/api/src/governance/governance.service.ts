@@ -525,6 +525,52 @@ export class GovernanceService {
     return result;
   }
 
+  async rejectAdaptationProposal(
+    workspaceId: string,
+    proposalId: string,
+    actorId: string,
+    reason?: string,
+  ): Promise<any> {
+    const membership = await prisma.workspaceMember.findUnique({
+      where: {
+        uq_workspace_member: {
+          workspaceId,
+          userId: actorId,
+        },
+      },
+    });
+
+    if (!membership || !['OWNER', 'ADMIN'].includes(membership.role)) {
+      const ws = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { userId: true },
+      });
+      if (ws?.userId !== actorId) {
+        throw new ForbiddenException('Only Workspace OWNER or ADMIN can reject profile adaptation proposals');
+      }
+    }
+
+    const proposal = await prisma.profileAdaptationProposal.findUnique({
+      where: { id: proposalId },
+    });
+
+    if (!proposal || proposal.workspaceId !== workspaceId) {
+      throw new NotFoundException(`Proposal ${proposalId} not found`);
+    }
+
+    if (proposal.status !== 'PENDING_REVIEW') {
+      throw new BadRequestException(`Cannot reject proposal in status '${proposal.status}'`);
+    }
+
+    return prisma.profileAdaptationProposal.update({
+      where: { id: proposalId },
+      data: {
+        status: 'REJECTED',
+        rejectionReason: reason || 'Rejected by operator',
+      },
+    });
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // 5. AUTONOMOUS OPERATOR
   // ─────────────────────────────────────────────────────────────────────────────

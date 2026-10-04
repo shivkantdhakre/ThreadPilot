@@ -4,6 +4,7 @@ import { RulesController } from '../dist/governance/rules.controller.js';
 import { SafetyController } from '../dist/governance/safety.controller.js';
 import { ExperimentsController } from '../dist/governance/experiments.controller.js';
 import { OperatorController } from '../dist/governance/operator.controller.js';
+import { AdaptationController } from '../dist/governance/adaptation.controller.js';
 import { GovernanceService } from '../dist/governance/governance.service.js';
 
 describe('Governance API Controllers & Service Contract Verification', () => {
@@ -343,6 +344,79 @@ describe('Governance API Controllers & Service Contract Verification', () => {
         },
         (err: any) => err.message.includes('Invalid operator config payload'),
       );
+    });
+  });
+
+  describe('AdaptationController & Profile Adaptation Proposals', () => {
+    it('lists adaptation proposals with optional status filter', async () => {
+      const mockService: any = {
+        listAdaptationProposals: async (wsId: string, accId?: string, status?: string) => [
+          {
+            id: 'prop-1',
+            workspaceId: wsId,
+            status: status || 'PENDING_REVIEW',
+            dimension: 'TOPIC',
+            observedRawLift: 0.18,
+          },
+        ],
+      };
+
+      const controller = new AdaptationController(mockService);
+      const res = await controller.listProposals(workspaceId, socialAccountId, 'PENDING_REVIEW' as any);
+
+      assert.strictEqual(res.length, 1);
+      assert.strictEqual(res[0].id, 'prop-1');
+      assert.strictEqual(res[0].status, 'PENDING_REVIEW');
+    });
+
+    it('applies a pending adaptation proposal updating learned weights', async () => {
+      let applyInvoked = false;
+      const mockService: any = {
+        applyAdaptationProposal: async (wsId: string, propId: string, actorId: string) => {
+          applyInvoked = true;
+          return {
+            id: propId,
+            status: 'APPLIED',
+            appliedAt: new Date(),
+          };
+        },
+      };
+
+      const controller = new AdaptationController(mockService);
+      const res = await controller.applyProposal(workspaceId, { userId } as any, 'prop-1');
+
+      assert.strictEqual(applyInvoked, true);
+      assert.strictEqual(res.status, 'APPLIED');
+    });
+
+    it('rejects an adaptation proposal recording operational reason', async () => {
+      let rejectedReason: string | undefined;
+      const mockService: any = {
+        rejectAdaptationProposal: async (
+          wsId: string,
+          propId: string,
+          actorId: string,
+          reason?: string,
+        ) => {
+          rejectedReason = reason;
+          return {
+            id: propId,
+            status: 'REJECTED',
+            rejectionReason: reason,
+          };
+        },
+      };
+
+      const controller = new AdaptationController(mockService);
+      const res = await controller.rejectProposal(
+        workspaceId,
+        { userId } as any,
+        'prop-1',
+        { reason: 'Topic does not fit brand voice roadmap' },
+      );
+
+      assert.strictEqual(res.status, 'REJECTED');
+      assert.strictEqual(rejectedReason, 'Topic does not fit brand voice roadmap');
     });
   });
 });

@@ -4,6 +4,7 @@ import {
   Post,
   Param,
   Query,
+  Body,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
@@ -41,6 +42,21 @@ export class AdaptationController {
       workspaceId,
       id,
       user.userId,
+    );
+  }
+
+  @Post('proposals/:id/reject')
+  async rejectProposal(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() body?: { reason?: string },
+  ) {
+    return this.governanceService.rejectAdaptationProposal(
+      workspaceId,
+      id,
+      user.userId,
+      body?.reason,
     );
   }
 }
