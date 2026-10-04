@@ -27,10 +27,11 @@ export class RulesController {
     @Query('socialAccountId') socialAccountId: string,
     @Body() body: any,
   ): Promise<any> {
-    if (!socialAccountId) {
+    const targetAccountId = socialAccountId || body?.socialAccountId;
+    if (!targetAccountId) {
       throw new BadRequestException('socialAccountId query parameter is required');
     }
-    return this.governanceService.createRule(workspaceId, socialAccountId, body);
+    return this.governanceService.createRule(workspaceId, targetAccountId, body);
   }
 
   @Get()

@@ -165,6 +165,13 @@ export class ThreadsAuthService {
   }
 
   async disconnect(workspaceId: string, socialAccountId: string) {
+    const isUuid = (id: string): boolean =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+    if (!isUuid(socialAccountId)) {
+      throw new BadRequestException('Invalid social account ID format: must be a valid UUID');
+    }
+
     const account = await prisma.socialAccount.findFirst({
       where: { id: socialAccountId, workspaceId },
     });

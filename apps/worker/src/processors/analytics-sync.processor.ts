@@ -1,5 +1,5 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
+import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
+import { Job, Queue } from 'bullmq';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
@@ -90,14 +90,17 @@ export class AnalyticsSyncProcessor extends WorkerHost {
   private readonly logger = new Logger(AnalyticsSyncProcessor.name);
   private readonly prisma: PrismaClient;
   private readonly publishingService?: PublishingService | undefined;
+  private readonly rulesQueue?: Queue | undefined;
 
   constructor(
     prisma: PrismaClient,
     @Optional() publishingService?: PublishingService,
+    @Optional() @InjectQueue(QUEUES.AUTOMATION_RULES) rulesQueue?: Queue,
   ) {
     super();
     this.prisma = prisma;
     this.publishingService = publishingService;
+    this.rulesQueue = rulesQueue;
   }
 
   async process(job: Job<AnalyticsSyncJobPayload>): Promise<void> {
@@ -413,6 +416,37 @@ export class AnalyticsSyncProcessor extends WorkerHost {
               `Non-fatal recommendation attribution evaluation error: ${evalErr?.message || evalErr}`,
             );
           }
+
+          // Module 3: Link mature post metric to ExperimentPostAssignment
+          try {
+            const expAssignment = await tx.experimentPostAssignment.findFirst({
+              where: {
+                publishedPostId: observation.publishedPostId,
+                postMetricId: null,
+              },
+              include: { experiment: true },
+            });
+            if (expAssignment) {
+              await tx.experimentPostAssignment.update({
+                where: { id: expAssignment.id },
+                data: { postMetricId: createdPostMetric.id },
+              });
+              await tx.experiment.update({
+                where: { id: expAssignment.experimentId },
+                data: {
+                  matureArmSampleSize: { increment: 1 },
+                  ...(expAssignment.experiment.status === 'ACTIVE' ? { status: 'COLLECTING_DATA' } : {}),
+                },
+              });
+              this.logger.log(
+                `Linked mature PostMetric ${createdPostMetric.id} to experiment assignment ${expAssignment.id} (experiment ${expAssignment.experimentId})`,
+              );
+            }
+          } catch (expErr: any) {
+            this.logger.warn(
+              `Non-fatal experiment post assignment metric linkage error: ${expErr?.message || expErr}`,
+            );
+          }
         }
 
         // Increment ingestionGeneration
@@ -450,6 +484,40 @@ export class AnalyticsSyncProcessor extends WorkerHost {
           update: {},
         });
       }, { timeout: 30000, maxWait: 10000 });
+
+      if (this.rulesQueue) {
+        try {
+          const ruleJobId = `rule:metric:${observation.socialAccountId}:${observation.publishedPostId}:${observation.observationSlot}`;
+          await this.rulesQueue.add(
+            'automation-rule',
+            {
+              requestId: randomUUID(),
+              workspaceId: observation.workspaceId,
+              socialAccountId: observation.socialAccountId,
+              triggerType: 'METRIC_OBSERVED',
+              triggerContext: {
+                observationId: observation.id,
+                publishedPostId: observation.publishedPostId,
+                observationSlot: observation.observationSlot,
+                views: rawMetrics.views,
+                likes: rawMetrics.likes,
+                replies: rawMetrics.replies,
+                reposts: rawMetrics.reposts,
+                quotes: rawMetrics.quotes,
+                engagementRate: derivedRates.engagementRateByViews,
+              },
+              executionKey: ruleJobId,
+            },
+            {
+              jobId: ruleJobId,
+              removeOnComplete: 50,
+              removeOnFail: 100,
+            },
+          );
+        } catch (ruleErr: any) {
+          this.logger.warn(`Non-fatal rule trigger error on metric observation: ${ruleErr?.message || ruleErr}`);
+        }
+      }
     } catch (err: any) {
       if (err instanceof StaleObservationWorkerError) {
         this.logger.warn(err.message);

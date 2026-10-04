@@ -571,6 +571,8 @@ export class ExperimentationService {
         return profile.bestTopicWeight ?? 1.0;
       case 'FORMAT':
         return profile.bestFormatWeight ?? 1.0;
+      case 'POST_LENGTH_BUCKET':
+        return profile.bestLengthBucketWeight ?? 1.0;
       default:
         return 1.0;
     }

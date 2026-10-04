@@ -24,10 +24,11 @@ export class ExperimentsController {
     @Query('socialAccountId') socialAccountId: string,
     @Body() body: any,
   ) {
-    if (!socialAccountId) {
-      throw new BadRequestException('socialAccountId query parameter is required');
+    const targetAccountId = socialAccountId || body?.socialAccountId;
+    if (!targetAccountId) {
+      throw new BadRequestException('socialAccountId is required in query parameters or request body');
     }
-    return this.governanceService.createExperiment(workspaceId, socialAccountId, body);
+    return this.governanceService.createExperiment(workspaceId, targetAccountId, body);
   }
 
   @Post(':id/activate')

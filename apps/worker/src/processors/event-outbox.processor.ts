@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { randomUUID } from 'crypto';
 import { prisma, PrismaClient } from '@threadpilot/database';
-import { ENGAGEMENT_QUEUES } from '@threadpilot/types';
+import { QUEUES, ENGAGEMENT_QUEUES } from '@threadpilot/types';
 
 interface PostPublishedPayload {
   scheduledPostId: string;
@@ -27,6 +27,7 @@ export class EventOutboxProcessor implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Optional() private readonly db: PrismaClient = prisma,
     @Optional() @InjectQueue(ENGAGEMENT_QUEUES.REPLY_PUBLISH) private readonly replyPublishQueue?: Queue,
+    @Optional() @InjectQueue(QUEUES.AUTOMATION_RULES) private readonly rulesQueue?: Queue,
   ) {}
 
   onModuleInit() {
@@ -202,6 +203,43 @@ export class EventOutboxProcessor implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Created idempotent notification for scheduled post ${scheduledPostId} (key: ${idempotencyKey})`,
     );
+
+    if (this.rulesQueue) {
+      try {
+        const scheduledPost = await this.db.scheduledPost.findUnique({
+          where: { id: scheduledPostId },
+          select: { socialAccountId: true, draftId: true, contentVersionId: true },
+        });
+        const socialAccountId = scheduledPost?.socialAccountId || event.payload.socialAccountId;
+        if (socialAccountId) {
+          const executionKey = `rule:post_published:${scheduledPostId}`;
+          await this.rulesQueue.add(
+            'automation-rule',
+            {
+              requestId: randomUUID(),
+              workspaceId: event.workspace_id,
+              socialAccountId,
+              triggerType: 'POST_PUBLISHED',
+              triggerContext: {
+                scheduledPostId,
+                threadsPostId,
+                draftId: scheduledPost?.draftId,
+                contentVersionId: scheduledPost?.contentVersionId,
+                publishedAt,
+              },
+              executionKey,
+            },
+            {
+              jobId: executionKey,
+              removeOnComplete: 50,
+              removeOnFail: 100,
+            },
+          );
+        }
+      } catch (ruleErr: any) {
+        this.logger.warn(`Non-fatal rule trigger error on post published: ${ruleErr?.message || ruleErr}`);
+      }
+    }
   }
 
   private async handleReplyExecutionDispatch(event: {

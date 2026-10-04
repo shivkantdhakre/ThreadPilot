@@ -49,7 +49,7 @@ export class RefreshTokenService {
 
     const tokenRecord = await prisma.refreshToken.findUnique({
       where: { id: tokenId },
-    });
+    }).catch(() => null);
 
     if (!tokenRecord) {
       throw new UnauthorizedException('Refresh token not recognized');

@@ -1,6 +1,7 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Injectable, Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
+import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Job, Queue } from 'bullmq';
+import { randomUUID } from 'node:crypto';
 import {
   AggregationDimension,
   AggregationGranularity,
@@ -269,16 +270,50 @@ export async function processInsightGeneration(
 export class AnalyticsInsightsProcessor extends WorkerHost {
   private readonly logger: Logger = new Logger(AnalyticsInsightsProcessor.name);
   private readonly prisma: PrismaClient;
+  private readonly rulesQueue?: Queue | undefined;
 
-  constructor(prisma: PrismaClient) {
+  constructor(
+    prisma: PrismaClient,
+    @Optional() @InjectQueue(QUEUES.AUTOMATION_RULES) rulesQueue?: Queue,
+  ) {
     super();
     this.prisma = prisma;
+    this.rulesQueue = rulesQueue;
   }
 
   async process(job: Job<InsightJobData>): Promise<{ insightsCreated: number }> {
     this.logger.log(
       `Processing insights for account ${job.data.socialAccountId} rev ${job.data.sourceRevision}`,
     );
-    return processInsightGeneration(this.prisma, job.data);
+    const result = await processInsightGeneration(this.prisma, job.data);
+
+    if (this.rulesQueue && result.insightsCreated > 0) {
+      try {
+        const ruleJobId = `rule:insight:${job.data.socialAccountId}:rev${job.data.sourceRevision}`;
+        await this.rulesQueue.add(
+          'automation-rule',
+          {
+            requestId: randomUUID(),
+            workspaceId: job.data.workspaceId,
+            socialAccountId: job.data.socialAccountId,
+            triggerType: 'INSIGHT_GENERATED',
+            triggerContext: {
+              sourceRevision: job.data.sourceRevision,
+              insightsCreated: result.insightsCreated,
+            },
+            executionKey: ruleJobId,
+          },
+          {
+            jobId: ruleJobId,
+            removeOnComplete: 50,
+            removeOnFail: 100,
+          },
+        );
+      } catch (ruleErr: any) {
+        this.logger.warn(`Non-fatal rule trigger error on insight generation: ${ruleErr?.message || ruleErr}`);
+      }
+    }
+
+    return result;
   }
 }

@@ -750,6 +750,29 @@ export class PublishingProcessor extends WorkerHost {
           );
         }
 
+        // Module 3: Link ExperimentPostAssignment if this draft was assigned to an experiment
+        try {
+          const assignment = await tx.experimentPostAssignment.findUnique({
+            where: { draftId: post.draftId },
+          });
+          if (assignment) {
+            await tx.experimentPostAssignment.update({
+              where: { id: assignment.id },
+              data: {
+                scheduledPostId: post.id,
+                publishedPostId: publishedPost.id,
+              },
+            });
+            this.logger.log(
+              `Linked published post ${publishedPost.id} to experiment post assignment ${assignment.id}`,
+            );
+          }
+        } catch (expErr: any) {
+          this.logger.warn(
+            `Non-fatal experiment post assignment publish linkage error: ${expErr?.message || expErr}`,
+          );
+        }
+
         await tx.eventOutbox.create({
           data: {
             workspaceId: post.workspaceId,

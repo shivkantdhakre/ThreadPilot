@@ -80,6 +80,16 @@ export class AuthService {
         },
       });
 
+      if (tx.workspaceMember) {
+        await tx.workspaceMember.create({
+          data: {
+            workspaceId: newWorkspace.id,
+            userId: newUser.id,
+            role: 'OWNER',
+          },
+        });
+      }
+
       return { user: newUser, workspace: newWorkspace };
     });
 
@@ -138,6 +148,27 @@ export class AuthService {
           name: 'Personal Workspace',
         },
       });
+    }
+
+    // Ensure WorkspaceMember record exists for owner
+    const isUuid = (id: string): boolean =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+    if (prisma.workspaceMember?.upsert && isUuid(defaultWorkspace.id) && isUuid(user.id)) {
+      await prisma.workspaceMember.upsert({
+        where: {
+          uq_workspace_member: {
+            workspaceId: defaultWorkspace.id,
+            userId: user.id,
+          },
+        },
+        create: {
+          workspaceId: defaultWorkspace.id,
+          userId: user.id,
+          role: 'OWNER',
+        },
+        update: {},
+      }).catch(() => null);
     }
 
     const refreshToken = await this.refreshTokenService.createInitialToken(user.id);
@@ -244,7 +275,7 @@ export class AuthService {
   async logout(rawRefreshToken?: string, userId?: string): Promise<void> {
     if (rawRefreshToken && rawRefreshToken.includes('.')) {
       const tokenId = rawRefreshToken.substring(0, rawRefreshToken.indexOf('.'));
-      const token = await prisma.refreshToken.findUnique({ where: { id: tokenId } });
+      const token = await prisma.refreshToken.findUnique({ where: { id: tokenId } }).catch(() => null);
       if (token) {
         await this.refreshTokenService.revokeFamily(token.familyId);
         return;
@@ -252,7 +283,7 @@ export class AuthService {
     }
 
     if (userId) {
-      await this.refreshTokenService.revokeAllUserTokens(userId);
+      await this.refreshTokenService.revokeAllUserTokens(userId).catch(() => null);
     }
   }
 }

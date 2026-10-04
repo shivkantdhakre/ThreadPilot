@@ -457,6 +457,13 @@ export class AnalyticsService {
       throw new BadRequestException('eventIds array cannot be empty.');
     }
 
+    const isUuid = (id: string): boolean =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+    if (!eventIds.every(isUuid)) {
+      throw new BadRequestException('All eventIds must be valid UUID strings');
+    }
+
     const result = await this.db.$executeRaw`
       UPDATE analytics_outbox_events
       SET status = 'PENDING',

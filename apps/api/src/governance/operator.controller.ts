@@ -35,14 +35,15 @@ export class OperatorController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: any,
   ): Promise<any> {
-    if (!socialAccountId) {
-      throw new BadRequestException('socialAccountId is required');
+    const targetAccountId = socialAccountId || body?.socialAccountId;
+    if (!targetAccountId) {
+      throw new BadRequestException('socialAccountId is required in query parameters or request body');
     }
     try {
       const parsed = UpdateOperatorConfigRequestSchema.parse(body);
       return this.governanceService.updateOperatorConfig(
         workspaceId,
-        socialAccountId,
+        targetAccountId,
         user.userId,
         parsed,
       );
@@ -56,10 +57,15 @@ export class OperatorController {
     @WorkspaceId() workspaceId: string,
     @Query('socialAccountId') socialAccountId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Body() body?: any,
   ): Promise<any> {
+    const targetAccountId = socialAccountId || body?.socialAccountId;
+    if (!targetAccountId) {
+      throw new BadRequestException('socialAccountId is required in query parameters or request body');
+    }
     return this.governanceService.pauseOperator(
       workspaceId,
-      socialAccountId,
+      targetAccountId,
       user.userId,
     );
   }
@@ -70,11 +76,16 @@ export class OperatorController {
     @Query('socialAccountId') socialAccountId: string,
     @CurrentUser() user: AuthenticatedUser,
     @Query('resume') resume?: string,
+    @Body() body?: any,
   ): Promise<any> {
-    const isResume = resume === 'true' || resume === '1';
+    const targetAccountId = socialAccountId || body?.socialAccountId;
+    if (!targetAccountId) {
+      throw new BadRequestException('socialAccountId is required in query parameters or request body');
+    }
+    const isResume = resume === 'true' || resume === '1' || body?.resume === true;
     return this.governanceService.toggleOperator(
       workspaceId,
-      socialAccountId,
+      targetAccountId,
       user.userId,
       isResume,
     );

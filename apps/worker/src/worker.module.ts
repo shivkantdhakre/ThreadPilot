@@ -43,6 +43,7 @@ import { RulesProcessor } from './processors/rules.processor.js';
 import { SafetyProcessor } from './processors/safety.processor.js';
 import { ExperimentProcessor } from './processors/experiment.processor.js';
 import { OperatorProcessor } from './processors/operator.processor.js';
+import { GovernanceReconciliationService } from './services/governance-reconciliation.service.js';
 
 @Module({
   imports: [
@@ -123,6 +124,7 @@ import { OperatorProcessor } from './processors/operator.processor.js';
     SafetyProcessor,
     ExperimentProcessor,
     OperatorProcessor,
+    GovernanceReconciliationService,
     {
       provide: PrismaClient,
       useValue: prisma,
@@ -142,6 +144,7 @@ import { OperatorProcessor } from './processors/operator.processor.js';
     ExperimentationService,
     ProfileAdaptationService,
     AutonomousOperatorService,
+    GovernanceReconciliationService,
   ],
 })
 export class WorkerModule {}

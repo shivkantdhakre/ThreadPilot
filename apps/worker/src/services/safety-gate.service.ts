@@ -283,7 +283,7 @@ export class SafetyGateService {
     }
 
     // 1. Authorize Actor in WorkspaceMember (role IN ('OWNER', 'ADMIN'))
-    const membership = await prisma.workspaceMember.findUnique({
+    let membership = await prisma.workspaceMember.findUnique({
       where: {
         uq_workspace_member: {
           workspaceId,
@@ -291,6 +291,29 @@ export class SafetyGateService {
         },
       },
     });
+
+    if (!membership) {
+      const ws = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { userId: true },
+      });
+      if (ws?.userId === actorId) {
+        membership = await prisma.workspaceMember.upsert({
+          where: {
+            uq_workspace_member: {
+              workspaceId,
+              userId: actorId,
+            },
+          },
+          create: {
+            workspaceId,
+            userId: actorId,
+            role: 'OWNER',
+          },
+          update: {},
+        });
+      }
+    }
 
     if (!membership || !['OWNER', 'ADMIN'].includes(membership.role)) {
       throw new ForbiddenException('Only Workspace OWNER or ADMIN can authorize safety overrides');

@@ -43,20 +43,35 @@ export class WorkspaceScopeGuard implements CanActivate {
       throw new BadRequestException('Workspace ID could not be determined');
     }
 
-    // Verify tenancy: workspace must belong to the authenticated user
+    // Verify tenancy: workspace must belong to the authenticated user or user is an active member
     const workspace = await prisma.workspace.findFirst({
       where: {
         id: targetWorkspaceId,
         userId: user.userId,
       },
       select: { id: true },
-    });
+    }).catch(() => null);
 
-    if (!workspace) {
-      throw new ForbiddenException(`Access to workspace ${targetWorkspaceId} denied`);
+    if (workspace) {
+      request.workspaceId = workspace.id;
+      return true;
     }
 
-    request.workspaceId = workspace.id;
-    return true;
+    if (prisma.workspaceMember?.findFirst) {
+      const membership = await prisma.workspaceMember.findFirst({
+        where: {
+          workspaceId: targetWorkspaceId,
+          userId: user.userId,
+        },
+        select: { id: true },
+      }).catch(() => null);
+
+      if (membership) {
+        request.workspaceId = targetWorkspaceId;
+        return true;
+      }
+    }
+
+    throw new ForbiddenException(`Access to workspace ${targetWorkspaceId} denied`);
   }
 }

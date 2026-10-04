@@ -26,6 +26,54 @@ import {
 
 @Injectable()
 export class GovernanceService {
+  /**
+   * Authorizes an actor's role snapshot (OWNER or ADMIN).
+   * Automatically auto-heals/upserts WorkspaceMember if the actor is the workspace creator.
+   */
+  private async ensureAuthorizedRole(
+    workspaceId: string,
+    actorId: string,
+    actionDesc: string,
+  ): Promise<string> {
+    let membership = await prisma.workspaceMember.findUnique({
+      where: {
+        uq_workspace_member: {
+          workspaceId,
+          userId: actorId,
+        },
+      },
+    });
+
+    if (!membership) {
+      const ws = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { userId: true },
+      });
+      if (ws?.userId === actorId) {
+        membership = await prisma.workspaceMember.upsert({
+          where: {
+            uq_workspace_member: {
+              workspaceId,
+              userId: actorId,
+            },
+          },
+          create: {
+            workspaceId,
+            userId: actorId,
+            role: 'OWNER',
+          },
+          update: {},
+        });
+      }
+    }
+
+    if (!membership || !['OWNER', 'ADMIN'].includes(membership.role)) {
+      throw new ForbiddenException(`Only Workspace OWNER or ADMIN can ${actionDesc}`);
+    }
+
+    return membership.role;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // 1. RULES ENGINE
   // ─────────────────────────────────────────────────────────────────────────────
@@ -199,18 +247,11 @@ export class GovernanceService {
     });
 
     // 1. Validate Actor Role Snapshot: Must be OWNER or ADMIN
-    const membership = await prisma.workspaceMember.findUnique({
-      where: {
-        uq_workspace_member: {
-          workspaceId,
-          userId: actorId,
-        },
-      },
-    });
-
-    if (!membership || !['OWNER', 'ADMIN'].includes(membership.role)) {
-      throw new ForbiddenException('Only Workspace OWNER or ADMIN can authorize safety overrides');
-    }
+    const actorRole = await this.ensureAuthorizedRole(
+      workspaceId,
+      actorId,
+      'authorize safety overrides',
+    );
 
     // 2. Load and validate audit
     const audit = await prisma.prePublishSafetyAudit.findUnique({
@@ -243,7 +284,7 @@ export class GovernanceService {
         socialAccountId: audit.socialAccountId,
         auditId,
         actorId,
-        actorRoleSnapshot: membership.role,
+        actorRoleSnapshot: actorRole,
         reason: data.reason.trim(),
         riskAcknowledged: true,
         oneTimeToken,
@@ -252,7 +293,7 @@ export class GovernanceService {
       },
       update: {
         actorId,
-        actorRoleSnapshot: membership.role,
+        actorRoleSnapshot: actorRole,
         reason: data.reason.trim(),
         riskAcknowledged: true,
         oneTimeToken,
@@ -458,18 +499,11 @@ export class GovernanceService {
   }
 
   async applyAdaptationProposal(workspaceId: string, proposalId: string, actorId: string): Promise<any> {
-    const membership = await prisma.workspaceMember.findUnique({
-      where: {
-        uq_workspace_member: {
-          workspaceId,
-          userId: actorId,
-        },
-      },
-    });
-
-    if (!membership || !['OWNER', 'ADMIN'].includes(membership.role)) {
-      throw new ForbiddenException('Only Workspace OWNER or ADMIN can apply profile adaptation proposals');
-    }
+    await this.ensureAuthorizedRole(
+      workspaceId,
+      actorId,
+      'apply profile adaptation proposals',
+    );
 
     const proposal = await prisma.profileAdaptationProposal.findUnique({
       where: { id: proposalId },
@@ -483,62 +517,71 @@ export class GovernanceService {
       throw new BadRequestException(`Cannot apply proposal in status '${proposal.status}'`);
     }
 
-    // CAS Update on LearnedPerformanceProfile
+    // CAS Update on LearnedPerformanceProfile & LearnedDimensionWeight upsert
     const result = await prisma.$transaction(async (tx) => {
-      let updateSql = '';
+      const updateData: any = {
+        profileVersion: { increment: 1 },
+      };
 
-      switch (proposal.dimension) {
-        case 'TOPIC':
-          updateSql = `
-            UPDATE learned_performance_profiles
-            SET best_topic_weight = ${proposal.proposedWeight},
-                best_topic = '${proposal.dimensionValue}',
-                profile_version = profile_version + 1,
-                updated_at = NOW()
-            WHERE id = '${proposal.profileId}'::uuid
-              AND profile_version = ${proposal.sourceProfileVersion}
-          `;
-          break;
-        case 'FORMAT':
-          updateSql = `
-            UPDATE learned_performance_profiles
-            SET best_format_weight = ${proposal.proposedWeight},
-                best_format = '${proposal.dimensionValue}',
-                profile_version = profile_version + 1,
-                updated_at = NOW()
-            WHERE id = '${proposal.profileId}'::uuid
-              AND profile_version = ${proposal.sourceProfileVersion}
-          `;
-          break;
-        case 'POST_LENGTH_BUCKET':
-          updateSql = `
-            UPDATE learned_performance_profiles
-            SET best_length_bucket_weight = ${proposal.proposedWeight},
-                best_length_bucket = '${proposal.dimensionValue}',
-                profile_version = profile_version + 1,
-                updated_at = NOW()
-            WHERE id = '${proposal.profileId}'::uuid
-              AND profile_version = ${proposal.sourceProfileVersion}
-          `;
-          break;
-        default:
-          updateSql = `
-            UPDATE learned_performance_profiles
-            SET profile_version = profile_version + 1,
-                updated_at = NOW()
-            WHERE id = '${proposal.profileId}'::uuid
-              AND profile_version = ${proposal.sourceProfileVersion}
-          `;
-          break;
+      if (proposal.dimension === 'TOPIC') {
+        updateData.bestTopicWeight = proposal.proposedWeight;
+        updateData.bestTopic = proposal.dimensionValue;
+      } else if (proposal.dimension === 'FORMAT') {
+        updateData.bestFormatWeight = proposal.proposedWeight;
+        updateData.bestFormat = proposal.dimensionValue;
+      } else if (proposal.dimension === 'POST_LENGTH_BUCKET') {
+        updateData.bestLengthBucketWeight = proposal.proposedWeight;
+        updateData.bestLengthBucket = proposal.dimensionValue;
       }
 
-      const rowsAffected = await tx.$executeRawUnsafe(updateSql);
+      const updateResult = await tx.learnedPerformanceProfile.updateMany({
+        where: {
+          id: proposal.profileId,
+          profileVersion: proposal.sourceProfileVersion,
+        },
+        data: updateData,
+      });
 
-      if (rowsAffected === 0) {
+      if (updateResult.count === 0) {
         throw new ConflictException(
           `Profile version mismatch: profile has been mutated concurrently (expected v${proposal.sourceProfileVersion})`,
         );
       }
+
+      // Upsert LearnedDimensionWeight so future recommendations and learning cycles reflect the adaptation
+      await tx.learnedDimensionWeight.upsert({
+        where: {
+          uq_learned_dim_weight: {
+            socialAccountId: proposal.socialAccountId,
+            dimension: proposal.dimension,
+            dimensionValue: proposal.dimensionValue,
+            observationSlot: 'T_24H',
+          },
+        },
+        create: {
+          workspaceId,
+          socialAccountId: proposal.socialAccountId,
+          profileId: proposal.profileId,
+          dimension: proposal.dimension,
+          dimensionValue: proposal.dimensionValue,
+          rawWeight: proposal.proposedWeight,
+          decayedWeight: proposal.proposedWeight,
+          totalSampleSize: proposal.sampleEvidenceSize,
+          eligibleBucketCount: 1,
+          evidenceBucketCount: 1,
+          highestEvidenceGrade: proposal.evidenceGrade,
+          observationSlot: 'T_24H',
+          analyticsRevision: 1,
+          computedAt: new Date(),
+        },
+        update: {
+          rawWeight: proposal.proposedWeight,
+          decayedWeight: proposal.proposedWeight,
+          totalSampleSize: { increment: proposal.sampleEvidenceSize },
+          highestEvidenceGrade: proposal.evidenceGrade,
+          computedAt: new Date(),
+        },
+      });
 
       return tx.profileAdaptationProposal.update({
         where: { id: proposalId },
@@ -558,24 +601,11 @@ export class GovernanceService {
     actorId: string,
     reason?: string,
   ): Promise<any> {
-    const membership = await prisma.workspaceMember.findUnique({
-      where: {
-        uq_workspace_member: {
-          workspaceId,
-          userId: actorId,
-        },
-      },
-    });
-
-    if (!membership || !['OWNER', 'ADMIN'].includes(membership.role)) {
-      const ws = await prisma.workspace.findUnique({
-        where: { id: workspaceId },
-        select: { userId: true },
-      });
-      if (ws?.userId !== actorId) {
-        throw new ForbiddenException('Only Workspace OWNER or ADMIN can reject profile adaptation proposals');
-      }
-    }
+    await this.ensureAuthorizedRole(
+      workspaceId,
+      actorId,
+      'reject profile adaptation proposals',
+    );
 
     const proposal = await prisma.profileAdaptationProposal.findUnique({
       where: { id: proposalId },
@@ -671,24 +701,11 @@ export class GovernanceService {
     actorId: string,
     resume = false,
   ): Promise<any> {
-    const membership = await prisma.workspaceMember.findUnique({
-      where: {
-        uq_workspace_member: {
-          workspaceId,
-          userId: actorId,
-        },
-      },
-    });
-
-    if (!membership || !['OWNER', 'ADMIN'].includes(membership.role)) {
-      const ws = await prisma.workspace.findUnique({
-        where: { id: workspaceId },
-        select: { userId: true },
-      });
-      if (ws?.userId !== actorId) {
-        throw new ForbiddenException('Only Workspace OWNER or ADMIN can toggle the autonomous operator');
-      }
-    }
+    await this.ensureAuthorizedRole(
+      workspaceId,
+      actorId,
+      'toggle the autonomous operator',
+    );
 
     const nextLevel = resume ? 'SEMI_AUTONOMOUS' : 'PAUSED';
 
@@ -735,24 +752,11 @@ export class GovernanceService {
     actorId: string,
     updates: UpdateOperatorConfigRequest,
   ): Promise<any> {
-    const membership = await prisma.workspaceMember.findUnique({
-      where: {
-        uq_workspace_member: {
-          workspaceId,
-          userId: actorId,
-        },
-      },
-    });
-
-    if (!membership || !['OWNER', 'ADMIN'].includes(membership.role)) {
-      const ws = await prisma.workspace.findUnique({
-        where: { id: workspaceId },
-        select: { userId: true },
-      });
-      if (ws?.userId !== actorId) {
-        throw new ForbiddenException('Only Workspace OWNER or ADMIN can configure the autonomous operator');
-      }
-    }
+    await this.ensureAuthorizedRole(
+      workspaceId,
+      actorId,
+      'configure the autonomous operator',
+    );
 
     // If autonomyLevel is set to PAUSED, immediately relinquish background worker leases
     if (updates.autonomyLevel === 'PAUSED') {

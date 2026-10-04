@@ -408,11 +408,26 @@ export class RulesEngineService {
       throw new Error(`Weekly post quota exhausted for week ${weekWindow}`);
     }
 
+    let contentSnapshot = triggerContext['contentSnapshot'] as any;
+    let contentHash = triggerContext['contentHash'] as string;
+
+    if (!contentSnapshot || !contentHash) {
+      const version = await tx.contentVersion.findUnique({
+        where: { id: contentVersionId },
+      });
+      if (version) {
+        contentSnapshot = contentSnapshot || {
+          text: version.text,
+          mediaUrls: version.mediaUrls,
+        };
+        contentHash = contentHash || version.contentHash;
+      } else {
+        contentSnapshot = contentSnapshot || {};
+        contentHash = contentHash || createHash('sha256').update(draftId).digest('hex');
+      }
+    }
+
     const scheduledAt = new Date(Date.now() + (action.params.offsetHours || 24) * 3600 * 1000);
-    const scheduledPostId = createHash('sha256')
-      .update(`post:${actionExecutionKey}`)
-      .digest('hex')
-      .substring(0, 36);
 
     const post = await tx.scheduledPost.create({
       data: {
@@ -420,8 +435,8 @@ export class RulesEngineService {
         socialAccountId,
         draftId,
         contentVersionId,
-        contentSnapshot: (triggerContext['contentSnapshot'] as any) || {},
-        contentHash: (triggerContext['contentHash'] as string) || 'hash',
+        contentSnapshot,
+        contentHash,
         scheduledAt,
         timezone: accountTimezone,
         status: 'SCHEDULED',
@@ -433,10 +448,7 @@ export class RulesEngineService {
     await tx.scheduledPostDispatch.create({
       data: {
         scheduledPostId: post.id,
-        workspaceId,
-        socialAccountId,
-        status: 'DISPATCH_PENDING',
-        idempotencyKey: actionExecutionKey,
+        status: 'PENDING',
       },
     });
   }
