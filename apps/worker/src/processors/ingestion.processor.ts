@@ -402,7 +402,7 @@ export class IngestionProcessor extends WorkerHost {
           const draft = await tx.contentDraft.create({
             data: {
               workspaceId,
-              status: 'READY',
+              status: 'ARCHIVED',
               generatedBy: 'BACKFILL',
             },
           });

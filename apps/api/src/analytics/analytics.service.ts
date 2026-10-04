@@ -713,7 +713,7 @@ export class AnalyticsService {
           const draft = await tx.contentDraft.create({
             data: {
               workspaceId,
-              status: 'READY',
+              status: 'ARCHIVED',
               generatedBy: 'BACKFILL',
             },
           });

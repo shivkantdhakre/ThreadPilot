@@ -1,7 +1,9 @@
-import { Injectable, Logger, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, ConflictException, Optional } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { prisma, PrismaClient, AutonomousOperatorRun } from '@threadpilot/database';
 import { randomUUID } from 'crypto';
-import { getIsoWeekWindow } from '@threadpilot/types';
+import { getIsoWeekWindow, QUEUES, ContentGenerationJobPayload } from '@threadpilot/types';
 import { SafetyGateService } from './safety-gate.service.js';
 
 export class CandidateLeaseExpiredError extends Error {
@@ -22,7 +24,12 @@ export class QuotaExceededError extends Error {
 export class AutonomousOperatorService {
   private readonly logger = new Logger(AutonomousOperatorService.name);
 
-  constructor(private readonly safetyGateService: SafetyGateService) {}
+  constructor(
+    private readonly safetyGateService: SafetyGateService,
+    @Optional()
+    @InjectQueue(QUEUES.CONTENT)
+    private readonly contentQueue?: Queue<ContentGenerationJobPayload>,
+  ) {}
 
   /**
    * Attempt to claim a 10-minute distributed lease for this account's planning cycle
@@ -165,11 +172,13 @@ export class AutonomousOperatorService {
         operatorConfig.minHoursBetweenPosts,
       );
 
-      // 3. Find candidate draft
+      // 3. Find candidate draft (exclude historical backfills and drafts already published)
       const candidateDraft = await prisma.contentDraft.findFirst({
         where: {
           workspaceId,
           status: { in: ['READY', 'APPROVED', 'DRAFT'] },
+          generatedBy: { not: 'BACKFILL' },
+          publishedPosts: { none: {} },
           scheduledPosts: {
             none: {
               status: { in: ['SCHEDULED', 'CLAIMED', 'PUBLISHING', 'PUBLISHED'] },
@@ -182,9 +191,84 @@ export class AutonomousOperatorService {
             take: 1,
           },
         },
+        orderBy: { createdAt: 'desc' },
       });
 
       if (!candidateDraft || candidateDraft.versions.length === 0) {
+        if (operatorConfig.autonomyLevel === 'FULL_AUTONOMOUS' && this.contentQueue) {
+          const activeJob = await prisma.jobRecord.findFirst({
+            where: {
+              workspaceId,
+              type: 'CONTENT',
+              status: { in: ['PENDING', 'RUNNING'] },
+            },
+          });
+
+          if (!activeJob) {
+            const profile = await prisma.learnedPerformanceProfile.findUnique({
+              where: { socialAccountId },
+            });
+            const prefs = await prisma.userPreferences.findUnique({
+              where: { workspaceId },
+            });
+
+            const topic = profile?.bestTopic || prefs?.preferredTopics?.[0] || 'AI & Tech Insights';
+            const format = profile?.bestFormat || prefs?.preferredFormats?.[0] || 'hook_body_cta';
+            const requestId = randomUUID();
+
+            await prisma.jobRecord.create({
+              data: {
+                workspaceId,
+                requestId,
+                type: 'CONTENT',
+                status: 'PENDING',
+                progress: 0,
+                progressMessage: 'Autonomous operator initiated content generation',
+              },
+            });
+
+            await this.contentQueue.add(
+              'CONTENT',
+              {
+                requestId,
+                workspaceId,
+                topic,
+                format,
+                requestedBy: 'AutonomousOperator',
+                actorId: 'AutonomousOperator',
+              },
+              {
+                jobId: `gen:${requestId}`,
+                removeOnComplete: 50,
+                removeOnFail: 100,
+              },
+            );
+
+            this.logger.log(
+              `[FULL_AUTONOMOUS] No fresh drafts found. Dispatched AI content generation [${requestId}] for topic: "${topic}", format: "${format}"`,
+            );
+
+            await prisma.autonomousOperatorRun.update({
+              where: { id: run.id },
+              data: {
+                status: 'COMPLETED',
+                candidatesEvaluated: 0,
+                candidatesScheduled: 0,
+                completedAt: new Date(),
+                summary: {
+                  reason: 'No fresh drafts available. Dispatched autonomous AI content generation.',
+                  dispatchedRequestId: requestId,
+                  topic,
+                  format,
+                },
+              },
+            });
+
+            await this.releaseAccountLease(socialAccountId, leaseToken);
+            return run;
+          }
+        }
+
         this.logger.debug(`No available draft candidates found for account ${socialAccountId}`);
         await prisma.autonomousOperatorRun.update({
           where: { id: run.id },
