@@ -199,7 +199,10 @@ export class GeminiProvider implements AIProvider {
 
     let lastError: Error | undefined;
 
-    for (const model of candidateModels) {
+    for (let modelIndex = 0; modelIndex < candidateModels.length; modelIndex++) {
+      const model = candidateModels[modelIndex] as string;
+      const hasFurtherFallbacks = modelIndex < candidateModels.length - 1;
+
       for (let attempt = 0; attempt < this.maxRetries; attempt++) {
         try {
           const response = await this.executeCompletion<T>(request, model);
@@ -223,11 +226,25 @@ export class GeminiProvider implements AIProvider {
             break;
           }
 
+          // If quota or rate limit is exhausted, or high demand spike occurs on this model,
+          // fail over to the next candidate model to tap its separate quota pool
+          const errStr = String(error);
+          const isQuotaOrDemandLimit =
+            classification.category === 'RATE_LIMIT' ||
+            errStr.includes('RESOURCE_EXHAUSTED') ||
+            errStr.includes('quota') ||
+            errStr.includes('exceeded') ||
+            errStr.includes('high demand') ||
+            errStr.includes('spikes in demand');
+
+          if (isQuotaOrDemandLimit && hasFurtherFallbacks && attempt >= 1) {
+            break;
+          }
+
           // For RATE_LIMIT (429) or TRANSIENT (5xx/timeout), retry with backoff on current model
           if (attempt < this.maxRetries - 1) {
             await this.delay(Math.pow(2, attempt) * 1000);
           }
-          // When retry budget on this model is exhausted, the loop naturally advances to the next candidate model
         }
       }
     }
@@ -310,20 +327,37 @@ export class GeminiProvider implements AIProvider {
   }
 
   async *stream(request: CompletionRequest): AsyncIterable<string> {
-    const stream = (await (this.client.interactions.create as any)({
-      model: this.modelName,
-      input: request.userPrompt,
-      system_instruction: request.systemPrompt,
-      store: request.store ?? false,
-      stream: true,
-      ...(request.maxOutputTokens !== undefined
-        ? {
-            generation_config: {
-              max_output_tokens: request.maxOutputTokens,
-            },
-          }
-        : {}),
-    })) as unknown as AsyncIterable<any>;
+    const candidateModels = [
+      this.modelName,
+      ...this.fallbackModels.filter((m) => m !== this.modelName),
+    ];
+
+    let stream: AsyncIterable<any> | undefined;
+    for (const model of candidateModels) {
+      try {
+        stream = (await (this.client.interactions.create as any)({
+          model,
+          input: request.userPrompt,
+          system_instruction: request.systemPrompt,
+          store: request.store ?? false,
+          stream: true,
+          ...(request.maxOutputTokens !== undefined
+            ? {
+                generation_config: {
+                  max_output_tokens: request.maxOutputTokens,
+                },
+              }
+            : {}),
+        })) as unknown as AsyncIterable<any>;
+        break;
+      } catch (err) {
+        if (candidateModels.indexOf(model) === candidateModels.length - 1) {
+          throw err;
+        }
+      }
+    }
+
+    if (!stream) return;
 
     for await (const event of stream) {
       if (event.event_type === 'step.delta' && event.delta) {
@@ -336,7 +370,10 @@ export class GeminiProvider implements AIProvider {
   }
 
   async embed(request: EmbeddingRequest): Promise<EmbeddingResponse> {
-    const model = this.modelName;
+    const candidateModels = [
+      this.modelName,
+      ...this.fallbackModels.filter((m) => m !== this.modelName),
+    ];
     const rawDimensions = request.dimensions ?? this.embeddingDimensions;
     const targetDimensions =
       rawDimensions !== undefined && rawDimensions !== null
@@ -344,71 +381,97 @@ export class GeminiProvider implements AIProvider {
         : undefined;
     let lastError: Error | undefined;
 
-    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
-      try {
-        const results: number[][] = [];
-        let totalInputTokens = 0;
+    for (let modelIndex = 0; modelIndex < candidateModels.length; modelIndex++) {
+      const model = candidateModels[modelIndex] as string;
+      const hasFurtherFallbacks = modelIndex < candidateModels.length - 1;
 
-        const BATCH_SIZE = 100;
-        for (let i = 0; i < request.texts.length; i += BATCH_SIZE) {
-          const batch = request.texts.slice(i, i + BATCH_SIZE);
-          const formattedBatch = batch.map((text, idx) => {
-            const globalIdx = i + idx;
-            const itemTitle = request.titles?.[globalIdx] ?? request.title;
-            return formatGeminiEmbeddingInput(text, request.taskType, itemTitle);
-          });
+      for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+        try {
+          const results: number[][] = [];
+          let totalInputTokens = 0;
 
-          // gemini-embedding-2 does NOT support taskType in config.
-          // Task semantics are handled strictly via formatGeminiEmbeddingInput prefixing.
-          const config: Record<string, unknown> = {};
-          if (targetDimensions !== undefined && !isNaN(targetDimensions)) {
-            config.outputDimensionality = targetDimensions;
-          }
+          const BATCH_SIZE = 100;
+          for (let i = 0; i < request.texts.length; i += BATCH_SIZE) {
+            const batch = request.texts.slice(i, i + BATCH_SIZE);
+            const formattedBatch = batch.map((text, idx) => {
+              const globalIdx = i + idx;
+              const itemTitle = request.titles?.[globalIdx] ?? request.title;
+              return formatGeminiEmbeddingInput(text, request.taskType, itemTitle);
+            });
 
-          const response = await this.client.models.embedContent({
-            model,
-            contents: formattedBatch.map((formattedText) => ({
-              role: 'user',
-              parts: [{ text: formattedText }],
-            })),
-            ...(Object.keys(config).length > 0 ? { config } : {}),
-          });
-
-          for (const embedding of response.embeddings ?? []) {
-            const values = embedding.values ?? [];
-            if (
-              targetDimensions !== undefined &&
-              !isNaN(targetDimensions) &&
-              values.length !== targetDimensions
-            ) {
-              throw new Error(
-                `Embedding dimension mismatch: expected ${targetDimensions}, received ${values.length} from model ${model}`,
-              );
+            // gemini-embedding-2 does NOT support taskType in config.
+            // Task semantics are handled strictly via formatGeminiEmbeddingInput prefixing.
+            const config: Record<string, unknown> = {};
+            if (targetDimensions !== undefined && !isNaN(targetDimensions)) {
+              config.outputDimensionality = targetDimensions;
             }
-            results.push(values);
+
+            const response = await this.client.models.embedContent({
+              model,
+              contents: formattedBatch.map((formattedText) => ({
+                role: 'user',
+                parts: [{ text: formattedText }],
+              })),
+              ...(Object.keys(config).length > 0 ? { config } : {}),
+            });
+
+            for (const embedding of response.embeddings ?? []) {
+              const values = embedding.values ?? [];
+              if (
+                targetDimensions !== undefined &&
+                !isNaN(targetDimensions) &&
+                values.length !== targetDimensions
+              ) {
+                throw new Error(
+                  `Embedding dimension mismatch: expected ${targetDimensions}, received ${values.length} from model ${model}`,
+                );
+              }
+              results.push(values);
+            }
           }
-        }
 
-        return { embeddings: results, model, inputTokens: totalInputTokens };
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        const classification = classifyAIError(error);
+          return { embeddings: results, model, inputTokens: totalInputTokens };
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          const classification = classifyAIError(error);
 
-        // Terminal errors: immediately abort without retrying
-        if (!classification.isRetryable) {
-          throw lastError;
-        }
+          // Terminal errors: immediately abort without retrying
+          if (
+            classification.category === 'AUTH_ERROR' ||
+            classification.category === 'INVALID_REQUEST' ||
+            classification.category === 'SCHEMA_ERROR'
+          ) {
+            throw lastError;
+          }
 
-        // Retry with exponential backoff on the single authoritative model
-        if (attempt < this.maxRetries - 1) {
-          await this.delay(Math.pow(2, attempt) * 1000);
+          if (classification.category === 'MODEL_UNAVAILABLE') {
+            break;
+          }
+
+          const errStr = String(error);
+          const isQuotaOrDemandLimit =
+            classification.category === 'RATE_LIMIT' ||
+            errStr.includes('RESOURCE_EXHAUSTED') ||
+            errStr.includes('quota') ||
+            errStr.includes('exceeded') ||
+            errStr.includes('high demand') ||
+            errStr.includes('spikes in demand');
+
+          if (isQuotaOrDemandLimit && hasFurtherFallbacks && attempt >= 1) {
+            break;
+          }
+
+          // Retry with exponential backoff on current candidate model
+          if (attempt < this.maxRetries - 1) {
+            await this.delay(Math.pow(2, attempt) * 1000);
+          }
         }
       }
     }
 
     throw (
       lastError ??
-      new Error(`Embedding generation failed for model ${model} after ${this.maxRetries} attempts`)
+      new Error(`Embedding generation failed across candidate models: ${candidateModels.join(', ')}`)
     );
   }
 

@@ -30,6 +30,37 @@ export interface AIConfig {
   timeoutMs: number;
 }
 
+export const DEFAULT_CONTENT_FALLBACKS: string[] = [
+  'gemini-flash-lite-latest',
+  'gemini-3.1-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-3.5-flash',
+  'gemini-3.6-flash',
+  'gemini-flash-latest',
+  'gemini-3.7-flash',
+  'gemini-pro-latest',
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
+];
+
+export const DEFAULT_CLASSIFICATION_FALLBACKS: string[] = [
+  'gemini-flash-lite-latest',
+  'gemini-3.1-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-3.5-flash',
+  'gemini-3.6-flash',
+  'gemini-flash-latest',
+  'gemini-3.7-flash',
+  'gemini-pro-latest',
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
+];
+
+export const DEFAULT_EMBEDDING_FALLBACKS: string[] = [
+  'gemini-embedding-2-preview',
+  'gemini-embedding-001',
+];
+
 /**
  * Returns the correct AIProvider instance for a given task type.
  * All model names come from config (env) — changing a model is a config change only.
@@ -51,7 +82,7 @@ export class ModelRouter {
           this.config.maxRetries,
           this.config.timeoutMs,
           undefined,
-          this.config.modelContentFallbacks,
+          this.config.modelContentFallbacks ?? DEFAULT_CONTENT_FALLBACKS,
         );
 
       case 'classification':
@@ -62,7 +93,7 @@ export class ModelRouter {
           this.config.maxRetries,
           this.config.timeoutMs,
           undefined,
-          this.config.modelClassificationFallbacks,
+          this.config.modelClassificationFallbacks ?? DEFAULT_CLASSIFICATION_FALLBACKS,
         );
 
       case 'embedding':
@@ -72,7 +103,7 @@ export class ModelRouter {
           this.config.maxRetries,
           this.config.timeoutMs,
           this.config.embeddingDimensions,
-          this.config.modelEmbeddingFallbacks,
+          this.config.modelEmbeddingFallbacks ?? DEFAULT_EMBEDDING_FALLBACKS,
         );
     }
   }

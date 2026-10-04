@@ -4,6 +4,9 @@ import {
   AIProvider,
   GeminiProvider,
   ModelRouter,
+  DEFAULT_CONTENT_FALLBACKS,
+  DEFAULT_CLASSIFICATION_FALLBACKS,
+  DEFAULT_EMBEDDING_FALLBACKS,
   type AIConfig,
   type CompletionRequest,
   type CompletionResponse,
@@ -75,14 +78,28 @@ export class AIFactoryService {
 
   constructor(private readonly config: ConfigService) {
     const contentFallbacks = this.config
-      .get<string>('GEMINI_MODEL_CONTENT_FALLBACKS', 'gemini-3.1-flash-lite,gemini-3.7-flash')
+      .get<string>(
+        'GEMINI_MODEL_CONTENT_FALLBACKS',
+        DEFAULT_CONTENT_FALLBACKS.join(','),
+      )
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
 
-    // Default to empty: do not switch vector coordinate spaces across models in the same index
+    const classificationFallbacks = this.config
+      .get<string>(
+        'GEMINI_MODEL_CLASSIFICATION_FALLBACKS',
+        DEFAULT_CLASSIFICATION_FALLBACKS.join(','),
+      )
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
     const embeddingFallbacks = this.config
-      .get<string>('GEMINI_MODEL_EMBEDDING_FALLBACKS', '')
+      .get<string>(
+        'GEMINI_MODEL_EMBEDDING_FALLBACKS',
+        DEFAULT_EMBEDDING_FALLBACKS.join(','),
+      )
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
@@ -92,6 +109,7 @@ export class AIFactoryService {
       modelContent: this.config.get<string>('GEMINI_MODEL_CONTENT', 'gemini-3.5-flash-lite'),
       modelContentFallbacks: contentFallbacks,
       modelClassification: this.config.get<string>('GEMINI_MODEL_CLASSIFICATION', 'gemini-3.5-flash-lite'),
+      modelClassificationFallbacks: classificationFallbacks,
       modelEmbedding: this.config.get<string>('GEMINI_MODEL_EMBEDDING', 'gemini-embedding-2'),
       modelEmbeddingFallbacks: embeddingFallbacks,
       embeddingDimensions: Number(this.config.get('GEMINI_EMBEDDING_DIMENSIONS', 768)) || 768,
