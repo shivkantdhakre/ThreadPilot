@@ -223,7 +223,7 @@ export function createStyleExtractionGraph(deps: {
           await memoryRepo.upsertEmbedding(
             item.memoryItemId,
             item.embedding,
-            aiProvider.modelName,
+            process.env.GEMINI_MODEL_EMBEDDING || 'gemini-embedding-2',
             item.embedding.length,
             'DOCUMENT',
             'v2',

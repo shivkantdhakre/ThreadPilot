@@ -123,7 +123,7 @@ export class EditorialPersonalizationService {
           await this.memoryRepo.upsertEmbedding(
             memoryItem.id,
             vector,
-            aiProvider.modelName,
+            embedRes.model || process.env.GEMINI_MODEL_EMBEDDING || 'gemini-embedding-2',
             vector.length,
             'DOCUMENT',
             'v2',

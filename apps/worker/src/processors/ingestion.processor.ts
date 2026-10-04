@@ -211,12 +211,13 @@ export class IngestionProcessor extends WorkerHost {
               ]);
 
               // Persist or enqueue DOCUMENT representation
+              const embeddingModelName = (docResult.status === 'fulfilled' && docResult.value?.model) || process.env.GEMINI_MODEL_EMBEDDING || 'gemini-embedding-2';
               const docVector = docResult.status === 'fulfilled' ? docResult.value.embeddings[0] : undefined;
               if (docVector && docVector.length > 0) {
                 await this.memoryRepo.upsertEmbedding(
                   memoryItem.id,
                   docVector,
-                  aiProvider.modelName,
+                  embeddingModelName,
                   docVector.length,
                   'DOCUMENT',
                   'v2',
@@ -227,7 +228,7 @@ export class IngestionProcessor extends WorkerHost {
                   { postId, reason },
                   'DOCUMENT embedding failed inline, enqueuing for background retry',
                 );
-                const docJobId = `embedding-${memoryItem.id}-${aiProvider.modelName}-DOCUMENT-v2`;
+                const docJobId = `embedding-${memoryItem.id}-${embeddingModelName}-DOCUMENT-v2`;
                 await this.embeddingQueue.add(
                   'EMBEDDING',
                   {
@@ -236,7 +237,7 @@ export class IngestionProcessor extends WorkerHost {
                     memoryItemId: memoryItem.id,
                     text: postText,
                     taskType: 'DOCUMENT',
-                    model: aiProvider.modelName,
+                    model: embeddingModelName,
                     pipelineVersion: 'v2',
                   },
                   { jobId: docJobId, attempts: 3, backoff: { type: 'exponential', delay: 1000 } },
@@ -244,12 +245,13 @@ export class IngestionProcessor extends WorkerHost {
               }
 
               // Persist or enqueue SIMILARITY representation
+              const simEmbeddingModelName = (simResult.status === 'fulfilled' && simResult.value?.model) || process.env.GEMINI_MODEL_EMBEDDING || 'gemini-embedding-2';
               const simVector = simResult.status === 'fulfilled' ? simResult.value.embeddings[0] : undefined;
               if (simVector && simVector.length > 0) {
                 await this.memoryRepo.upsertEmbedding(
                   memoryItem.id,
                   simVector,
-                  aiProvider.modelName,
+                  simEmbeddingModelName,
                   simVector.length,
                   'SIMILARITY',
                   'v2',
@@ -260,7 +262,7 @@ export class IngestionProcessor extends WorkerHost {
                   { postId, reason },
                   'SIMILARITY embedding failed inline, enqueuing for background retry',
                 );
-                const simJobId = `embedding-${memoryItem.id}-${aiProvider.modelName}-SIMILARITY-v2`;
+                const simJobId = `embedding-${memoryItem.id}-${simEmbeddingModelName}-SIMILARITY-v2`;
                 await this.embeddingQueue.add(
                   'EMBEDDING',
                   {
@@ -269,7 +271,7 @@ export class IngestionProcessor extends WorkerHost {
                     memoryItemId: memoryItem.id,
                     text: postText,
                     taskType: 'SIMILARITY',
-                    model: aiProvider.modelName,
+                    model: simEmbeddingModelName,
                     pipelineVersion: 'v2',
                   },
                   { jobId: simJobId, attempts: 3, backoff: { type: 'exponential', delay: 1000 } },

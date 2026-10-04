@@ -196,11 +196,14 @@ export class AutonomousOperatorService {
 
       if (!candidateDraft || candidateDraft.versions.length === 0) {
         if (operatorConfig.autonomyLevel === 'FULL_AUTONOMOUS' && this.contentQueue) {
+          // Guard against orphaned/deadlocked pending jobs: only consider jobs created in last 30 minutes active
+          const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
           const activeJob = await prisma.jobRecord.findFirst({
             where: {
               workspaceId,
               type: 'CONTENT',
               status: { in: ['PENDING', 'RUNNING'] },
+              createdAt: { gt: thirtyMinutesAgo },
             },
           });
 
@@ -216,7 +219,7 @@ export class AutonomousOperatorService {
             const format = profile?.bestFormat || prefs?.preferredFormats?.[0] || 'hook_body_cta';
             const requestId = randomUUID();
 
-            await prisma.jobRecord.create({
+            const jobRecord = await prisma.jobRecord.create({
               data: {
                 workspaceId,
                 requestId,
@@ -227,22 +230,39 @@ export class AutonomousOperatorService {
               },
             });
 
-            await this.contentQueue.add(
-              'CONTENT',
-              {
-                requestId,
-                workspaceId,
-                topic,
-                format,
-                requestedBy: 'AutonomousOperator',
-                actorId: 'AutonomousOperator',
-              },
-              {
-                jobId: `gen:${requestId}`,
-                removeOnComplete: 50,
-                removeOnFail: 100,
-              },
-            );
+            try {
+              const bullJob = await this.contentQueue.add(
+                'CONTENT',
+                {
+                  requestId,
+                  workspaceId,
+                  topic,
+                  format,
+                  requestedBy: 'AutonomousOperator',
+                  actorId: 'AutonomousOperator',
+                },
+                {
+                  jobId: `gen_${requestId}`,
+                  removeOnComplete: 50,
+                  removeOnFail: 100,
+                },
+              );
+
+              await prisma.jobRecord.update({
+                where: { id: jobRecord.id },
+                data: { bullJobId: String(bullJob.id) },
+              });
+            } catch (queueErr: any) {
+              await prisma.jobRecord.update({
+                where: { id: jobRecord.id },
+                data: {
+                  status: 'FAILED',
+                  error: queueErr?.message || 'Failed to enqueue content generation job',
+                  completedAt: new Date(),
+                },
+              });
+              throw queueErr;
+            }
 
             this.logger.log(
               `[FULL_AUTONOMOUS] No fresh drafts found. Dispatched AI content generation [${requestId}] for topic: "${topic}", format: "${format}"`,

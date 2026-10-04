@@ -48,6 +48,20 @@ export function classifyPublishError(err: any): ErrorClassification {
   }
   const msg = err?.message || '';
 
+  // Transaction timeout or expired Prisma interactive transaction should be RETRYABLE, NOT AUTH_REQUIRED
+  const isTransactionTimeout =
+    msg.includes('Transaction already closed') ||
+    msg.includes('expired transaction') ||
+    msg.includes('Transaction API error');
+
+  if (isTransactionTimeout) {
+    return {
+      type: 'RETRYABLE',
+      code: 'TRANSACTION_TIMEOUT',
+      message: msg || 'Database transaction timed out during publishing execution',
+    };
+  }
+
   // Specific check for missing or invalid OAuth token (including Prisma P2025 specifically for OAuthToken)
   const isPrismaMissingOAuthToken =
     err?.code === 'P2025' &&
@@ -55,13 +69,20 @@ export function classifyPublishError(err: any): ErrorClassification {
       err?.message?.includes('OAuthToken') ||
       err?.message?.includes('oAuthToken'));
 
+  const isTokenExpired =
+    msg.includes('token expired') ||
+    msg.includes('token has expired') ||
+    msg.includes('access token expired') ||
+    msg.includes('OAuthException') ||
+    (msg.includes('token') && msg.includes('expired'));
+
   const isMissingOrInvalidToken =
     isPrismaMissingOAuthToken ||
     msg.includes('No OAuth token') ||
     msg.includes('OAuth token not found') ||
     msg.includes('Social account or OAuth token not found') ||
     msg.includes('revoked') ||
-    msg.includes('expired') ||
+    isTokenExpired ||
     msg.includes('Token refresh failed') ||
     msg.includes('No access token');
 
@@ -654,7 +675,8 @@ export class PublishingProcessor extends WorkerHost {
       // ─────────────────────────────────────────────────────────────────────────
       const publishedObservedAt = new Date();
 
-      await this.db.$transaction(async (tx) => {
+      await this.db.$transaction(
+        async (tx) => {
         const term = await tx.$executeRaw`
           UPDATE scheduled_posts
           SET status = 'PUBLISHED',
@@ -801,7 +823,12 @@ export class PublishingProcessor extends WorkerHost {
             result: 'PUBLISHED',
           },
         });
-      });
+        },
+        {
+          maxWait: 10000,
+          timeout: 30000,
+        },
+      );
 
       this.logger.log(
         `Successfully published scheduled post ${post.id} (Threads post: ${finalThreadsPostId})`,
