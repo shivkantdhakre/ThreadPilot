@@ -7,7 +7,7 @@ async function bootstrap(): Promise<void> {
     logger: ['error', 'warn', 'log'],
   });
 
-  const port = parseInt(process.env['WORKER_PORT'] ?? '3002', 10);
+  const port = parseInt(process.env['PORT'] ?? process.env['WORKER_PORT'] ?? '3002', 10);
   await app.listen(port);
 
   logger.info({ port }, `ThreadPilot Worker listening on port ${port}`);
