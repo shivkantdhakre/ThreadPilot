@@ -21,6 +21,7 @@ import {
   RuleActionSchema,
   SafetyOverrideRequestSchema,
   CreateExperimentRequestSchema,
+  UpdateOperatorConfigRequest,
 } from '@threadpilot/types';
 
 @Injectable()
@@ -618,6 +619,21 @@ export class GovernanceService {
 
     const nextLevel = resume ? 'SEMI_AUTONOMOUS' : 'PAUSED';
 
+    // When pausing operator, immediately relinquish background worker leases
+    // so in-flight automated cycles are halted from committing
+    if (!resume) {
+      await prisma.autonomousOperatorLease.updateMany({
+        where: {
+          socialAccountId,
+          workspaceId,
+        },
+        data: {
+          leaseToken: null,
+          leaseUntil: null,
+        },
+      });
+    }
+
     return prisma.autonomousOperatorConfig.upsert({
       where: {
         uq_operator_config_account_workspace: {
@@ -638,5 +654,72 @@ export class GovernanceService {
 
   async pauseOperator(workspaceId: string, socialAccountId: string, actorId: string): Promise<any> {
     return this.toggleOperator(workspaceId, socialAccountId, actorId, false);
+  }
+
+  async updateOperatorConfig(
+    workspaceId: string,
+    socialAccountId: string,
+    actorId: string,
+    updates: UpdateOperatorConfigRequest,
+  ): Promise<any> {
+    const membership = await prisma.workspaceMember.findUnique({
+      where: {
+        uq_workspace_member: {
+          workspaceId,
+          userId: actorId,
+        },
+      },
+    });
+
+    if (!membership || !['OWNER', 'ADMIN'].includes(membership.role)) {
+      const ws = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { userId: true },
+      });
+      if (ws?.userId !== actorId) {
+        throw new ForbiddenException('Only Workspace OWNER or ADMIN can configure the autonomous operator');
+      }
+    }
+
+    // If autonomyLevel is set to PAUSED, immediately relinquish background worker leases
+    if (updates.autonomyLevel === 'PAUSED') {
+      await prisma.autonomousOperatorLease.updateMany({
+        where: {
+          socialAccountId,
+          workspaceId,
+        },
+        data: {
+          leaseToken: null,
+          leaseUntil: null,
+        },
+      });
+    }
+
+    return prisma.autonomousOperatorConfig.upsert({
+      where: {
+        uq_operator_config_account_workspace: {
+          socialAccountId,
+          workspaceId,
+        },
+      },
+      create: {
+        workspaceId,
+        socialAccountId,
+        autonomyLevel: updates.autonomyLevel ?? 'SEMI_AUTONOMOUS',
+        maxWeeklyPosts: updates.maxWeeklyPosts ?? 14,
+        minHoursBetweenPosts: updates.minHoursBetweenPosts ?? 4,
+        targetPostingHours: updates.targetPostingHours ?? [9, 12, 17, 20],
+        planningHorizonDays: updates.planningHorizonDays ?? 7,
+        enableExperiments: updates.enableExperiments ?? true,
+      },
+      update: {
+        ...(updates.autonomyLevel !== undefined && { autonomyLevel: updates.autonomyLevel }),
+        ...(updates.maxWeeklyPosts !== undefined && { maxWeeklyPosts: updates.maxWeeklyPosts }),
+        ...(updates.minHoursBetweenPosts !== undefined && { minHoursBetweenPosts: updates.minHoursBetweenPosts }),
+        ...(updates.targetPostingHours !== undefined && { targetPostingHours: updates.targetPostingHours }),
+        ...(updates.planningHorizonDays !== undefined && { planningHorizonDays: updates.planningHorizonDays }),
+        ...(updates.enableExperiments !== undefined && { enableExperiments: updates.enableExperiments }),
+      },
+    });
   }
 }

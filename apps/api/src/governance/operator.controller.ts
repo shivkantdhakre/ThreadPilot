@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Body,
   Query,
   UseGuards,
   BadRequestException,
@@ -11,6 +13,7 @@ import { WorkspaceScopeGuard } from '../common/guards/workspace-scope.guard.js';
 import { WorkspaceId } from '../common/decorators/workspace.decorator.js';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 import { GovernanceService } from './governance.service.js';
+import { UpdateOperatorConfigRequestSchema } from '@threadpilot/types';
 
 @Controller('operator')
 @UseGuards(JwtAuthGuard, WorkspaceScopeGuard)
@@ -23,6 +26,29 @@ export class OperatorController {
     @Query('socialAccountId') socialAccountId?: string,
   ): Promise<any> {
     return this.governanceService.getOperatorStatus(workspaceId, socialAccountId);
+  }
+
+  @Patch('config')
+  async updateConfig(
+    @WorkspaceId() workspaceId: string,
+    @Query('socialAccountId') socialAccountId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: any,
+  ): Promise<any> {
+    if (!socialAccountId) {
+      throw new BadRequestException('socialAccountId is required');
+    }
+    try {
+      const parsed = UpdateOperatorConfigRequestSchema.parse(body);
+      return this.governanceService.updateOperatorConfig(
+        workspaceId,
+        socialAccountId,
+        user.userId,
+        parsed,
+      );
+    } catch (err: any) {
+      throw new BadRequestException(`Invalid operator config payload: ${err?.message || ''}`);
+    }
   }
 
   @Post('pause')

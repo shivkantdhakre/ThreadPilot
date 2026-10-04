@@ -133,12 +133,30 @@ function GovernanceDashboardContent() {
   const [proposals, setProposals] = useState<AdaptationProposalItem[]>([]);
   const [operatorStatus, setOperatorStatus] = useState<any>({
     active: true,
-    leaseHeld: true,
-    weeklyQuotaLimit: 25,
-    weeklyQuotaUsed: 7,
-    nextPlanningCycle: 'In 6 minutes',
+    leaseHeld: false,
+    weeklyQuotaLimit: 14,
+    weeklyQuotaUsed: 0,
+    nextPlanningCycle: 'Every 15 min',
     cycleState: 'IDLE',
   });
+  const [operatorConfig, setOperatorConfig] = useState<{
+    autonomyLevel: 'MANUAL' | 'SEMI_AUTONOMOUS' | 'FULL_AUTONOMOUS' | 'PAUSED';
+    maxWeeklyPosts: number;
+    minHoursBetweenPosts: number;
+    targetPostingHours: number[];
+    planningHorizonDays: number;
+    enableExperiments: boolean;
+  }>({
+    autonomyLevel: 'SEMI_AUTONOMOUS',
+    maxWeeklyPosts: 14,
+    minHoursBetweenPosts: 4,
+    targetPostingHours: [9, 12, 17, 20],
+    planningHorizonDays: 7,
+    enableExperiments: true,
+  });
+  const [operatorRuns, setOperatorRuns] = useState<any[]>([]);
+  const [isSavingOperatorConfig, setIsSavingOperatorConfig] = useState(false);
+  const [saveOperatorConfigSuccess, setSaveOperatorConfigSuccess] = useState(false);
 
   // Action loading states
   const [isCreatingRule, setIsCreatingRule] = useState(false);
@@ -443,15 +461,32 @@ function GovernanceDashboardContent() {
 
       if (opRes.status === 'fulfilled' && opRes.value) {
         const val = opRes.value;
-        const isPaused = val.config?.autonomyLevel === 'PAUSED';
+        const cfg = val.config;
+        const isPaused = cfg?.autonomyLevel === 'PAUSED';
         setOperatorStatus({
           active: !isPaused,
           leaseHeld: val.isLeaseActive ?? false,
-          weeklyQuotaLimit: val.weeklyQuota?.maxWeeklyPosts ?? 25,
-          weeklyQuotaUsed: val.weeklyQuota?.claimedPosts ?? 7,
+          weeklyQuotaLimit: val.weeklyQuota?.maxWeeklyPosts ?? cfg?.maxWeeklyPosts ?? 14,
+          weeklyQuotaUsed: val.weeklyQuota?.claimedPosts ?? 0,
           nextPlanningCycle: val.isLeaseActive ? 'Lease Active' : 'Every 15 min',
           cycleState: isPaused ? 'PAUSED' : 'IDLE',
         });
+        if (cfg) {
+          setOperatorConfig({
+            autonomyLevel: cfg.autonomyLevel ?? 'SEMI_AUTONOMOUS',
+            maxWeeklyPosts: cfg.maxWeeklyPosts ?? 14,
+            minHoursBetweenPosts: cfg.minHoursBetweenPosts ?? 4,
+            targetPostingHours:
+              cfg.targetPostingHours && cfg.targetPostingHours.length > 0
+                ? cfg.targetPostingHours
+                : [9, 12, 17, 20],
+            planningHorizonDays: cfg.planningHorizonDays ?? 7,
+            enableExperiments: cfg.enableExperiments ?? true,
+          });
+        }
+        if (val.latestRuns) {
+          setOperatorRuns(val.latestRuns);
+        }
       }
     } catch (err) {
       console.error('Failed to load governance telemetry', err);
@@ -710,6 +745,11 @@ function GovernanceDashboardContent() {
         ...prev,
         active: nextResume,
         cycleState: nextResume ? 'IDLE' : 'PAUSED',
+        leaseHeld: nextResume ? prev.leaseHeld : false,
+      }));
+      setOperatorConfig((prev) => ({
+        ...prev,
+        autonomyLevel: nextResume ? 'SEMI_AUTONOMOUS' : 'PAUSED',
       }));
     } catch (err: any) {
       console.error('Failed to toggle operator status', err);
@@ -717,6 +757,61 @@ function GovernanceDashboardContent() {
     } finally {
       setIsTogglingOperator(false);
     }
+  };
+
+  // Handler: Save Operator Configuration & Safety Limits
+  const handleSaveOperatorConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAccountId) return;
+    setIsSavingOperatorConfig(true);
+    setSaveOperatorConfigSuccess(false);
+    try {
+      const res = await apiClient.patch<any>(
+        `/operator/config?socialAccountId=${selectedAccountId}`,
+        {
+          autonomyLevel: operatorConfig.autonomyLevel,
+          maxWeeklyPosts: Number(operatorConfig.maxWeeklyPosts),
+          minHoursBetweenPosts: Number(operatorConfig.minHoursBetweenPosts),
+          targetPostingHours: operatorConfig.targetPostingHours,
+          planningHorizonDays: Number(operatorConfig.planningHorizonDays),
+          enableExperiments: operatorConfig.enableExperiments,
+        }
+      );
+      setSaveOperatorConfigSuccess(true);
+      const isPaused = res.autonomyLevel === 'PAUSED';
+      setOperatorStatus((prev: any) => ({
+        ...prev,
+        active: !isPaused,
+        cycleState: isPaused ? 'PAUSED' : 'IDLE',
+        weeklyQuotaLimit: res.maxWeeklyPosts ?? prev.weeklyQuotaLimit,
+        leaseHeld: isPaused ? false : prev.leaseHeld,
+      }));
+      setTimeout(() => setSaveOperatorConfigSuccess(false), 3000);
+    } catch (err: any) {
+      console.error('Failed to save operator config', err);
+      alert(err?.message || 'Failed to update operator configuration');
+    } finally {
+      setIsSavingOperatorConfig(false);
+    }
+  };
+
+  // Helper: Toggle Target Posting Hour
+  const handleTogglePostingHour = (hour: number) => {
+    setOperatorConfig((prev) => {
+      const exists = prev.targetPostingHours.includes(hour);
+      if (exists) {
+        if (prev.targetPostingHours.length === 1) return prev; // Keep at least one
+        return {
+          ...prev,
+          targetPostingHours: prev.targetPostingHours.filter((h) => h !== hour).sort((a, b) => a - b),
+        };
+      } else {
+        return {
+          ...prev,
+          targetPostingHours: [...prev.targetPostingHours, hour].sort((a, b) => a - b),
+        };
+      }
+    });
   };
 
   return (
@@ -795,7 +890,7 @@ function GovernanceDashboardContent() {
 
           <MetricCard
             label="Weekly Quota Used"
-            value={`${operatorStatus?.weeklyQuotaUsed ?? 7} / ${operatorStatus?.weeklyQuotaLimit ?? 25}`}
+            value={`${operatorStatus?.weeklyQuotaUsed ?? 0} / ${operatorStatus?.weeklyQuotaLimit ?? 14}`}
             meta="ISO Week Calendar Window"
             icon={Cpu}
             accent="cyan"
@@ -1335,78 +1430,479 @@ function GovernanceDashboardContent() {
         {/* Tab 5: Autonomous Operator */}
         {activeTab === 'OPERATOR' && (
           <div className="space-y-6">
-            <div className="card-base p-6 space-y-6 border border-canvas-border">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-canvas-border pb-4">
-                <div className="space-y-1">
-                  <h3 className="text-base font-bold text-text-primary font-display flex items-center gap-2">
-                    <Cpu className="h-5 w-5 text-coral-500" />
-                    Autonomous Planning & Dispatch FSM
-                  </h3>
-                  <p className="text-xs text-text-secondary">
-                    10-minute distributed CAS account lease, kill-switch verification, and candidate lease fencing
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                      operatorStatus.leaseHeld ? 'badge-lime' : 'badge-coral'
-                    }`}
-                  >
-                    {operatorStatus.leaseHeld ? 'Lease Active' : 'Lease Idle'}
-                  </span>
-                  <span className="badge-coral text-[10px] font-bold">P5-76 Fenced</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="p-4 rounded-xl bg-canvas-subtle border border-canvas-border space-y-1">
-                  <span className="text-[10px] font-bold uppercase text-text-muted">Account Lease Fencing</span>
-                  <div className="text-sm font-bold text-text-primary">10-Minute CAS Lease</div>
-                  <p className="text-[11px] text-text-secondary">Self-renewing Redis/Postgres CAS boundary</p>
-                </div>
-
-                <div className="p-4 rounded-xl bg-canvas-subtle border border-canvas-border space-y-1">
-                  <span className="text-[10px] font-bold uppercase text-text-muted">Planning Cadence</span>
-                  <div className="text-sm font-bold text-text-primary">Every 15 Minutes</div>
-                  <p className="text-[11px] text-text-secondary">Status: {operatorStatus.cycleState}</p>
-                </div>
-
-                <div className="p-4 rounded-xl bg-canvas-subtle border border-canvas-border space-y-1">
-                  <span className="text-[10px] font-bold uppercase text-text-muted">Weekly Rate Meter</span>
-                  <div className="text-sm font-bold text-lime-600">
-                    {operatorStatus.weeklyQuotaUsed} / {operatorStatus.weeklyQuotaLimit} Posts
+            {/* Top Status Banner & Emergency Kill Switch */}
+            <div
+              className={`p-6 rounded-2xl border transition-all ${
+                operatorStatus.active
+                  ? 'bg-gradient-to-r from-emerald-50/70 via-white to-warm-white border-emerald-200 shadow-sm'
+                  : 'bg-gradient-to-r from-coral-50/80 via-white to-warm-white border-coral-300 shadow-sm'
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold font-mono tracking-tight ${
+                        operatorStatus.active
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : 'bg-coral-100 text-coral-800 border border-coral-300 animate-pulse'
+                      }`}
+                    >
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full ${
+                          operatorStatus.active ? 'bg-emerald-600' : 'bg-coral-600'
+                        }`}
+                      />
+                      {operatorStatus.active
+                        ? `ACTIVE: ${operatorConfig.autonomyLevel}`
+                        : 'PAUSED: ALL PUBLISHING HALTED'}
+                    </span>
+                    <span className="badge-coral text-[10px] font-bold">P5-76 Fenced</span>
+                    <span
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                        operatorStatus.leaseHeld ? 'badge-lime' : 'badge-neutral'
+                      }`}
+                    >
+                      {operatorStatus.leaseHeld ? 'Worker Lease Active' : 'Worker Lease Idle'}
+                    </span>
                   </div>
-                  <p className="text-[11px] text-text-secondary">Calendar ISO-week allocation window</p>
-                </div>
-              </div>
 
-              <div className="p-4 rounded-xl bg-paper border border-canvas-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="space-y-0.5">
-                  <div className="text-xs font-bold text-text-primary">Emergency Kill Switch</div>
-                  <p className="text-[11px] text-text-secondary">
-                    Instantly suspends autonomous candidate synthesis and stops background dispatch
+                  <p className="text-xs text-text-secondary max-w-2xl leading-relaxed">
+                    {operatorStatus.active
+                      ? 'The Autonomous Operator orchestrates automated posting cycles without manual intervention, subject to hard calendar weekly quotas and safety fences.'
+                      : 'Emergency Kill Switch is ACTIVE: Operator autonomy is PAUSED, background worker leases are relinquished, and in-flight automated candidates are blocked from entering the publish queue.'}
                   </p>
                 </div>
+
                 <button
                   onClick={handleToggleOperator}
                   disabled={isTogglingOperator}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                  className={`px-6 py-3 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm shrink-0 ${
                     operatorStatus.active
-                      ? 'bg-coral-500 text-white hover:bg-coral-600 shadow-sm'
-                      : 'bg-lime-600 text-white hover:bg-lime-700 shadow-sm'
+                      ? 'bg-coral-600 text-white hover:bg-coral-700 shadow-coral-600/20'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-600/20'
                   }`}
                 >
                   {isTogglingOperator ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : operatorStatus.active ? (
-                    <Pause className="h-3.5 w-3.5" />
+                    <Pause className="h-4 w-4" />
                   ) : (
-                    <Play className="h-3.5 w-3.5" />
+                    <Play className="h-4 w-4" />
                   )}
-                  <span>{operatorStatus.active ? 'Trigger Emergency Pause' : 'Resume Operator'}</span>
+                  <span>
+                    {operatorStatus.active
+                      ? 'Emergency Kill Switch: Pause'
+                      : 'Resume Operator Autonomy'}
+                  </span>
                 </button>
               </div>
+            </div>
+
+            {/* Weekly Quota Utilization Meter */}
+            {(() => {
+              const quotaPercent = Math.min(
+                100,
+                Math.round(
+                  ((operatorStatus?.weeklyQuotaUsed ?? 0) /
+                    Math.max(1, operatorStatus?.weeklyQuotaLimit ?? 14)) *
+                    100
+                )
+              );
+
+              return (
+                <div className="card-base p-6 space-y-4 border border-canvas-border">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-canvas-border pb-3">
+                    <div className="space-y-0.5">
+                      <h3 className="text-sm font-bold text-text-primary font-display flex items-center gap-2">
+                        <Scale className="h-4 w-4 text-coral-500" />
+                        Weekly Quota Utilization Meter
+                      </h3>
+                      <p className="text-xs text-text-secondary">
+                        The quota automatically resets at Monday 00:00:00 in your account's local timezone.
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs font-mono font-bold text-text-primary">
+                        Quota: {operatorStatus.weeklyQuotaUsed} / {operatorStatus.weeklyQuotaLimit} posts ({quotaPercent}%)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Top Progress Bar */}
+                  <div className="space-y-1.5">
+                    <div className="w-full bg-canvas-subtle rounded-full h-3.5 overflow-hidden border border-canvas-border p-0.5">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          quotaPercent >= 100
+                            ? 'bg-coral-500'
+                            : quotaPercent >= 80
+                            ? 'bg-amber-500'
+                            : 'bg-lime-500'
+                        }`}
+                        style={{ width: `${quotaPercent}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[11px] text-text-muted font-mono px-0.5">
+                      <span>0 posts</span>
+                      <span>{Math.round(operatorStatus.weeklyQuotaLimit / 2)} posts (50%)</span>
+                      <span>Ceiling: {operatorStatus.weeklyQuotaLimit} posts/wk</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-1">
+                    <div className="p-3 bg-canvas-subtle rounded-xl border border-canvas-border space-y-0.5">
+                      <span className="text-[10px] uppercase font-bold text-text-muted">Claimed This Week</span>
+                      <div className="text-base font-bold text-text-primary font-mono">
+                        {operatorStatus.weeklyQuotaUsed} posts
+                      </div>
+                      <p className="text-[11px] text-text-secondary">Reserved in current ISO calendar window</p>
+                    </div>
+                    <div className="p-3 bg-canvas-subtle rounded-xl border border-canvas-border space-y-0.5">
+                      <span className="text-[10px] uppercase font-bold text-text-muted">Available Quota</span>
+                      <div className="text-base font-bold text-lime-600 font-mono">
+                        {Math.max(0, operatorStatus.weeklyQuotaLimit - operatorStatus.weeklyQuotaUsed)} posts
+                      </div>
+                      <p className="text-[11px] text-text-secondary">Slots open before hard ceiling blocks dispatch</p>
+                    </div>
+                    <div className="p-3 bg-canvas-subtle rounded-xl border border-canvas-border space-y-0.5">
+                      <span className="text-[10px] uppercase font-bold text-text-muted">Auto-Reset Cadence</span>
+                      <div className="text-base font-bold text-text-primary font-mono">
+                        Monday 00:00:00
+                      </div>
+                      <p className="text-[11px] text-text-secondary">Evaluated in account local timezone</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Account Settings Card: Configuring Autonomy & Safety Limits */}
+            <form onSubmit={handleSaveOperatorConfig} className="card-base p-6 space-y-6 border border-canvas-border">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-canvas-border pb-4">
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold text-text-primary font-display flex items-center gap-2">
+                    <Sliders className="h-5 w-5 text-coral-500" />
+                    Account Settings & Safety Limits
+                  </h3>
+                  <p className="text-xs text-text-secondary">
+                    Configure operator autonomy tier, posting quotas, and dispatch cadence rules.
+                  </p>
+                </div>
+                {saveOperatorConfigSuccess && (
+                  <span className="badge-lime text-xs px-3 py-1 flex items-center gap-1.5 font-bold animate-in fade-in">
+                    <Check className="h-3.5 w-3.5 text-lime-600" />
+                    Configuration Saved!
+                  </span>
+                )}
+              </div>
+
+              {/* 1. Autonomy Level */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-text-primary">
+                    Autonomy Level
+                  </label>
+                  <span className="text-[11px] text-text-muted">
+                    Controls automated decision boundaries for post candidates
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {[
+                    {
+                      key: 'MANUAL',
+                      title: 'MANUAL',
+                      desc: 'Operator drafts candidates; human must schedule each one.',
+                      color: 'border-amber-400 bg-amber-50/30 ring-amber-400',
+                    },
+                    {
+                      key: 'SEMI_AUTONOMOUS',
+                      title: 'SEMI_AUTONOMOUS',
+                      desc: 'Operator auto-schedules high-confidence candidates; flagged items wait for human review.',
+                      color: 'border-lime-500 bg-lime-50/30 ring-lime-500',
+                    },
+                    {
+                      key: 'FULL_AUTONOMOUS',
+                      title: 'FULL_AUTONOMOUS',
+                      desc: 'Operator auto-schedules all posts passing safety walls.',
+                      color: 'border-cyan-500 bg-cyan-50/30 ring-cyan-500',
+                    },
+                    {
+                      key: 'PAUSED',
+                      title: 'PAUSED',
+                      desc: 'All autonomous operations halted.',
+                      color: 'border-coral-500 bg-coral-50/30 ring-coral-500',
+                    },
+                  ].map((level) => {
+                    const isSelected = operatorConfig.autonomyLevel === level.key;
+                    return (
+                      <div
+                        key={level.key}
+                        onClick={() =>
+                          setOperatorConfig((prev) => ({
+                            ...prev,
+                            autonomyLevel: level.key as any,
+                          }))
+                        }
+                        className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                          isSelected
+                            ? `${level.color} shadow-xs ring-1`
+                            : 'border-canvas-border hover:border-canvas-border hover:bg-canvas-subtle/50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 mb-1.5">
+                          <input
+                            type="radio"
+                            name="autonomyLevel"
+                            checked={isSelected}
+                            onChange={() =>
+                              setOperatorConfig((prev) => ({
+                                ...prev,
+                                autonomyLevel: level.key as any,
+                              }))
+                            }
+                            className="text-coral-500 focus:ring-coral-500"
+                          />
+                          <span className="text-xs font-bold font-mono text-text-primary">
+                            {level.title}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-text-secondary pl-6 leading-relaxed">
+                          {level.desc}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2. Numeric Limits */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-text-primary flex items-center justify-between">
+                    <span>Weekly Limit</span>
+                    <span className="text-[10px] text-text-muted font-normal">Default: 14</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={70}
+                    required
+                    value={operatorConfig.maxWeeklyPosts}
+                    onChange={(e) =>
+                      setOperatorConfig((prev) => ({
+                        ...prev,
+                        maxWeeklyPosts: parseInt(e.target.value) || 1,
+                      }))
+                    }
+                    className="w-full text-xs p-2.5 rounded-xl border border-canvas-border bg-white text-text-primary focus:border-coral-500 focus:outline-none"
+                  />
+                  <p className="text-[10px] text-text-muted">Maximum posts per ISO calendar week window</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-text-primary flex items-center justify-between">
+                    <span>Min Hours Between Posts</span>
+                    <span className="text-[10px] text-text-muted font-normal">Default: 4</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={48}
+                    required
+                    value={operatorConfig.minHoursBetweenPosts}
+                    onChange={(e) =>
+                      setOperatorConfig((prev) => ({
+                        ...prev,
+                        minHoursBetweenPosts: parseInt(e.target.value) || 1,
+                      }))
+                    }
+                    className="w-full text-xs p-2.5 rounded-xl border border-canvas-border bg-white text-text-primary focus:border-coral-500 focus:outline-none"
+                  />
+                  <p className="text-[10px] text-text-muted">Minimum spacing to prevent account rate fatigue</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-text-primary flex items-center justify-between">
+                    <span>Planning Horizon</span>
+                    <span className="text-[10px] text-text-muted font-normal">Default: 7 days</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    required
+                    value={operatorConfig.planningHorizonDays}
+                    onChange={(e) =>
+                      setOperatorConfig((prev) => ({
+                        ...prev,
+                        planningHorizonDays: parseInt(e.target.value) || 7,
+                      }))
+                    }
+                    className="w-full text-xs p-2.5 rounded-xl border border-canvas-border bg-white text-text-primary focus:border-coral-500 focus:outline-none"
+                  />
+                  <p className="text-[10px] text-text-muted">Lookahead window for slot calculation</p>
+                </div>
+              </div>
+
+              {/* 3. Target Posting Hours */}
+              <div className="space-y-2.5 pt-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-bold text-text-primary block">
+                      Target Posting Hours (Local Account Hours)
+                    </label>
+                    <p className="text-[11px] text-text-secondary">
+                      Select which hours of the day candidate posts may be scheduled into.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOperatorConfig((prev) => ({
+                        ...prev,
+                        targetPostingHours: [9, 12, 17, 20],
+                      }))
+                    }
+                    className="text-[11px] font-bold text-coral-600 hover:underline"
+                  >
+                    Reset to Default [9, 12, 17, 20]
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-6 sm:grid-cols-12 gap-1.5 pt-1">
+                  {Array.from({ length: 24 }).map((_, hour) => {
+                    const isSelected = operatorConfig.targetPostingHours.includes(hour);
+                    const hourLabel = `${hour.toString().padStart(2, '0')}:00`;
+                    return (
+                      <button
+                        type="button"
+                        key={hour}
+                        onClick={() => handleTogglePostingHour(hour)}
+                        className={`py-2 px-1 rounded-xl text-xs font-mono font-bold transition-all text-center ${
+                          isSelected
+                            ? 'bg-coral-500 text-white shadow-xs'
+                            : 'bg-canvas-subtle text-text-muted hover:bg-canvas-border/50'
+                        }`}
+                      >
+                        {hourLabel}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="text-[11px] text-text-muted font-mono bg-canvas-subtle p-2.5 rounded-xl border border-canvas-border flex items-center justify-between">
+                  <span>Selected hours: [{operatorConfig.targetPostingHours.map((h) => `${h}:00`).join(', ')}]</span>
+                  <span>{operatorConfig.targetPostingHours.length} slots / day</span>
+                </div>
+              </div>
+
+              {/* Save Button */}
+              <div className="flex items-center justify-end pt-3 border-t border-canvas-border">
+                <button
+                  type="submit"
+                  disabled={isSavingOperatorConfig}
+                  className="btn-primary text-xs py-2 px-6 font-bold flex items-center gap-2 shadow-sm"
+                >
+                  {isSavingOperatorConfig ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4" />
+                  )}
+                  <span>Save Configuration</span>
+                </button>
+              </div>
+            </form>
+
+            {/* Architecture & Telemetry Tiles */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="p-4 rounded-xl bg-canvas-subtle border border-canvas-border space-y-1">
+                <span className="text-[10px] font-bold uppercase text-text-muted">Account Lease Fencing</span>
+                <div className="text-sm font-bold text-text-primary">10-Minute CAS Lease</div>
+                <p className="text-[11px] text-text-secondary">Self-renewing Redis/Postgres CAS boundary (P5-76)</p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-canvas-subtle border border-canvas-border space-y-1">
+                <span className="text-[10px] font-bold uppercase text-text-muted">Planning Cadence</span>
+                <div className="text-sm font-bold text-text-primary">Every 15 Minutes</div>
+                <p className="text-[11px] text-text-secondary">Next cycle: {operatorStatus.nextPlanningCycle}</p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-canvas-subtle border border-canvas-border space-y-1">
+                <span className="text-[10px] font-bold uppercase text-text-muted">Idempotency & Safety</span>
+                <div className="text-sm font-bold text-lime-600">Deterministic Outbox</div>
+                <p className="text-[11px] text-text-secondary">Fail-closed pre-publish 4-wall safety check</p>
+              </div>
+            </div>
+
+            {/* Recent Planning Cycles History */}
+            <div className="card-base p-6 space-y-4 border border-canvas-border">
+              <div className="flex items-center justify-between border-b border-canvas-border pb-3">
+                <div className="space-y-0.5">
+                  <h3 className="text-sm font-bold text-text-primary font-display flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-coral-500" />
+                    Recent Autonomous Planning Cycles
+                  </h3>
+                  <p className="text-xs text-text-secondary">
+                    Audit log of operator runs, candidate evaluation counts, and safety clearance results.
+                  </p>
+                </div>
+                <span className="badge-neutral text-[10px] font-bold font-mono">
+                  {operatorRuns.length} Runs Logged
+                </span>
+              </div>
+
+              {operatorRuns.length === 0 ? (
+                <div className="text-center py-6 text-xs text-text-muted">
+                  No planning cycle logs recorded yet for this account.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {operatorRuns.map((run: any) => (
+                    <div
+                      key={run.id}
+                      className="p-3.5 rounded-xl border border-canvas-border bg-canvas-subtle/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                              run.status === 'COMPLETED'
+                                ? 'badge-lime'
+                                : run.status === 'HALTED_KILL_SWITCH'
+                                ? 'badge-coral'
+                                : 'badge-neutral'
+                            }`}
+                          >
+                            {run.status}
+                          </span>
+                          <span className="font-mono text-text-muted text-[11px]">
+                            Cycle: {run.cycleId ? `${run.cycleId.slice(0, 8)}...` : run.id.slice(0, 8)}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-text-secondary">
+                          {run.summary?.reason || run.summary?.note || (run.candidatesScheduled > 0 ? 'Candidate scheduled successfully' : 'Evaluated candidate drafts')}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4 text-[11px] text-text-muted shrink-0">
+                        <div>
+                          Evaluated: <strong className="text-text-primary">{run.candidatesEvaluated ?? 0}</strong>
+                        </div>
+                        <div>
+                          Scheduled: <strong className="text-lime-600">{run.candidatesScheduled ?? 0}</strong>
+                        </div>
+                        <div>
+                          Safety Flagged: <strong className={run.safetyFlaggedCount > 0 ? 'text-coral-600' : 'text-text-primary'}>{run.safetyFlaggedCount ?? 0}</strong>
+                        </div>
+                        <div className="text-right font-mono">
+                          {run.startedAt ? new Date(run.startedAt).toLocaleTimeString() : ''}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

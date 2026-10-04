@@ -285,5 +285,64 @@ describe('Governance API Controllers & Service Contract Verification', () => {
       assert.strictEqual(pauseInvoked, true);
       assert.strictEqual(pausedRes.autonomyLevel, 'PAUSED');
     });
+
+    it('updates operator configuration with validated settings', async () => {
+      let receivedUpdates: any = null;
+      const mockService: any = {
+        updateOperatorConfig: async (
+          wsId: string,
+          accId: string,
+          actorId: string,
+          updates: any,
+        ) => {
+          receivedUpdates = updates;
+          return {
+            workspaceId: wsId,
+            socialAccountId: accId,
+            ...updates,
+          };
+        },
+      };
+
+      const controller = new OperatorController(mockService);
+      const res = await controller.updateConfig(
+        workspaceId,
+        socialAccountId,
+        { userId } as any,
+        {
+          autonomyLevel: 'FULL_AUTONOMOUS',
+          maxWeeklyPosts: 21,
+          minHoursBetweenPosts: 6,
+          targetPostingHours: [9, 13, 18],
+        },
+      );
+
+      assert.strictEqual(res.autonomyLevel, 'FULL_AUTONOMOUS');
+      assert.strictEqual(res.maxWeeklyPosts, 21);
+      assert.strictEqual(res.minHoursBetweenPosts, 6);
+      assert.deepStrictEqual(res.targetPostingHours, [9, 13, 18]);
+      assert.strictEqual(receivedUpdates.autonomyLevel, 'FULL_AUTONOMOUS');
+    });
+
+    it('rejects invalid operator configuration payloads', async () => {
+      const mockService: any = {
+        updateOperatorConfig: async () => ({}),
+      };
+      const controller = new OperatorController(mockService);
+
+      await assert.rejects(
+        async () => {
+          await controller.updateConfig(
+            workspaceId,
+            socialAccountId,
+            { userId } as any,
+            {
+              autonomyLevel: 'SUPER_HUMAN_UNKNOWN_MODE',
+            },
+          );
+        },
+        (err: any) => err.message.includes('Invalid operator config payload'),
+      );
+    });
   });
 });

@@ -250,6 +250,30 @@ export class AutonomousOperatorService {
         return run;
       }
 
+      // Check Autonomy Level: If MANUAL, the operator only drafts/evaluates candidates; human must schedule
+      if (operatorConfig.autonomyLevel === 'MANUAL') {
+        this.logger.log(`Account ${socialAccountId} is in MANUAL mode: Candidate ${candidate.id} drafted for human scheduling`);
+        await prisma.autonomousOperatorRun.update({
+          where: { id: run.id },
+          data: {
+            status: 'COMPLETED',
+            candidatesEvaluated: 1,
+            candidatesScheduled: 0,
+            safetyFlaggedCount: 0,
+            completedAt: new Date(),
+            summary: {
+              candidateId: candidate.id,
+              draftId: candidateDraft.id,
+              targetSlot: targetSlot.toISOString(),
+              mode: 'MANUAL',
+              note: 'Candidate evaluated and prepared for manual operator scheduling',
+            },
+          },
+        });
+        await this.releaseAccountLease(socialAccountId, leaseToken);
+        return run;
+      }
+
       // 5. Atomic Scheduling Transaction (P0-2 Fencing & Quota Resolution)
       const weekWindow = getIsoWeekWindow(targetSlot, timezone);
       const scheduledPostId = randomUUID();
