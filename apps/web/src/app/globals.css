@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    --font-jakarta: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     /* Foundation Light Palette */
     --background: 40 33% 99%; /* #FFFDF8 warm white */
     --foreground: 240 6% 9%;   /* #151518 charcoal text */
