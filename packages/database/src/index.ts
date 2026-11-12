@@ -25,4 +25,5 @@ export {
   MemoryRepository,
   CURRENT_EMBEDDING_PIPELINE_VERSION,
   type EmbeddingMetadataProvenance,
+  type FindByExactTermsOptions,
 } from './memory.repository';

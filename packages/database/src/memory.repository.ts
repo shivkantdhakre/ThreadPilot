@@ -26,6 +26,15 @@ export interface ReEmbeddingItem {
   missingTaskTypes: Array<'DOCUMENT' | 'SIMILARITY'>;
 }
 
+export interface FindByExactTermsOptions {
+  /** Terms extracted from the creator's request (quoted phrases, product names, campaign terms). */
+  terms: string[];
+  /** Optional memory item type filter, e.g. 'POST'. */
+  type?: string;
+  /** Maximum number of results. Defaults to 10. */
+  limit?: number;
+}
+
 export interface FindSimilarStyleExamplesOptions {
   model: string; // Required: enforces strict coordinate-space isolation with no silent default
   topic?: string;
@@ -218,6 +227,48 @@ export class MemoryRepository {
       text: r.text,
       topic: r.topic,
       similarity: Number(r.similarity),
+    }));
+  }
+
+  /**
+   * Keyword search over memory_items.content using ILIKE for each supplied term.
+   * Returns items where the content contains ANY of the terms (OR semantics).
+   * Scoped to workspace. No vector index touched — pure text scan.
+   * Returns an empty array immediately when `terms` is empty to avoid any DB round-trip.
+   *
+   * Use this alongside findSimilar() and merge results with exact matches first
+   * so that lower-scoring semantic results don't bury items the creator explicitly named.
+   */
+  async findByExactTerms(
+    workspaceId: string,
+    options: FindByExactTermsOptions,
+  ): Promise<Array<{ memoryItemId: string; content: string }>> {
+    const { terms, type, limit = 10 } = options;
+
+    if (!terms.length) return [];
+
+    // Build a parameterised OR chain for each term.
+    // Prisma.join with Prisma.sql handles escaping — no raw string interpolation.
+    const ilikeClauses = Prisma.join(
+      terms.map((t) => Prisma.sql`mi.content ILIKE ${'%' + t + '%'}`),
+      ' OR ',
+    );
+
+    type RawResult = { memory_item_id: string; content: string };
+
+    const results = await this.db.$queryRaw<RawResult[]>`
+      SELECT mi.id as memory_item_id, mi.content
+      FROM memory_items mi
+      WHERE mi.workspace_id = ${workspaceId}::uuid
+        AND (${ilikeClauses})
+        ${type ? Prisma.sql`AND mi.type = ${type}` : Prisma.empty}
+      ORDER BY mi.created_at DESC
+      LIMIT ${limit}
+    `;
+
+    return results.map((r) => ({
+      memoryItemId: r.memory_item_id,
+      content: r.content,
     }));
   }
 

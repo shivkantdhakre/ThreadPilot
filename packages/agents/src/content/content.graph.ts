@@ -26,6 +26,7 @@ import {
   type DuplicateCheckResult,
   type StyleFeatures,
 } from '../state';
+import { extractExactTerms } from './exact-terms';
 
 const logger = createLogger({ service: 'ContentGraph' });
 
@@ -98,11 +99,31 @@ export function createContentGraph(deps: ContentGraphDependencies) {
   }
 
   async function retrieveMemories(state: ContentGraphState): Promise<Partial<ContentGraphState>> {
+    const RETRIEVAL_LIMIT = 5;
     const queryText = [state.topic, state.additionalContext].filter(Boolean).join(' ');
     if (!queryText.trim()) {
       return { retrievedMemoryIds: [], retrievedMemoryTexts: [] };
     }
 
+    // ── 1. Exact-term keyword search (no AI tokens) ──────────────────────────
+    let exactMatches: Array<{ memoryItemId: string; content: string }> = [];
+    if (typeof memoryRepo?.findByExactTerms === 'function') {
+      try {
+        const exactTerms = extractExactTerms(queryText);
+        if (exactTerms.length > 0) {
+          exactMatches = await memoryRepo.findByExactTerms(state.workspaceId, {
+            terms: exactTerms,
+            type: 'POST',
+            limit: RETRIEVAL_LIMIT,
+          });
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Failed to retrieve exact-term memories, falling back to semantic search');
+      }
+    }
+
+    // ── 2. Semantic vector search (unchanged behaviour) ──────────────────────
+    let semanticMatches: Array<{ memoryItemId: string; content: string }> = [];
     try {
       const embedResponse = await aiProvider.embed({
         texts: [queryText],
@@ -110,27 +131,39 @@ export function createContentGraph(deps: ContentGraphDependencies) {
       });
       const queryEmbedding = embedResponse.embeddings[0];
 
-      if (!queryEmbedding || queryEmbedding.length === 0) {
-        return { retrievedMemoryIds: [], retrievedMemoryTexts: [] };
+      if (queryEmbedding && queryEmbedding.length > 0) {
+        const similar = await memoryRepo.findSimilar(state.workspaceId, queryEmbedding, {
+          model: aiProvider.modelName,
+          limit: RETRIEVAL_LIMIT,
+          minSimilarity: 0.65,
+          type: 'POST',
+          taskType: 'DOCUMENT',
+          pipelineVersion: 'v2',
+        });
+        semanticMatches = similar.map((s) => ({ memoryItemId: s.memoryItemId, content: s.content }));
       }
-
-      const similar = await memoryRepo.findSimilar(state.workspaceId, queryEmbedding, {
-        model: aiProvider.modelName,
-        limit: 5,
-        minSimilarity: 0.65,
-        type: 'POST',
-        taskType: 'DOCUMENT',
-        pipelineVersion: 'v2',
-      });
-
-      return {
-        retrievedMemoryIds: similar.map((s) => s.memoryItemId),
-        retrievedMemoryTexts: similar.map((s) => s.content),
-      };
     } catch (err) {
-      logger.warn({ err }, 'Failed to retrieve semantic memories, proceeding without memories');
-      return { retrievedMemoryIds: [], retrievedMemoryTexts: [] };
+      logger.warn({ err }, 'Failed to retrieve semantic memories, continuing with available memories');
     }
+
+    // ── 3. Merge: exact-first, then semantic; dedupe by ID; slice to limit ───
+    const seen = new Set<string>();
+    const merged: Array<{ memoryItemId: string; content: string }> = [];
+
+    for (const item of [...exactMatches, ...semanticMatches]) {
+      if (!seen.has(item.memoryItemId)) {
+        seen.add(item.memoryItemId);
+        merged.push(item);
+        if (merged.length >= RETRIEVAL_LIMIT) {
+          break;
+        }
+      }
+    }
+
+    return {
+      retrievedMemoryIds:   merged.map((m) => m.memoryItemId),
+      retrievedMemoryTexts: merged.map((m) => m.content),
+    };
   }
 
   async function retrieveStyleExamples(state: ContentGraphState): Promise<Partial<ContentGraphState>> {
